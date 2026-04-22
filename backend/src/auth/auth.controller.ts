@@ -1,0 +1,77 @@
+import { Controller, Post, Body, UnauthorizedException, BadRequestException, HttpCode, HttpStatus, Get, UseGuards, Request } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { AuthGuard } from './auth.guard';
+import { UsersService } from '../users/users.service';
+
+@Controller('api/auth')
+export class AuthController {
+  constructor(
+    private authService: AuthService,
+    private usersService: UsersService
+  ) {}
+
+  @HttpCode(HttpStatus.OK)
+  @Post('login')
+  async login(@Body() signInDto: Record<string, any>) {
+    const user = await this.authService.validateUser(signInDto.email, signInDto.password);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    return this.authService.login(user);
+  }
+
+  @Post('register')
+  async register(@Body() signUpDto: Record<string, any>) {
+    if (!signUpDto.email || !signUpDto.password || !signUpDto.name) {
+       throw new UnauthorizedException('Name, Email and password required');
+    }
+    return this.authService.register(signUpDto.name, signUpDto.email, signUpDto.password);
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body('email') email: string) {
+    if (!email) throw new BadRequestException('Email is required');
+    return this.authService.forgotPassword(email);
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() body: Record<string, any>) {
+    if (!body.token || !body.newPassword) throw new BadRequestException('Token and password are required');
+    return this.authService.resetPassword(body.token, body.newPassword);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('change-password')
+  async changePassword(@Body() body: Record<string, any>, @Request() req: any) {
+    if (!body.currentPassword || !body.newPassword) throw new BadRequestException('Current and new password required');
+    return this.authService.changePassword(req.user.sub, body.currentPassword, body.newPassword);
+  }
+
+  @UseGuards(AuthGuard)
+  @Get('me')
+  async getProfile(@Request() req: any) {
+    const user = await this.usersService.findOneByEmail(req.user.email);
+    if (!user) {
+      throw new UnauthorizedException('User not found on database. Token invalidated.');
+    }
+    const { passwordHash, ...cleanUser } = user;
+    const stats = await this.usersService.getUserStats(user.id);
+    return { user: cleanUser, stats };
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('profile/avatar')
+  async updateAvatar(@Request() req: any, @Body('avatarBase64') avatarBase64: string) {
+    if (!avatarBase64) throw new BadRequestException('Avatar payload is required');
+    const user = await this.usersService.updateAvatar(req.user.sub, avatarBase64);
+    if (!user) throw new BadRequestException('User not found');
+    const { passwordHash, ...cleanUser } = user;
+    return { user: cleanUser };
+  }
+
+  @UseGuards(AuthGuard)
+  @Get('users')
+  async getAllUsers() {
+    return this.usersService.getAllUsers();
+  }
+}

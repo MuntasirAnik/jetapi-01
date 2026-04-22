@@ -1,0 +1,1170 @@
+import { useState, useEffect, useRef } from "react";
+import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2 } from "lucide-react";
+import { toast } from "react-toastify";
+import { copyToClipboard } from "@/lib/api";
+
+export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, isSaving, envVariables = [] }: any) {
+  const [activeTab, setActiveTab] = useState("Params");
+  const [isUrlFocused, setIsUrlFocused] = useState(false);
+  const [isMethodDropdownOpen, setIsMethodDropdownOpen] = useState(false);
+  const methodDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [varSuggest, setVarSuggest] = useState<{ id: string, show: boolean, filtered: any[], replaceIndex: number, replaceLength: number, cursorPos: number, selectedIndex: number }>({ id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 });
+  const activeSuggestRef = useRef<{ currentValue: string, onUpdate: (val: string) => void } | null>(null);
+
+  useEffect(() => {
+    if (!varSuggest.show) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setVarSuggest(prev => ({
+          ...prev,
+          selectedIndex: prev.selectedIndex < prev.filtered.length - 1 ? prev.selectedIndex + 1 : 0
+        }));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setVarSuggest(prev => ({
+          ...prev,
+          selectedIndex: prev.selectedIndex > 0 ? prev.selectedIndex - 1 : prev.filtered.length - 1
+        }));
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        if (varSuggest.filtered.length > 0) {
+          e.preventDefault();
+          const v = varSuggest.filtered[varSuggest.selectedIndex];
+          const refProps = activeSuggestRef.current;
+          if (refProps && v) {
+            const baseStr = refProps.currentValue.substring(0, varSuggest.replaceIndex);
+            const afterCursorStr = refProps.currentValue.substring(varSuggest.cursorPos);
+            const updated = baseStr + `{{${v.key}}}` + afterCursorStr;
+            refProps.onUpdate(updated);
+            setVarSuggest({ id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 });
+          }
+        }
+      } else if (e.key === 'Escape') {
+         setVarSuggest(prev => ({ ...prev, show: false }));
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [varSuggest]);
+
+  const checkVarSuggest = (id: string, value: string, providedCursorPos?: number) => {
+    let cursorPos = providedCursorPos ?? value?.length ?? 0;
+    if (typeof providedCursorPos === 'undefined' && typeof document !== 'undefined') {
+      const activeEl = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && typeof activeEl.selectionStart === 'number' && activeEl.selectionStart !== null) {
+        cursorPos = activeEl.selectionStart;
+      }
+    }
+
+    if (!value) {
+       setVarSuggest(prev => prev.id === id ? { id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 } : prev);
+       return;
+    }
+    
+    const valueUpToCursor = value.substring(0, cursorPos);
+
+    // Explicit {{ match
+    const lastOpen = valueUpToCursor.lastIndexOf('{{');
+    const lastClose = valueUpToCursor.lastIndexOf('}}');
+    
+    if (lastOpen > lastClose || (lastOpen !== -1 && lastClose === -1)) {
+      const searchStr = valueUpToCursor.substring(lastOpen + 2);
+      if (!searchStr.includes(' ')) {
+        const search = searchStr.toLowerCase();
+        const filtered = envVariables.filter((v: any) => v?.key && v.key.toLowerCase().includes(search));
+        if (filtered.length > 0) {
+          setVarSuggest({ id, show: true, filtered, replaceIndex: lastOpen, replaceLength: valueUpToCursor.length - lastOpen, cursorPos, selectedIndex: 0 });
+          return;
+        }
+      }
+    }
+
+    // Free-text typing match (allows dropping the {{ requirement)
+    const words = valueUpToCursor.match(/\{?[a-zA-Z0-9_-]+$/);
+    if (words && words[0].length >= 1) {
+      const search = words[0].replace('{', '').toLowerCase();
+      if (search.length >= 1) {
+        const filtered = envVariables.filter((v: any) => v?.key && (v.key.toLowerCase().includes(search) || v.key.toLowerCase() === search));
+        if (filtered.length > 0) {
+          setVarSuggest({ id, show: true, filtered, replaceIndex: valueUpToCursor.length - words[0].length, replaceLength: words[0].length, cursorPos, selectedIndex: 0 });
+          return;
+        }
+      }
+    }
+
+    setVarSuggest(prev => prev.id === id ? { id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 } : prev);
+  };
+
+  const renderVarSuggest = (id: string, currentValue: string, onUpdate: (newVal: string) => void) => {
+    if (!varSuggest.show || varSuggest.id !== id) return null;
+    activeSuggestRef.current = { currentValue, onUpdate };
+
+    return (
+      <div className="absolute top-full left-0 mt-1 w-[300px] bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl z-50 max-h-48 overflow-y-auto">
+        {varSuggest.filtered.map((v, idx) => (
+          <button
+            key={idx}
+            onClick={() => {
+              const baseStr = currentValue.substring(0, varSuggest.replaceIndex);
+              const afterCursorStr = currentValue.substring(varSuggest.cursorPos);
+              const updated = baseStr + `{{${v.key}}}` + afterCursorStr;
+              onUpdate(updated);
+              setVarSuggest({ id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 });
+            }}
+            className={`w-full text-left px-3 py-2 hover:bg-[var(--sidebar)] flex flex-col gap-0.5 border-b border-[var(--border)] transition-colors border-last-none ${varSuggest.selectedIndex === idx ? 'bg-[var(--sidebar)]' : ''}`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-sm font-semibold text-[var(--color-brand-500)]">{v.key}</span>
+              <span className="text-[10px] uppercase font-bold text-[var(--muted)] opacity-50 px-1.5 py-0.5 rounded bg-[var(--background)]">{v.type === 'secret' ? 'Secret' : 'Global'}</span>
+            </div>
+            <span className="text-xs text-[var(--muted)] truncate">{v.type === 'secret' ? '••••••' : (v.currentValue || v.initialValue || 'empty')}</span>
+          </button>
+        ))}
+      </div>
+    );
+  };
+  
+  // Close method dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (methodDropdownRef.current && !methodDropdownRef.current.contains(event.target as Node)) {
+        setIsMethodDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Auto-parse Path Variables on mount or URL prop change
+  useEffect(() => {
+    if (!request || !request.url) return;
+    
+    try {
+      const isRelativeOrVar = !request.url.includes('://') && !request.url.startsWith('http');
+      const parseableUrl = isRelativeOrVar ? `http://dummy.local/${request.url.replace(/^\//, '')}` : request.url;
+      const urlObj = new URL(parseableUrl);
+      const pathOnly = urlObj.pathname + urlObj.hash;
+      const pathVarsExtract = (pathOnly.match(/:([a-zA-Z0-9_]+)/g) || []).map(m => m.substring(1));
+      
+      const currentPathVars = request.pathVariables || [];
+      
+      // Check if we already have exactly these variables to prevent infinite loop
+      const hasAllVars = pathVarsExtract.length === currentPathVars.length && 
+                         pathVarsExtract.every((key, idx) => currentPathVars[idx]?.key === key);
+                         
+      if (!hasAllVars) {
+        const updatedPathVars = pathVarsExtract.map(key => {
+          const existing = currentPathVars.find((pv: any) => pv.key === key);
+          return { key, value: existing ? existing.value : "" };
+        });
+        onChange({ ...request, pathVariables: updatedPathVars });
+      }
+    } catch(e) {
+      // ignore parsing errors on mount
+    }
+  }, [request?.url, request?.id]); // depend on ID changes to catch sidebar navigation
+
+  if (!request) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-[var(--muted)] flex-col gap-4">
+        <Send className="w-16 h-16 opacity-20" />
+        <p>Select a request from the sidebar or click "New Request"</p>
+      </div>
+    );
+  }
+
+  const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+
+// Exact Postman Colors
+const getMethodColor = (method: string) => {
+  switch (method) {
+    case 'GET': return '#0cbb52';
+    case 'POST': return '#ffb400';
+    case 'PUT': return '#097bed';
+    case 'PATCH': return '#f2a900';
+    case 'DELETE': return '#eb2013';
+    case 'HEAD': return '#0cbb52';
+    case 'OPTIONS': return '#097bed';
+    default: return 'var(--foreground)';
+  }
+};
+  const tabs = ["Params", "Auth", "Headers", "Body", "Pre-request Script", "Tests", "Settings", "Docs"];
+
+  const handleKVPChange = (type: "params" | "headers" | "pathVariables", index: number, field: "key" | "value" | "enabled", val: string | boolean) => {
+    const list = [...(request[type] || [])];
+    if (!list[index]) list[index] = { key: "", value: "", enabled: true };
+    list[index][field] = val;
+    
+    // If it's params, we need to sync back to the URL
+    if (type === 'params') {
+      onChange({ ...request, [type]: list, url: syncParamsToUrl(request.url, list) });
+    } else {
+      onChange({ ...request, [type]: list });
+    }
+  };
+
+  const addKVP = (type: "params" | "headers" | "pathVariables") => {
+    const list = [...(request[type] || []), { key: "", value: "", enabled: true }];
+    
+    if (type === 'params') {
+      onChange({ ...request, [type]: list, url: syncParamsToUrl(request.url, list) });
+    } else {
+      onChange({ ...request, [type]: list });
+    }
+  };
+
+  const removeKVP = (type: "params" | "headers" | "pathVariables", index: number) => {
+    const list = [...(request[type] || [])];
+    list.splice(index, 1);
+    
+    if (type === 'params') {
+      onChange({ ...request, [type]: list, url: syncParamsToUrl(request.url, list) });
+    } else {
+      onChange({ ...request, [type]: list });
+    }
+  };
+
+  const handleAuthChange = (field: string, value: string) => {
+    const currentAuth = request.auth || { type: 'none', bearerToken: '', basicUsername: '', basicPassword: '' };
+    onChange({ ...request, auth: { ...currentAuth, [field]: value } });
+    checkVarSuggest(`auth-${field}`, value);
+  };
+
+  const handleToggleAll = (type: "params" | "headers", checked: boolean) => {
+    const list = [...(request[type] || [])].map(item => ({ ...item, enabled: checked }));
+    
+    if (type === 'params') {
+      onChange({ ...request, [type]: list, url: syncParamsToUrl(request.url, list) });
+    } else {
+      onChange({ ...request, [type]: list });
+    }
+  };
+
+  const syncParamsToUrl = (currentUrl: string, paramsList: any[]) => {
+    try {
+      const isRelativeOrVar = !currentUrl.includes('://') && !currentUrl.startsWith('http');
+      const parseableUrl = isRelativeOrVar ? `http://dummy.local/${currentUrl.replace(/^\//, '')}` : currentUrl;
+      const urlObj = new URL(parseableUrl);
+      urlObj.search = ''; // clear existing
+      paramsList.forEach(p => {
+        if (p.key && p.enabled !== false) urlObj.searchParams.append(p.key, p.value || '');
+      });
+      let urlStr = urlObj.toString().replace(/\/$/, ""); // prevent trailing slash
+      
+      // If we used a dummy base, strip it back off before returning
+      if (isRelativeOrVar) {
+         urlStr = urlStr.replace('http://dummy.local/', '');
+         // In case the original didn't have a slash but URL added one
+         if (currentUrl.startsWith('/') && !urlStr.startsWith('/')) urlStr = '/' + urlStr;
+      }
+      
+      const encodedPath = urlObj.pathname + (urlObj.hash ? urlObj.hash : '');
+      
+      let finalUrl = "";
+      if (isRelativeOrVar) {
+         // Reconstruct cleanly bypassing dummy.local host
+         finalUrl = currentUrl.split('?')[0];
+      } else {
+         finalUrl = urlObj.protocol + "//" + urlObj.host + encodedPath.replace(/%7B/g, '{').replace(/%7D/g, '}');
+      }
+      
+      // Restore {{ and }} which new URL() encodes to %7B and %7D
+      return finalUrl.replace(/%7B/g, '{').replace(/%7D/g, '}');
+    } catch(e) {
+      return currentUrl; // invalid url, don't crash
+    }
+  };
+
+  const handleUrlChange = (newUrl: string) => {
+    checkVarSuggest('url-input', newUrl);
+    try {
+      // 1. Parse Query Params
+      const isRelativeOrVar = !newUrl.includes('://') && !newUrl.startsWith('http');
+      const parseableUrl = isRelativeOrVar ? `http://dummy.local/${newUrl.replace(/^\//, '')}` : newUrl;
+      const urlObj = new URL(parseableUrl);
+      const newParams: any[] = [];
+      urlObj.searchParams.forEach((val, key) => {
+        newParams.push({ key, value: val, enabled: true });
+      });
+      
+      const existingParams = request.params || [];
+      // Retain disabled params in memory so they aren't lost when the user types in the URL box
+      existingParams.forEach((p: any) => {
+        if (p.enabled === false && p.key) {
+           newParams.push(p);
+        }
+      });
+      
+      // Keep any empty bottom rows from current state
+      const emptyParamsRow = existingParams.find((p: any) => !p.key && !p.value);
+      if (emptyParamsRow && newParams.length > 0) newParams.push(emptyParamsRow);
+
+      // 2. Extract Path Variables
+      // Postman syntax: match segments starting with a colon, e.g. :orgId
+      // We also verify it's a path segment (after a slash, or at the start) to avoid matching inside query strings if we can,
+      // but simple regex is fine: grab word characters after a colon as long as they aren't part of a query param value
+      // Wait, we can just strip the query string out first for path variable scanning:
+      const pathOnly = urlObj.pathname + urlObj.hash;
+      const pathVarsExtract = (pathOnly.match(/:([a-zA-Z0-9_]+)/g) || []).map(m => m.substring(1));
+      let currentPathVars = request.pathVariables || [];
+      // sync with found matches
+      const updatedPathVars = pathVarsExtract.map(key => {
+        const existing = currentPathVars.find((pv: any) => pv.key === key);
+        return { key, value: existing ? existing.value : "" };
+      });
+
+      onChange({ ...request, url: newUrl, params: newParams, pathVariables: updatedPathVars });
+    } catch(e) {
+       // fallback if absolutely invalid, though `http://dummy.local` should catch almost any string
+       onChange({ ...request, url: newUrl });
+    }
+  };
+
+  const renderHighlightedUrl = (url: string, inputId?: string) => {
+    if (!url) return null;
+    const parts = url.split(/(\{\{.*?\}\})/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('{{') && part.endsWith('}}')) {
+        const varName = part.substring(2, part.length - 2).trim();
+        const activeVar = envVariables?.find((v: any) => v.key === varName && v.enabled !== false);
+        if (activeVar) {
+          const resolveVal = activeVar.currentValue !== undefined ? activeVar.currentValue : activeVar.value;
+          return (
+             <span 
+               key={i} 
+               className="text-[#FF6C37] font-bold pointer-events-auto cursor-text" 
+               title={`Current: ${resolveVal}\nInitial: ${activeVar.initialValue || 'empty'}\nScope: ${activeVar.type}`}
+               onClick={() => {
+                 if (inputId) document.getElementById(inputId)?.focus();
+               }}
+             >
+               {part}
+             </span>
+          );
+        } else {
+          return (
+             <span 
+               key={i} 
+               className="text-red-500 font-bold line-through opacity-80 pointer-events-auto cursor-text" 
+               title="Unresolved Variable! Check environment selection or spelling."
+               onClick={() => {
+                 if (inputId) document.getElementById(inputId)?.focus();
+               }}
+             >
+               {part}
+             </span>
+          );
+        }
+      }
+      return <span key={i} className="text-[var(--foreground)]">{part}</span>;
+    });
+  };
+
+  const renderGenericKVPTable = (list: any[], setList: (newList: any[]) => void, title?: string, hideEnableLabel?: boolean, disableKey?: boolean) => {
+    const allEnabled = list.length > 0 && list.every((item: any) => item.enabled !== false);
+
+    const handleToggleAll = (checked: boolean) => setList(list.map(item => ({ ...item, enabled: checked })));
+    const handleChange = (index: number, field: string, val: any) => {
+      const newList = [...list];
+      if (!newList[index]) newList[index] = { key: "", value: "", enabled: true };
+      newList[index][field] = val;
+      setList(newList);
+      checkVarSuggest(`${title || 'kvp'}-${index}-${field}`, val);
+    };
+    const handleRemove = (index: number) => {
+      const newList = [...list];
+      newList.splice(index, 1);
+      setList(newList);
+    };
+    const handleAdd = () => setList([...list, { key: "", value: "", enabled: true }]);
+
+    return (
+      <div className="flex flex-col gap-2 px-3 pt-3 pb-0">
+        {title && <div className="text-[10px] text-[var(--muted)] font-semibold uppercase tracking-wider mb-1">{title}</div>}
+        <table className="w-full text-xs text-left border-collapse">
+          <thead>
+            <tr className="border-b border-[var(--border)] text-[var(--muted)]">
+              {!hideEnableLabel && (
+                <th className="py-1 px-2 font-medium w-8 text-center pt-2">
+                  <input 
+                    type="checkbox" 
+                    checked={allEnabled}
+                    onChange={e => handleToggleAll(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[var(--color-brand-500)] cursor-pointer"
+                  />
+                </th>
+              )}
+              <th className="py-1 px-2 font-medium w-[45%]">Key</th>
+              <th className="py-1 px-2 font-medium w-[45%]">Value</th>
+              <th className="py-1 px-2 font-medium w-[10%]"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((item: any, i: number) => (
+              <tr key={i} className={`border-b border-[var(--border)] hover:bg-[var(--background)] ${item.enabled === false ? 'opacity-50' : ''}`}>
+                {!hideEnableLabel && (
+                  <td className="p-0 border-r border-[var(--border)] text-center">
+                    <input 
+                      type="checkbox" 
+                      checked={item.enabled !== false} 
+                      onChange={e => handleChange(i, 'enabled', e.target.checked)} 
+                      className="w-3.5 h-3.5 accent-[var(--color-brand-500)] cursor-pointer mt-1" 
+                    />
+                  </td>
+                )}
+                <td className="p-0 border-l border-[var(--border)] relative">
+                  <input 
+                    type="text" 
+                    value={item.key} 
+                    onChange={e => handleChange(i, 'key', e.target.value)} 
+                    className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
+                    placeholder="Key" 
+                    disabled={disableKey}
+                  />
+                  {renderVarSuggest(`${title || 'kvp'}-${i}-key`, item.key, (val) => handleChange(i, 'key', val))}
+                </td>
+                <td className="p-0 border-l border-[var(--border)] relative">
+                  <input 
+                    type="text" 
+                    value={item.value} 
+                    onChange={e => handleChange(i, 'value', e.target.value)} 
+                    className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
+                    placeholder="Value" 
+                  />
+                  {renderVarSuggest(`${title || 'kvp'}-${i}-value`, item.value, (val) => handleChange(i, 'value', val))}
+                </td>
+                <td className="p-0 border-l border-[var(--border)] text-center">
+                  <button onClick={() => handleRemove(i)} disabled={disableKey} className="text-[var(--muted)] hover:text-red-500 p-1.5 disabled:opacity-20 flex w-full justify-center">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {list.length === 0 && hideEnableLabel && (
+              <tr>
+                <td colSpan={3} className="py-6 px-3 text-center text-[var(--muted)] text-xs border-b border-[var(--border)]">
+                  No layout variables isolated.<br/><span className="mt-1 opacity-70">Define them dynamically by typing `:parameter` (e.g. `:orgId`) directly inside your request URL bar.</span>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {!hideEnableLabel && (
+          <button 
+            onClick={handleAdd}
+            className="self-start text-xs flex items-center gap-1 mt-2 text-[var(--color-brand-500)] hover:underline p-1"
+          >
+            <Plus className="w-3 h-3" /> Add item
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderFormDataKVPTable = (list: any[], setList: (newList: any[]) => void) => {
+    const allEnabled = list.length > 0 && list.every((item: any) => item.enabled !== false);
+    const handleToggleAll = (checked: boolean) => setList(list.map(item => ({ ...item, enabled: checked })));
+    const handleChange = (index: number, field: string, val: any) => {
+      const newList = [...list];
+      if (!newList[index]) newList[index] = { key: "", value: "", type: "text", description: "", enabled: true };
+      newList[index][field] = val;
+      setList(newList);
+      checkVarSuggest(`formdata-${index}-${field}`, val);
+    };
+    const handleRemove = (index: number) => {
+      const newList = [...list];
+      newList.splice(index, 1);
+      setList(newList);
+    };
+    const handleAdd = () => setList([...list, { key: "", value: "", type: "text", description: "", enabled: true }]);
+
+    return (
+      <div className="flex flex-col gap-2 px-3 pt-3 pb-0">
+        <table className="w-full text-xs text-left border-collapse">
+          <thead>
+            <tr className="border-b border-[var(--border)] text-[var(--muted)]">
+              <th className="py-1 px-2 font-medium w-8 text-center pt-2">
+                <input 
+                  type="checkbox" 
+                  checked={allEnabled}
+                  onChange={e => handleToggleAll(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[var(--color-brand-500)] cursor-pointer"
+                />
+              </th>
+              <th className="py-1 px-2 font-medium w-[25%]">Key</th>
+              <th className="py-1 px-2 font-medium w-[30%]">Value</th>
+              <th className="py-1 px-2 font-medium w-[30%]">Description</th>
+              <th className="py-1 px-2 font-medium w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((item: any, i: number) => (
+              <tr key={i} className={`border-b border-[var(--border)] hover:bg-[var(--background)] group ${item.enabled === false ? 'opacity-50' : ''}`}>
+                <td className="p-0 border-r border-[var(--border)] text-center">
+                  <input 
+                    type="checkbox" 
+                    checked={item.enabled !== false} 
+                    onChange={e => handleChange(i, 'enabled', e.target.checked)} 
+                    className="w-3.5 h-3.5 accent-[var(--color-brand-500)] cursor-pointer mt-1" 
+                  />
+                </td>
+                <td className="p-0 border-l border-[var(--border)] relative">
+                  <div className="flex items-center">
+                     <input 
+                       type="text" 
+                       value={item.key || ""} 
+                       onChange={e => handleChange(i, 'key', e.target.value)} 
+                       className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
+                       placeholder="Key" 
+                     />
+                     {renderVarSuggest(`formdata-${i}-key`, item.key || "", (val) => handleChange(i, 'key', val))}
+                     {/* Hidden dropdown that appears on hover/focus to select Text vs File */}
+                     <select 
+                        value={item.type || 'text'}
+                        onChange={(e) => {
+                           handleChange(i, 'type', e.target.value);
+                           // Clear value if switching to file, since we can't safely maintain browser text -> file object states
+                           handleChange(i, 'value', ''); 
+                        }}
+                        className="opacity-0 group-hover:opacity-100 absolute right-1 bg-[var(--sidebar)] border border-[var(--border)] text-[10px] rounded p-0.5 outline-none cursor-pointer"
+                     >
+                        <option value="text">Text</option>
+                        <option value="file">File</option>
+                     </select>
+                  </div>
+                </td>
+                <td className="p-0 border-l border-[var(--border)] relative">
+                  {item.type === 'file' ? (
+                     <div className="flex items-center w-full px-2 py-1">
+                        <label className="bg-[var(--sidebar)] border border-[var(--border)] cursor-pointer hover:bg-[var(--card)] px-2 py-0.5 rounded text-[10px] uppercase font-semibold text-[var(--muted)]">
+                           Select Files
+                           <input 
+                             type="file" 
+                             multiple
+                             className="hidden"
+                             onChange={(e) => {
+                                // Since storing raw File objects deeply in React state and then proxying them locally is extremely complex due to DOM serialization rules across NestJS proxy networks,
+                                // we will just store the file names visually here to mimic postman. Actual direct multipart stream forwarding would require a massive app architecture change.
+                                const filesStr = Array.from(e.target.files || []).map(f => f.name).join(", ");
+                                handleChange(i, 'value', filesStr || '');
+                             }}
+                           />
+                        </label>
+                        <span className="ml-2 text-[10px] truncate w-32 opacity-70" title={item.value}>{item.value || 'No files selected'}</span>
+                     </div>
+                  ) : (
+                     <>
+                       <input 
+                         type="text" 
+                         value={item.value || ""} 
+                         onChange={e => handleChange(i, 'value', e.target.value)} 
+                         className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
+                         placeholder="Value" 
+                       />
+                       {renderVarSuggest(`formdata-${i}-value`, item.value || "", (val) => handleChange(i, 'value', val))}
+                     </>
+                  )}
+                </td>
+                <td className="p-0 border-l border-[var(--border)] relative">
+                  <input 
+                    type="text" 
+                    value={item.description || ""} 
+                    onChange={e => handleChange(i, 'description', e.target.value)} 
+                    className="w-full bg-transparent px-2 py-1.5 outline-none font-sans" 
+                    placeholder="Description" 
+                  />
+                </td>
+                <td className="p-0 border-l border-[var(--border)] text-center">
+                  <button onClick={() => handleRemove(i)} className="text-[var(--muted)] hover:text-red-500 p-1.5 flex w-full justify-center">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button 
+          onClick={handleAdd}
+          className="self-start text-xs flex items-center gap-1 mt-2 text-[var(--color-brand-500)] hover:underline p-1"
+        >
+          <Plus className="w-3 h-3" /> Add item
+        </button>
+      </div>
+    );
+  };
+
+  const renderKVPTable = (type: "params" | "headers" | "pathVariables", title?: string) => {
+    const list = request[type] || [];
+    return renderGenericKVPTable(list, (newList) => {
+      if (type === 'params') {
+        onChange({ ...request, [type]: newList, url: syncParamsToUrl(request.url, newList) });
+      } else {
+        onChange({ ...request, [type]: newList });
+      }
+    }, title, type === 'pathVariables', type === 'pathVariables');
+  };
+
+  const renderAuthTab = () => {
+    const auth = request.auth || { type: 'none', bearerToken: '', basicUsername: '', basicPassword: '' };
+    return (
+      <div className="flex h-full border-[var(--border)] relative bg-[var(--background)]">
+        <div className="w-48 border-r border-[var(--border)] p-3 flex flex-col gap-2">
+          <label className="text-[10px] text-[var(--muted)] font-semibold uppercase">Type</label>
+          <select 
+            className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] rounded text-xs p-1.5 outline-none focus:border-[var(--color-brand-500)]"
+            value={auth.type || 'none'}
+            onChange={e => handleAuthChange('type', e.target.value)}
+          >
+            <option value="none">No Auth</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="basic">Basic Auth</option>
+          </select>
+        </div>
+        <div className="flex-1 p-6 relative bg-[var(--background)]">
+          {auth.type === 'none' && (
+            <div className="text-[var(--muted)] text-sm flex flex-col justify-center h-full max-w-md mx-auto text-center">
+              This request does not use any authorization.
+            </div>
+          )}
+          
+          {auth.type === 'bearer' && (
+              <div className="max-w-xl">
+              <div className="text-sm font-semibold mb-4 text-[var(--muted)]">Bearer Token</div>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs text-[var(--muted)]">Token</label>
+                <div className="relative bg-[var(--card)] border border-[var(--border)] rounded focus-within:border-[var(--color-brand-500)] transition-colors overflow-visible flex">
+                  {/* Invisible Native Input */}
+                  <input 
+                    id={`auth-token-${request.id}`}
+                    type="text" 
+                    value={auth.bearerToken || ''} 
+                    onChange={e => handleAuthChange('bearerToken', e.target.value)}
+                    onScroll={(e) => {
+                      const overlay = document.getElementById(`token-overlay-${request.id}`);
+                      if (overlay) overlay.scrollLeft = e.currentTarget.scrollLeft;
+                    }}
+                    spellCheck={false}
+                    className="w-full bg-transparent p-2 outline-none text-sm font-mono caret-[var(--foreground)] text-transparent selection:bg-[var(--color-brand-500)]/30 z-10"
+                  />
+                  
+                  {/* Syntax Highlighter Overlay */}
+                  <div 
+                    id={`token-overlay-${request.id}`}
+                    className="absolute inset-0 p-2 pointer-events-none whitespace-pre text-sm font-mono overflow-hidden z-20"
+                    aria-hidden="true"
+                  >
+                    {auth.bearerToken ? renderHighlightedUrl(auth.bearerToken, `auth-token-${request.id}`) : <span className="text-[var(--muted)] opacity-50">Token</span>}
+                  </div>
+                  
+                  {/* Autocomplete Dropdown */}
+                  {renderVarSuggest(`auth-bearerToken`, auth.bearerToken || '', (val) => handleAuthChange('bearerToken', val))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {auth.type === 'basic' && (
+            <div className="max-w-xl">
+              <div className="text-sm font-semibold mb-4 text-[var(--muted)]">Basic Auth</div>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2 relative">
+                  <label className="text-xs text-[var(--muted)]">Username</label>
+                  <input 
+                    type="text" 
+                    value={auth.basicUsername || ''} 
+                    onChange={e => handleAuthChange('basicUsername', e.target.value)}
+                    placeholder="Username"
+                    className="bg-[var(--card)] border border-[var(--border)] p-2 rounded w-full outline-none focus:border-[var(--color-brand-500)] text-sm font-mono"
+                  />
+                  {renderVarSuggest(`auth-basicUsername`, auth.basicUsername || '', (val) => handleAuthChange('basicUsername', val))}
+                </div>
+                <div className="flex flex-col gap-2 relative">
+                  <label className="text-xs text-[var(--muted)]">Password</label>
+                  <input 
+                    type="password" 
+                    value={auth.basicPassword || ''} 
+                    onChange={e => handleAuthChange('basicPassword', e.target.value)}
+                    placeholder="Password"
+                    className="bg-[var(--card)] border border-[var(--border)] p-2 rounded w-full outline-none focus:border-[var(--color-brand-500)] text-sm font-mono"
+                  />
+                  {renderVarSuggest(`auth-basicPassword`, auth.basicPassword || '', (val) => handleAuthChange('basicPassword', val))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const getBodyObj = () => {
+    if (!request.body) return { mode: 'none', raw: { language: 'json', data: '' }, formdata: [], urlencoded: [], graphql: { query: '', variables: '' } };
+    if (typeof request.body === 'string') return { mode: 'raw', raw: { language: 'json', data: request.body }, formdata: [], urlencoded: [], graphql: { query: '', variables: '' } };
+    return request.body;
+  };
+
+  const updateBodyObj = (updates: any) => {
+    const current = getBodyObj();
+    onChange({...request, body: {...current, ...updates}});
+  };
+
+  const renderBodyTab = () => {
+    const bodyState = getBodyObj();
+    const modes = [
+      { id: 'none', label: 'none' },
+      { id: 'formdata', label: 'form-data' },
+      { id: 'urlencoded', label: 'x-www-urlencoded' },
+      { id: 'raw', label: 'raw' },
+      { id: 'binary', label: 'binary' },
+      { id: 'graphql', label: 'GraphQL' },
+    ];
+
+    return (
+      <div className="flex flex-col h-full bg-[var(--background)]">
+        <div className="flex items-center gap-4 px-3 py-2 border-b border-[var(--border)] text-xs font-medium">
+          {modes.map(mode => (
+            <label key={mode.id} className="flex items-center gap-1.5 cursor-pointer text-[var(--foreground)] hover:text-[var(--color-brand-500)]">
+              <input 
+                type="radio" 
+                name="bodyType" 
+                checked={bodyState.mode === mode.id}
+                onChange={() => updateBodyObj({ mode: mode.id })}
+                className="accent-[var(--color-brand-500)] w-3.5 h-3.5"
+              />
+              {mode.label}
+            </label>
+          ))}
+
+          {bodyState.mode === 'raw' && (
+            <div className="ml-auto flex items-center gap-2">
+              <select 
+                className="bg-[var(--card)] border border-[var(--border)] rounded px-2 py-1 outline-none focus:border-[var(--color-brand-500)] text-[#FF6C37]"
+                value={bodyState.raw.language}
+                onChange={(e) => updateBodyObj({ raw: { ...bodyState.raw, language: e.target.value } })}
+              >
+                <option value="text">Text</option>
+                <option value="javascript">JavaScript</option>
+                <option value="json">JSON</option>
+                <option value="html">HTML</option>
+                <option value="xml">XML</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {bodyState.mode === 'none' && (
+            <div className="text-[var(--muted)] text-sm flex flex-col items-center justify-center h-full opacity-70">
+              This request does not have a body
+            </div>
+          )}
+
+          {bodyState.mode === 'formdata' && renderFormDataKVPTable(bodyState.formdata || [], (newList) => updateBodyObj({ formdata: newList }))}
+          
+          {bodyState.mode === 'urlencoded' && renderGenericKVPTable(bodyState.urlencoded || [], (newList) => updateBodyObj({ urlencoded: newList }))}
+
+          {bodyState.mode === 'raw' && (
+             <div className="p-3 h-full flex flex-col">
+               <textarea 
+                 value={bodyState.raw.data || ""}
+                 onChange={e => updateBodyObj({ raw: { ...bodyState.raw, data: e.target.value } })}
+                 className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded p-2 text-xs font-mono outline-none focus:border-[var(--color-brand-500)] resize-none"
+                 placeholder="Enter raw payload..." />
+             </div>
+          )}
+
+          {bodyState.mode === 'binary' && (
+            <div className="text-[var(--muted)] text-sm flex flex-col items-center justify-center h-full p-6">
+               <div className="bg-[var(--sidebar)] border border-dashed border-[var(--border)] rounded-md w-full max-w-md h-32 flex items-center justify-center cursor-pointer hover:border-[var(--color-brand-500)] hover:bg-[var(--card)] transition-colors">
+                  <span className="font-semibold text-xs uppercase tracking-widest flex items-center gap-2"><Plus className="w-4 h-4"/> Select File</span>
+               </div>
+               <div className="text-[10px] mt-2 opacity-50 text-center">File uploads are forwarded via proxy. Very large files may be rejected.</div>
+            </div>
+          )}
+
+          {bodyState.mode === 'graphql' && (
+            <div className="flex h-full w-full divide-x divide-[var(--border)]">
+               <div className="p-3 flex-1 flex flex-col">
+                 <div className="text-[10px] text-[var(--color-brand-500)] mb-1 uppercase font-bold tracking-widest">QUERY</div>
+                 <textarea 
+                   value={bodyState.graphql.query || ""}
+                   onChange={e => updateBodyObj({ graphql: { ...bodyState.graphql, query: e.target.value } })}
+                   className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded p-3 text-xs font-mono outline-none focus:border-[var(--color-brand-500)] resize-none leading-relaxed"
+                   placeholder="query {&#10;  user(id: 1) {&#10;    name&#10;    email&#10;  }&#10;}" />
+               </div>
+               <div className="p-3 w-1/3 flex flex-col bg-[var(--card)]">
+                 <div className="text-[10px] text-[var(--muted)] mb-1 uppercase font-bold tracking-widest">GRAPHQL VARIABLES</div>
+                 <textarea 
+                   value={bodyState.graphql.variables || ""}
+                   onChange={e => updateBodyObj({ graphql: { ...bodyState.graphql, variables: e.target.value } })}
+                   className="w-full flex-1 bg-[var(--background)] border border-[var(--border)] rounded p-2 text-[11px] font-mono outline-none focus:border-[var(--color-brand-500)] resize-none"
+                   placeholder="{&#10;  &#34;id&#34;: 1&#10;}" />
+               </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const isTabActive = (tabName: string) => {
+    switch(tabName) {
+      case "Params":
+        const hasParams = request.params?.some((p: any) => p.key && p.enabled !== false);
+        const hasPathVars = request.pathVariables?.some((p: any) => p.key && p.enabled !== false && p.value);
+        return hasParams || hasPathVars;
+      case "Headers":
+        return request.headers?.some((h: any) => h.key && h.enabled !== false);
+      case "Auth":
+        return request.auth && request.auth.type !== 'none';
+      case "Body":
+        const bodyObj = getBodyObj();
+        return bodyObj.mode !== 'none';
+      case "Pre-request Script":
+        return !!request.preRequestScript?.trim();
+      case "Tests":
+        return !!request.testScript?.trim();
+      default:
+        return false;
+    }
+  };
+
+  // Convert array back to object for Axios request
+  const formatRequestForAxios = () => {
+    const params = (request.params || []).reduce((acc: any, curr: any) => { if(curr.key && curr.enabled !== false) acc[curr.key] = curr.value; return acc; }, {});
+    
+    // Pre-seed system default headers, overridden by user headers if keys perfectly match
+    const headers = {
+      'Accept': '*/*',
+      'User-Agent': 'JetAPI/1.0',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive'
+    } as any;
+    
+    (request.headers || []).forEach((curr: any) => { 
+      if(curr.key && curr.enabled !== false) headers[curr.key] = curr.value; 
+    });
+    
+    // Inject Path Variables into URL safely
+    let finalUrl = request.url;
+    if (request.pathVariables && request.pathVariables.length > 0) {
+      request.pathVariables.forEach((pv: any) => {
+        if (pv.key) {
+           // simple string replace the exact marker, assuming pv.value is URL safe or handle encoding on execution
+           finalUrl = finalUrl.replace(`:${pv.key}`, pv.value || `:${pv.key}`);
+        }
+      });
+    }
+    
+    let bodyData = undefined;
+    if(request.method !== 'GET' && request.method !== 'DELETE') {
+      try {
+        bodyData = request.body ? JSON.parse(request.body) : undefined;
+      } catch(e) {
+        bodyData = request.body; // send as raw string if JSON fails
+      }
+    }
+
+    return {
+      method: request.method,
+      url: finalUrl,
+      params,
+      headers,
+      body: bodyData,
+      auth: request.auth
+    };
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-[var(--card)] relative">
+      {/* Header Area (Breadcrumb + Name) */}
+      <div className="px-4 py-3 border-b border-[var(--border)] flex flex-col gap-2 relative z-[100]">
+        {/* Breadcrumb Trail */}
+        {request._breadcrumb && request._breadcrumb.length > 0 && (
+          <div className="flex items-center gap-1.5 text-[11px] text-[#8b8b8b] font-medium">
+            {request._breadcrumb.map((bc: string, i: number) => (
+               <span key={i} className="flex items-center gap-1.5">
+                 <span className="hover:text-[var(--foreground)] hover:underline cursor-pointer transition-colors max-w-[200px] truncate" title={bc}>{bc}</span>
+                 {i < request._breadcrumb.length - 1 && <span className="opacity-50">/</span>}
+               </span>
+            ))}
+          </div>
+        )}
+        
+        {/* Name Input */}
+        <div className="flex items-center justify-between">
+          <input 
+            type="text"
+            value={request.name || "Untitled Request"}
+            onChange={e => onChange({...request, name: e.target.value})}
+            className="bg-transparent text-[18px] font-medium outline-none focus:border-b border-[var(--color-brand-500)] w-3/4 py-0.5"
+            placeholder="Request Name"
+          />
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => {
+                if (request.url) {
+                  copyToClipboard(request.url);
+                  toast.success("URL copied to clipboard!");
+                } else {
+                  toast.info("No URL to copy yet.");
+                }
+              }}
+              className="p-1.5 text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] rounded transition-colors flex items-center justify-center"
+              title="Copy Link"
+            >
+              <Link2 className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={() => onDelete?.(request)}
+              className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-colors flex items-center justify-center mr-1"
+              title="Delete Request"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={() => {
+                toast.info("Share workspace functionality coming soon!");
+              }}
+              className="p-1.5 text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] rounded transition-colors flex items-center justify-center mr-1"
+              title="Share"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+            
+            <div className="flex bg-[var(--sidebar)] border border-[var(--border)] rounded overflow-hidden shadow-sm">
+            <button 
+              onClick={() => onSave?.(request)}
+              disabled={isSaving}
+              className="flex items-center gap-1.5 text-[13px] font-medium hover:bg-[#333] px-3 py-1.5 transition-colors text-[var(--foreground)] disabled:opacity-50"
+              title="Save"
+            >
+              {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>}
+              Save
+            </button>
+            <div className="w-[1px] bg-[var(--border)]" />
+            <button 
+              onClick={() => onSaveAs?.(request)}
+              className="flex items-center text-[13px] font-medium hover:bg-[#333] px-2 py-1.5 transition-colors text-[var(--foreground)]"
+              title="Save As..."
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+      <div className="flex flex-col border-b border-[var(--border)] bg-[var(--background)]">
+        {/* URL Bar */}
+        <div className="px-3 py-3 flex items-center gap-1.5">
+          <div className="relative" ref={methodDropdownRef}>
+            <button
+              onClick={() => setIsMethodDropdownOpen(!isMethodDropdownOpen)}
+              className="bg-[var(--sidebar)] border border-[var(--border)] rounded font-semibold px-3 py-1.5 text-xs outline-none focus:border-[var(--color-brand-500)] flex items-center gap-2 min-w-[90px] justify-between"
+              style={{ color: getMethodColor(request.method) }}
+            >
+              <span>{request.method}</span>
+              <ChevronDown className="w-3 h-3 text-[var(--muted)]" />
+            </button>
+            
+            {isMethodDropdownOpen && (
+              <div className="absolute top-10 left-0 w-32 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-lg z-50 py-1 overflow-hidden">
+                {methods.map(m => (
+                  <button
+                    key={m}
+                    className="w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-[var(--sidebar)] transition-colors"
+                    style={{ color: getMethodColor(m) }}
+                    onClick={() => {
+                      onChange({...request, method: m});
+                      setIsMethodDropdownOpen(false);
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div className="flex-1 relative bg-[var(--sidebar)] border border-[var(--border)] rounded focus-within:border-[var(--color-brand-500)] transition-colors overflow-visible flex">
+            {/* Invisible Native Input */}
+            <input 
+              id={`url-input-${request.id}`}
+              type="text" 
+              value={request.url}
+              onChange={e => handleUrlChange(e.target.value)}
+              onScroll={(e) => {
+                const overlay = document.getElementById(`url-overlay-${request.id}`);
+                if (overlay) overlay.scrollLeft = e.currentTarget.scrollLeft;
+              }}
+              spellCheck={false}
+              className="w-full bg-transparent px-3 py-1.5 outline-none text-xs font-mono caret-[var(--foreground)] text-transparent selection:bg-[var(--color-brand-500)]/30 z-10"
+            />
+
+            {/* Syntax Highlighter Overlay */}
+            <div 
+              id={`url-overlay-${request.id}`}
+              className="absolute inset-0 px-3 py-1.5 pointer-events-none whitespace-pre text-xs font-mono overflow-hidden z-20"
+              aria-hidden="true"
+            >
+              {request.url ? renderHighlightedUrl(request.url, `url-input-${request.id}`) : <span className="text-[var(--muted)]">Enter request URL</span>}
+            </div>
+            
+            {/* URL Variable Autocomplete Dropdown Wrapper */}
+            {renderVarSuggest('url-input', request.url || '', handleUrlChange)}
+          </div>
+          
+          <button 
+            onClick={() => {
+              const missingVars = (request.pathVariables || []).filter((pv: any) => pv.key && !pv.value && request.url.includes(`:${pv.key}`));
+              if (missingVars.length > 0) {
+                 toast.error("Please provide values for path variables: " + missingVars.map((v:any) => v.key).join(", "));
+                 return;
+              }
+              onSend(formatRequestForAxios());
+            }}
+            disabled={loading || !request.url}
+            className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-1.5 rounded font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex"></span>
+            ) : (
+              <><span>Send</span><Send className="w-3.5 h-3.5" /></>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs Menu */}
+      <div className="flex items-center gap-4 px-3 pt-2 text-xs border-b border-[var(--border)] font-medium text-[var(--muted)]">
+        {tabs.map(tab => {
+          const active = isTabActive(tab);
+          return (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+                activeTab === tab ? 'border-[var(--color-brand-500)] text-[var(--foreground)]' : 'border-transparent hover:text-[var(--foreground)]'
+              }`}
+            >
+              {tab}
+              {active && <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-y-auto bg-[var(--sidebar)]/30 pb-12">
+        {activeTab === "Params" && (
+          <div className="flex flex-col gap-4">
+            {renderKVPTable("params", "Query Params")}
+            {renderKVPTable("pathVariables", "Path Variables")}
+          </div>
+        )}
+        {activeTab === "Auth" && renderAuthTab()}
+        {activeTab === "Headers" && (
+          <div className="flex flex-col gap-4">
+            {renderKVPTable("headers", "Headers")}
+            
+            <div className="px-3 pb-4">
+              <div className="text-[10px] text-[var(--muted)] font-semibold uppercase tracking-wider mb-2">Auto-generated Headers</div>
+              <div className="border border-[var(--border)] rounded overflow-hidden">
+                <table className="w-full text-xs text-left border-collapse opacity-70 bg-[var(--background)]">
+                  <tbody>
+                    <tr className="border-b border-[var(--border)] text-[var(--muted)] hover:bg-[var(--card)]">
+                      <td className="py-2 px-3 w-[45%] font-mono">Accept</td>
+                      <td className="py-2 px-3 w-[45%] font-mono">*/*</td>
+                    </tr>
+                    <tr className="border-b border-[var(--border)] text-[var(--muted)] hover:bg-[var(--card)]">
+                      <td className="py-2 px-3 w-[45%] font-mono">User-Agent</td>
+                      <td className="py-2 px-3 w-[45%] font-mono">JetAPI/1.0</td>
+                    </tr>
+                    <tr className="border-b border-[var(--border)] text-[var(--muted)] hover:bg-[var(--card)]">
+                      <td className="py-2 px-3 w-[45%] font-mono">Accept-Encoding</td>
+                      <td className="py-2 px-3 w-[45%] font-mono">gzip, deflate, br</td>
+                    </tr>
+                    <tr className="text-[var(--muted)] hover:bg-[var(--card)]">
+                      <td className="py-2 px-3 w-[45%] font-mono">Connection</td>
+                      <td className="py-2 px-3 w-[45%] font-mono">keep-alive</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeTab === "Body" && renderBodyTab()}
+        {activeTab === "Pre-request Script" && (
+          <div className="p-4 h-full flex flex-col">
+            <div className="text-xs text-[var(--muted)] mb-2 uppercase font-semibold">Pre-request Script</div>
+            <textarea 
+              value={request.preRequestScript || ""}
+              onChange={e => onChange({...request, preRequestScript: e.target.value})}
+              className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
+              placeholder="// Write Javascript code to execute before this request runs&#10;console.log('Running pre-request...');" />
+          </div>
+        )}
+        {activeTab === "Tests" && (
+          <div className="p-4 h-full flex flex-col">
+            <div className="text-xs text-[var(--muted)] mb-2 uppercase font-semibold">Tests Script</div>
+            <textarea 
+              value={request.testScript || ""}
+              onChange={e => onChange({...request, testScript: e.target.value})}
+              className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
+              placeholder="// Write Javascript tests to execute after response is received&#10;pm.test('Status code is 200', function () {&#10;    pm.response.to.have.status(200);&#10;});" />
+          </div>
+        )}
+        {activeTab === "Docs" && (
+          <div className="p-4 h-full flex flex-col">
+            <div className="text-xs text-[var(--muted)] mb-2 uppercase font-semibold">Documentation</div>
+            <textarea 
+              value={request.description || ""}
+              onChange={e => onChange({...request, description: e.target.value})}
+              className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
+              placeholder="Add a rich markdown description of this API endpoint here..." />
+          </div>
+        )}
+        {activeTab === "Settings" && (
+          <div className="p-6 h-full flex flex-col gap-6 max-w-2xl text-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold mb-1">Enable SSL certificate verification</div>
+                <div className="text-[var(--muted)] text-xs">Verify SSL certificates when sending requests.</div>
+              </div>
+              <input type="checkbox" defaultChecked className="w-4 h-4 accent-[var(--color-brand-500)]" />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold mb-1">Automatically follow redirects</div>
+                <div className="text-[var(--muted)] text-xs">Follow HTTP 3xx responses as redirects.</div>
+              </div>
+              <input type="checkbox" defaultChecked className="w-4 h-4 accent-[var(--color-brand-500)]" />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold mb-1">Send no-cache header</div>
+                <div className="text-[var(--muted)] text-xs">Send Cache-Control: no-cache header to bypass caches.</div>
+              </div>
+              <input type="checkbox" className="w-4 h-4 accent-[var(--color-brand-500)]" />
+            </div>
+
+            <div className="flex items-center justify-between border-t border-[var(--border)] pt-6">
+              <div>
+                <div className="font-semibold mb-1">Encode URL automatically</div>
+                <div className="text-[var(--muted)] text-xs">Turn on URL encoding for variables and components.</div>
+              </div>
+              <input type="checkbox" defaultChecked className="w-4 h-4 accent-[var(--color-brand-500)]" />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
