@@ -1,4 +1,6 @@
-import { Controller, Post, Body, UnauthorizedException, BadRequestException, HttpCode, HttpStatus, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, BadRequestException, HttpCode, HttpStatus, Get, UseGuards, Request, UseInterceptors, UploadedFile, Res, Param, NotFoundException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { UsersService } from '../users/users.service';
@@ -54,19 +56,30 @@ export class AuthController {
     if (!user) {
       throw new UnauthorizedException('User not found on database. Token invalidated.');
     }
-    const { passwordHash, ...cleanUser } = user;
+    const { passwordHash, avatarData, ...cleanUser } = user as any;
     const stats = await this.usersService.getUserStats(user.id);
     return { user: cleanUser, stats };
   }
 
   @UseGuards(AuthGuard)
   @Post('profile/avatar')
-  async updateAvatar(@Request() req: any, @Body('avatarBase64') avatarBase64: string) {
-    if (!avatarBase64) throw new BadRequestException('Avatar payload is required');
-    const user = await this.usersService.updateAvatar(req.user.sub, avatarBase64);
+  @UseInterceptors(FileInterceptor('file'))
+  async updateAvatar(@Request() req: any, @UploadedFile() file: any) {
+    if (!file) throw new BadRequestException('Avatar payload is required');
+    const user = await this.usersService.updateAvatar(req.user.sub, file.buffer, file.mimetype);
     if (!user) throw new BadRequestException('User not found');
-    const { passwordHash, ...cleanUser } = user;
+    const { passwordHash, avatarData, ...cleanUser } = user as any;
     return { user: cleanUser };
+  }
+
+  @Get('users/:id/avatar')
+  async getAvatar(@Param('id') id: string, @Res() res: any) {
+    const user = await this.usersService.findOneById(id);
+    if (!user || !user.avatarData) {
+      throw new NotFoundException('Avatar not found');
+    }
+    res.setHeader('Content-Type', user.avatarMimeType || 'image/jpeg');
+    res.send(user.avatarData);
   }
 
   @UseGuards(AuthGuard)

@@ -41,13 +41,13 @@ export class UsersService {
     return this.findOneById(id);
   }
 
-  async updateAvatar(id: string, avatarBase64: string): Promise<User | null> {
-    await this.userRepository.update(id, { avatarBase64 });
+  async updateAvatar(id: string, avatarData: Buffer, avatarMimeType: string): Promise<User | null> {
+    await this.userRepository.update(id, { avatarData, avatarMimeType });
     return this.findOneById(id);
   }
 
   async getAllUsers(): Promise<User[]> {
-    return this.userRepository.find({ select: ['id', 'email', 'name'] });
+    return this.userRepository.find({ select: ['id', 'email', 'name', 'avatarMimeType'] });
   }
 
   async getUserStats(userId: string) {

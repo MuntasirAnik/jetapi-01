@@ -23,6 +23,7 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  const [avatarKey, setAvatarKey] = useState(Date.now());
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [shareEmails, setShareEmails] = useState<Record<string, string>>({});
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -93,28 +94,26 @@ export default function UserDashboard() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      try {
-        const res = await apiFetch("/api/auth/profile/avatar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ avatarBase64: base64String })
-        });
-        if (!res.ok) throw new Error("Upload failed");
-        const data = await res.json();
-        setProfile({ ...profile, user: data.user });
-        localStorage.setItem("user", JSON.stringify(data.user));
-        toast.success("Profile image updated!");
-        
-        // Dispatch event so sidebar updates instantly
-        window.dispatchEvent(new Event('postclone-refresh-sidebar'));
-      } catch (err: any) {
-        toast.error(err.message || "Failed to upload image");
-      }
-    };
-    reader.readAsDataURL(file);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await apiFetch("/api/auth/profile/avatar", {
+        method: "POST",
+        body: formData
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setProfile({ ...profile, user: data.user });
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setAvatarKey(Date.now());
+      toast.success("Profile image updated!");
+      
+      // Dispatch event so sidebar updates instantly
+      window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload image");
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -307,8 +306,8 @@ export default function UserDashboard() {
                 onClick={() => avatarInputRef.current?.click()}
                 title="Change Avatar"
               >
-                {user.avatarBase64 ? (
-                  <img src={user.avatarBase64} alt="Avatar" className="w-full h-full object-cover" />
+                {user.avatarMimeType ? (
+                  <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
                   <User className="w-10 h-10 group-hover:scale-110 transition-transform" />
                 )}
@@ -482,9 +481,13 @@ export default function UserDashboard() {
                         {accessList.map(({ user: u, collections: cols }) => (
                           <div key={u.id} className="flex items-center justify-between px-4 py-3 hover:bg-[var(--sidebar)] transition-colors">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-[var(--color-brand-500)]/15 flex items-center justify-center text-[var(--color-brand-500)] font-bold text-xs uppercase border border-[var(--color-brand-500)]/20">
-                                {(u.name || u.email || '?').substring(0, 2)}
-                              </div>
+                              {u.avatarMimeType ? (
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${u.id}/avatar`} alt="Avatar" className="w-8 h-8 rounded-full object-cover border border-[var(--border)] shrink-0" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-[var(--color-brand-500)]/15 flex items-center justify-center text-[var(--color-brand-500)] font-bold text-xs uppercase border border-[var(--color-brand-500)]/20 overflow-hidden shrink-0">
+                                  {(u.name || u.email || '?').substring(0, 2)}
+                                </div>
+                              )}
                               <div>
                                 <div className="text-sm font-medium">{u.name || u.email}</div>
                                 {u.name && <div className="text-xs text-[var(--muted)]">{u.email}</div>}
@@ -560,7 +563,14 @@ export default function UserDashboard() {
                         {col.sharedUsers.map((u: any) => (
                           <div key={u.id} className="flex items-center justify-between bg-[var(--sidebar)] px-3 py-2 border border-[var(--border)] rounded-md text-sm transition-colors hover:border-[var(--color-brand-500)]/30">
                             <div className="flex items-center gap-2 text-[var(--muted)]">
-                              <User className="w-3.5 h-3.5" /> <span>{u.email}</span>
+                              {u.avatarMimeType ? (
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${u.id}/avatar`} alt="Avatar" className="w-5 h-5 rounded-full object-cover border border-[var(--border)] shrink-0" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-[var(--background)] flex items-center justify-center border border-[var(--border)] shrink-0">
+                                  <User className="w-3 h-3" />
+                                </div>
+                              )}
+                              <span>{u.email}</span>
                                  <div className="inline-flex items-center gap-1.5 bg-[var(--sidebar)] px-2 py-0.5 rounded-full text-[10px] font-bold border border-[var(--border)] capitalize">
                                   {(() => {
                                     const actualRole = allUsers.find(au => au.id === u.id)?.role || 'MEMBER';

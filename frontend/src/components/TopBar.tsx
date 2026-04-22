@@ -342,8 +342,8 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
             </div>
             
             <a href="/profile" className="text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors" title="User Profile">
-              {localUser?.avatarBase64 ? (
-                <img src={localUser.avatarBase64} alt="Avatar" className="w-5 h-5 rounded-full object-cover border border-[var(--border)]" />
+              {localUser?.avatarMimeType ? (
+                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-5 h-5 rounded-full object-cover border border-[var(--border)]" />
               ) : (
                 <UserIcon className="w-4 h-4" />
               )}

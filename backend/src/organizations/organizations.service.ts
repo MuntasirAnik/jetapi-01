@@ -76,7 +76,8 @@ export class OrganizationsService {
       id: m.userId,
       email: m.user.email,
       role: m.role,
-      joinedAt: m.joinedAt
+      joinedAt: m.joinedAt,
+      avatarMimeType: m.user.avatarMimeType
     }));
   }
 

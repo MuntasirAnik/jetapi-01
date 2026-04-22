@@ -14,8 +14,11 @@ export class User {
   @Column()
   passwordHash: string;
 
-  @Column({ type: 'text', nullable: true })
-  avatarBase64: string;
+  @Column({ type: 'bytea', nullable: true })
+  avatarData: Buffer;
+
+  @Column({ nullable: true })
+  avatarMimeType: string;
 
   @Column({ nullable: true })
   resetToken: string;
