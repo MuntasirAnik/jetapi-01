@@ -8,6 +8,8 @@ import ResponsePanel from "@/components/ResponsePanel";
 import TopBar from "@/components/TopBar";
 import RightSidebar from "@/components/RightSidebar";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
+import VariablesPanel from "@/components/VariablesPanel";
+import DocumentationPanel from "@/components/DocumentationPanel";
 import StyledSelect from "@/components/StyledSelect";
 import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
@@ -764,11 +766,29 @@ export default function Home() {
       </div>
 
       {/* Conditionally Render Slide-out Panels */}
+      {rightPanelOpen === 'variables' && activeRequest && (
+        <VariablesPanel
+          request={activeRequest}
+          envVariables={envVariables}
+          globalVariables={globalVariables}
+          activeEnvName={environments.find((e: any) => e.id === activeEnvId)?.name || 'No Environment'}
+          onClose={() => setRightPanelOpen(null)}
+        />
+      )}
+
+      {rightPanelOpen === 'docs' && activeRequest && (
+        <DocumentationPanel
+          request={activeRequest}
+          envVariables={[...globalVariables, ...envVariables]}
+          onClose={() => setRightPanelOpen(null)}
+        />
+      )}
+
       {rightPanelOpen === 'code' && activeRequest && (
         <CodeSnippetPanel 
            request={activeRequest} 
            onClose={() => setRightPanelOpen(null)} 
-           envVariables={[...globalVariables, ...envVariables]} // Merge arrays so code snippet resolver handles fallbacks inherently
+           envVariables={[...globalVariables, ...envVariables]}
         />
       )}
 

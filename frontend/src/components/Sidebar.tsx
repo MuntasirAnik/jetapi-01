@@ -1,15 +1,17 @@
 "use client";
 import { apiFetch, copyToClipboard } from '@/lib/api';
 import { useState, useEffect, useRef } from "react";
-import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2 } from "lucide-react";
+import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen } from "lucide-react";
 import { toast } from "react-toastify";
 import EnvironmentManager from "./EnvironmentManager";
 import ShareCollectionModal from "./ShareCollectionModal";
 import { useDialog } from "./DialogProvider";
+import { useAppContext } from "@/lib/AppContext";
 import ImportCollectionModal from "./ImportCollectionModal";
 
 export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollections = [], onSelectRequest, activeRequestId }: any) {
   const { confirmDialog, promptDialog } = useDialog();
+  const { envVariables, globalVariables } = useAppContext();
   const [expandedCollections, setExpandedCollections] = useState<Record<string, boolean>>({});
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -148,6 +150,167 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     } catch (err) {
       console.error("Export failed:", err);
       alert("Failed to export collection.");
+    }
+  };
+
+  const handleExportDocs = async (e: React.MouseEvent, collectionId: string, collectionName: string) => {
+    e.stopPropagation();
+    try {
+      toast.info('Generating documentation...');
+      const res = await apiFetch(`/collections/${collectionId}/export`);
+      const data = await res.json();
+      const items = data?.item || [];
+      const allVars = [...(globalVariables || []), ...(envVariables || [])];
+
+      const interpolate = (str: string) => {
+        if (typeof str !== 'string') return str;
+        let result = str;
+        allVars.filter(v => v.enabled !== false && v.key).forEach(v => {
+          result = result.replace(new RegExp(`\\{\\{\\s*${v.key}\\s*\\}\\}`, 'g'), v.value || '');
+        });
+        return result;
+      };
+      const walkInterp = (obj: any) => {
+        for (const key in obj) {
+          if (typeof obj[key] === 'string') obj[key] = interpolate(obj[key]);
+          else if (typeof obj[key] === 'object' && obj[key] !== null) walkInterp(obj[key]);
+        }
+      };
+
+      const methodColors: Record<string, string> = {
+        GET: '#10b981', POST: '#f59e0b', PUT: '#3b82f6',
+        PATCH: '#a855f7', DELETE: '#ef4444', OPTIONS: '#6b7280', HEAD: '#06b6d4',
+      };
+
+      // Flatten items (handle folders)
+      type FlatItem = { name: string; request: any; folder?: string };
+      const flatItems: FlatItem[] = [];
+      const flatten = (list: any[], folderPath = '') => {
+        for (const item of list) {
+          if (item.item && Array.isArray(item.item)) {
+            flatten(item.item, folderPath ? `${folderPath}/${item.name}` : item.name);
+          } else if (item.request) {
+            flatItems.push({ name: item.name, request: item.request, folder: folderPath });
+          }
+        }
+      };
+      flatten(items);
+
+      let html = `<!DOCTYPE html><html><head><title>${collectionName} - API Documentation</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1a1a1a; padding:30px; margin:0 auto; }
+        h1 { font-size:24px; margin-bottom:4px; }
+        .subtitle { font-size:12px; color:#888; margin-bottom:24px; }
+        h2 { font-size:14px; text-transform:uppercase; letter-spacing:1px; color:#555; margin:32px 0 10px; padding-bottom:6px; border-bottom:2px solid #eee; }
+        .method-badge { display:inline-block; padding:2px 8px; border-radius:3px; font-size:9px; font-weight:800; color:white; text-align:center; min-width:48px; }
+        table { width:100%; border-collapse:collapse; margin:0 0 20px; font-size:11px; }
+        th { padding:8px 10px; background:#f8f9fa; border:1px solid #e5e7eb; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#666; white-space:nowrap; }
+        td { padding:7px 10px; border:1px solid #e5e7eb; vertical-align:top; }
+        td.mono { font-family:monospace; font-size:10px; word-break:break-all; }
+        td.center { text-align:center; }
+        tr:hover { background:#f9fafb; }
+        .sl { width:30px; text-align:center; color:#999; }
+        .detail-title { font-size:13px; font-weight:700; margin:24px 0 6px; color:#333; }
+        .detail-meta { font-size:11px; color:#888; margin-bottom:10px; }
+        .detail-section { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#888; margin:12px 0 4px; }
+        pre { background:#1e1e1e; color:#d4d4d4; padding:10px; border-radius:4px; font-size:10px; line-height:1.4; overflow-x:auto; white-space:pre-wrap; word-break:break-all; margin:4px 0 12px; }
+        .folder-label { font-size:10px; color:#888; background:#f0f0f0; padding:1px 6px; border-radius:3px; }
+        .footer { margin-top:40px; padding-top:12px; border-top:1px solid #eee; font-size:10px; color:#aaa; text-align:center; }
+        @media print { body { padding:15px; } }
+      </style></head><body>`;
+
+      // Header
+      html += `<h1>${collectionName}</h1>`;
+      html += `<p class="subtitle">API Documentation · ${flatItems.length} endpoint${flatItems.length !== 1 ? 's' : ''} · Generated ${new Date().toLocaleDateString()}</p>`;
+
+      // ── SUMMARY TABLE ──
+      html += `<h2>API Endpoints Summary</h2>`;
+      html += `<table>`;
+      html += `<tr><th class="sl">SL</th><th>Method</th><th>Name</th><th>URL</th><th>Folder</th></tr>`;
+      flatItems.forEach((item, i) => {
+        const req = JSON.parse(JSON.stringify(item.request));
+        walkInterp(req);
+        const m = (req.method || 'GET').toUpperCase();
+        const mc = methodColors[m] || '#6b7280';
+        const rawUrl = req.url?.raw || req.url || '';
+        html += `<tr>`;
+        html += `<td class="sl">${i + 1}</td>`;
+        html += `<td class="center"><span class="method-badge" style="background:${mc}">${m}</span></td>`;
+        html += `<td style="font-weight:600;">${item.name}</td>`;
+        html += `<td class="mono">${rawUrl}</td>`;
+        html += `<td>${item.folder ? `<span class="folder-label">${item.folder}</span>` : '—'}</td>`;
+        html += `</tr>`;
+      });
+      html += `</table>`;
+
+      // ── DETAILED ENDPOINT TABLES ──
+      html += `<h2>Endpoint Details</h2>`;
+      flatItems.forEach((item, i) => {
+        const req = JSON.parse(JSON.stringify(item.request));
+        walkInterp(req);
+        const m = (req.method || 'GET').toUpperCase();
+        const mc = methodColors[m] || '#6b7280';
+        const rawUrl = req.url?.raw || req.url || '';
+
+        html += `<div class="detail-title">${i + 1}. ${item.name}</div>`;
+        html += `<div class="detail-meta"><span class="method-badge" style="background:${mc}">${m}</span> <span style="font-family:monospace;font-size:11px;margin-left:4px;">${rawUrl}</span></div>`;
+
+        // Headers
+        const hdrs = (req.header || req.headers || []).filter((h: any) => h.key);
+        if (hdrs.length > 0) {
+          html += `<div class="detail-section">Headers</div>`;
+          html += `<table><tr><th>Key</th><th>Value</th></tr>`;
+          hdrs.forEach((h: any) => { html += `<tr><td style="font-weight:600;" class="mono">${h.key}</td><td class="mono" style="color:#666;">${h.value || ''}</td></tr>`; });
+          html += `</table>`;
+        }
+
+        // Query params
+        const urlObj = req.url;
+        const queryParams = (urlObj?.query || req.params || []).filter((q: any) => q.key);
+        if (queryParams.length > 0) {
+          html += `<div class="detail-section">Query Parameters</div>`;
+          html += `<table><tr><th>Name</th><th>Value</th></tr>`;
+          queryParams.forEach((q: any) => { html += `<tr><td style="font-weight:600;" class="mono">${q.key}</td><td class="mono" style="color:#666;">${q.value || ''}</td></tr>`; });
+          html += `</table>`;
+        }
+
+        // Body
+        const body = req.body;
+        if (body) {
+          const mode = body.mode || 'raw';
+          html += `<div class="detail-section">Request Body</div>`;
+          if (mode === 'raw' && body.raw) {
+            let rawBody = body.raw;
+            try { rawBody = JSON.stringify(JSON.parse(rawBody), null, 2); } catch {}
+            html += `<pre>${rawBody.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+          } else if (mode === 'urlencoded' && body.urlencoded) {
+            html += `<table><tr><th>Field</th><th>Value</th></tr>`;
+            body.urlencoded.filter((b: any) => b.key).forEach((b: any) => {
+              html += `<tr><td class="mono" style="font-weight:600;">${b.key}</td><td class="mono" style="color:#666;">${b.value || ''}</td></tr>`;
+            });
+            html += `</table>`;
+          } else if (mode === 'formdata' && body.formdata) {
+            html += `<table><tr><th>Field</th><th>Value</th><th>Type</th></tr>`;
+            body.formdata.filter((b: any) => b.key).forEach((b: any) => {
+              html += `<tr><td class="mono" style="font-weight:600;">${b.key}</td><td class="mono" style="color:#666;">${b.value || ''}</td><td style="color:#888;">${b.type || 'text'}</td></tr>`;
+            });
+            html += `</table>`;
+          }
+        }
+      });
+
+      html += `<div class="footer">Generated by JetAPI · ${collectionName} · ${new Date().toLocaleDateString()}</div>`;
+      html += `</body></html>`;
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) { toast.error('Please allow popups to download PDF'); return; }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.onload = () => { setTimeout(() => printWindow.print(), 300); };
+    } catch (err) {
+      console.error("Doc generation failed:", err);
+      toast.error("Failed to generate documentation.");
     }
   };
 
@@ -464,6 +627,9 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                 </button>
                 <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={(e) => { handleExport(e, contextMenu.id, contextMenu.name); setContextMenu(null); }}>
                   <div className="flex items-center gap-2"><Upload className="w-3.5 h-3.5 opacity-70" /> Export</div>
+                </button>
+                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={(e) => { handleExportDocs(e, contextMenu.id, contextMenu.name); setContextMenu(null); }}>
+                  <div className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5 opacity-70" /> Generate Docs</div>
                 </button>
                 <div className="border-t border-[var(--border)] my-1"></div>
                 <button className="flex items-center justify-between px-3 py-1.5 hover:bg-red-500/10 text-red-500 transition-colors w-full text-left" onClick={(e) => { handleDeleteCollection(e, contextMenu.id, contextMenu.name); setContextMenu(null); }}>
