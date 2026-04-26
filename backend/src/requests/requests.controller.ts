@@ -2,14 +2,21 @@ import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request } f
 import { RequestsService } from './requests.service';
 import { RequestItem } from './request.entity';
 import { AuthGuard } from '../auth/auth.guard';
+import { LimitsService } from '../subscriptions/limits.service';
 
 @UseGuards(AuthGuard)
 @Controller('requests')
 export class RequestsController {
-  constructor(private readonly requestsService: RequestsService) {}
+  constructor(
+    private readonly requestsService: RequestsService,
+    private readonly limitsService: LimitsService,
+  ) {}
 
   @Post()
-  create(@Body() data: Partial<RequestItem>, @Request() req: any) {
+  async create(@Body() data: Partial<RequestItem>, @Request() req: any) {
+    if (data.collectionId) {
+      await this.limitsService.checkRequestLimit(req.user.sub, data.collectionId);
+    }
     return this.requestsService.create(data, req.user.sub);
   }
 

@@ -10,6 +10,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const [inviteEmail, setInviteEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [org, setOrg] = useState<any>(null);
+  const [planData, setPlanData] = useState<any>(null);
   
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
@@ -32,6 +33,14 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
 
       const res = await apiFetch(`/organizations/${organizationId}/users`);
       if (res.ok) setUsers(await res.json());
+
+      // Fetch subscription plan limits
+      try {
+        const usageRes = await apiFetch(`/subscriptions/usage`);
+        if (usageRes.ok) {
+          setPlanData(await usageRes.json());
+        }
+      } catch {}
     } catch (e) {
       console.error(e);
     } finally {
@@ -104,26 +113,12 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const currentUserMembership = users.find(u => u.email === currentUserEmail);
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
 
-  const maxUsers = org?.maxMembers || 3;
-  const isFreeTier = org?.subscriptionTier === 'FREE';
+  const currentPlan = planData?.plan || 'FREE';
+  const maxUsers = planData?.limits?.maxMembers || 1;
   const seatsUsed = users.length;
-  const isAtLimit = seatsUsed >= maxUsers;
+  const isAtLimit = maxUsers !== -1 && seatsUsed >= maxUsers;
 
-  const handleUpdateMaxMembers = async (newMax: number) => {
-    if (newMax < 1 || newMax < seatsUsed) return;
-    try {
-      const res = await apiFetch(`/organizations/${organizationId}`, {
-        method: 'PUT',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxMembers: newMax })
-      });
-      if (!res.ok) throw new Error("Failed to update limit");
-      toast.success(`Team member limit updated to ${newMax}`);
-      loadData(false);
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
+
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4 modal-backdrop">
@@ -167,50 +162,28 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 flex flex-col gap-3">
              <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[var(--muted)] uppercase tracking-wider">Plan Details</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isFreeTier ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)]'} border border-[var(--border)]`}>
-                   {org?.subscriptionTier || 'FREE'} PLAN
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${currentPlan === 'FREE' ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)]'} border border-[var(--border)]`}>
+                   {currentPlan} PLAN
                 </span>
              </div>
              
              <div>
                <div className="flex items-center justify-between text-sm mb-2 font-medium">
                  <span>Team Seats</span>
-                 <span>{seatsUsed} of {maxUsers} Used</span>
+                 <span>{seatsUsed} of {maxUsers === -1 ? '∞' : maxUsers} Used</span>
                </div>
                <div className="w-full bg-[var(--sidebar)] h-2 rounded-full overflow-hidden">
                  <div 
                    className={`h-full rounded-full transition-all duration-500 ${isAtLimit ? 'bg-red-500' : 'bg-[var(--color-brand-500)]'}`} 
-                   style={{ width: `${Math.min((seatsUsed / maxUsers) * 100, 100)}%` }}
+                   style={{ width: `${maxUsers === -1 ? 10 : Math.min((seatsUsed / maxUsers) * 100, 100)}%` }}
                  />
                </div>
 
-               {/* Max Members Control */}
-               {isOwnerOrAdmin && (
-                 <div className="mt-3 flex items-center justify-between">
-                   <span className="text-xs text-[var(--muted)] font-medium">Max Team Members</span>
-                   <div className="flex items-center gap-1">
-                     <button
-                       onClick={() => handleUpdateMaxMembers(maxUsers - 1)}
-                       disabled={maxUsers <= 1 || maxUsers <= seatsUsed}
-                       className="w-7 h-7 flex items-center justify-center rounded bg-[var(--sidebar)] border border-[var(--border)] text-sm font-bold hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                     >
-                       −
-                     </button>
-                     <span className="w-10 text-center text-sm font-semibold tabular-nums">{maxUsers}</span>
-                     <button
-                       onClick={() => handleUpdateMaxMembers(maxUsers + 1)}
-                       className="w-7 h-7 flex items-center justify-center rounded bg-[var(--sidebar)] border border-[var(--border)] text-sm font-bold hover:bg-[var(--border)] transition-colors"
-                     >
-                       +
-                     </button>
-                   </div>
-                 </div>
-               )}
 
                {isAtLimit && (
                  <div className="mt-3 flex items-start gap-2 text-xs text-red-400 bg-red-400/10 p-2 rounded">
                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                   <p>You have reached the {maxUsers}-member limit. Increase the limit above to invite more members.</p>
+                   <p>You have reached the {maxUsers}-member limit. <a href="/pricing" className="underline font-semibold hover:text-red-300">Upgrade your plan</a> to add more members.</p>
                  </div>
                )}
              </div>

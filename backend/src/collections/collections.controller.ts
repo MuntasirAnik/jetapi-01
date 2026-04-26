@@ -2,14 +2,19 @@ import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request, Qu
 import { CollectionsService } from './collections.service';
 import { Collection } from './collection.entity';
 import { AuthGuard } from '../auth/auth.guard';
+import { LimitsService } from '../subscriptions/limits.service';
 
 @UseGuards(AuthGuard)
 @Controller('collections')
 export class CollectionsController {
-  constructor(private readonly collectionsService: CollectionsService) {}
+  constructor(
+    private readonly collectionsService: CollectionsService,
+    private readonly limitsService: LimitsService,
+  ) {}
 
   @Post()
-  create(@Body() data: Partial<Collection>, @Request() req: any) {
+  async create(@Body() data: Partial<Collection>, @Request() req: any) {
+    await this.limitsService.checkCollectionLimit(req.user.sub);
     return this.collectionsService.create(data, req.user.sub);
   }
 
@@ -29,7 +34,8 @@ export class CollectionsController {
   }
 
   @Post('import')
-  import(@Body('workspaceId') workspaceId: string, @Body('data') data: any, @Request() req: any) {
+  async import(@Body('workspaceId') workspaceId: string, @Body('data') data: any, @Request() req: any) {
+    await this.limitsService.checkCollectionLimit(req.user.sub);
     return this.collectionsService.import(workspaceId, data, req.user.sub);
   }
 

@@ -7,9 +7,10 @@ import { Collection } from './collection.entity';
 import { Workspace } from '../workspaces/workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Collection, Workspace, OrganizationUser]), UsersModule, NotificationsModule],
+  imports: [TypeOrmModule.forFeature([Collection, Workspace, OrganizationUser]), UsersModule, NotificationsModule, SubscriptionsModule],
   controllers: [CollectionsController],
   providers: [CollectionsService],
 })

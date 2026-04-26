@@ -26,6 +26,12 @@ export class User {
   @Column({ nullable: true })
   resetTokenExpiry: Date;
 
+  @Column({ nullable: true })
+  stripeCustomerId: string;
+
+  @Column({ default: 'USER' })
+  role: string; // 'USER' | 'SUPER_ADMIN'
+
   @CreateDateColumn()
   createdAt: Date;
 

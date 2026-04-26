@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { 
   User, LogOut, Layout, Folder, Activity, ChevronLeft, 
-  ShieldCheck, Download, Import, Trash2, Users, UserPlus, X, Server, Upload, Search, Loader2
+  ShieldCheck, Download, Import, Trash2, Users, UserPlus, X, Server, Upload, Search, Loader2, CreditCard
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
@@ -297,6 +297,9 @@ export default function UserDashboard() {
           )}
           <button onClick={() => router.push('/users')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
             <UserPlus className="w-4 h-4" /> Platform Users
+          </button>
+          <button onClick={() => router.push('/billing')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
+            <CreditCard className="w-4 h-4" /> Billing & Subscription
           </button>
         </nav>
 

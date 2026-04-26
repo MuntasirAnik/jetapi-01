@@ -21,6 +21,11 @@ import { OrganizationUser } from './organizations/organization-user.entity';
 import { Notification } from './notifications/notification.entity';
 import { NotificationsModule } from './notifications/notifications.module';
 import { InitModule } from './init/init.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { Subscription } from './subscriptions/subscription.entity';
+import { AdminModule } from './admin/admin.module';
+import { PlanOverride } from './admin/plan-override.entity';
+import { Payment } from './subscriptions/payment.entity';
 
 @Module({
   imports: [
@@ -45,7 +50,7 @@ import { InitModule } from './init/init.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification],
+          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Subscription, PlanOverride, Payment],
           synchronize: true, // Use carefully in production
         };
       },
@@ -61,6 +66,8 @@ import { InitModule } from './init/init.module';
     OrganizationsModule,
     NotificationsModule,
     InitModule,
+    SubscriptionsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -7,8 +7,8 @@ import TopBar from './TopBar';
 export default function GlobalTopBar() {
   const pathname = usePathname();
   
-  // Do not show on auth pages
-  if (['/login', '/register', '/forgot-password', '/reset-password'].includes(pathname)) {
+  // Do not show on auth pages or admin panel
+  if (['/login', '/register', '/forgot-password', '/reset-password', '/pricing'].includes(pathname) || pathname.startsWith('/admin')) {
     return null;
   }
 

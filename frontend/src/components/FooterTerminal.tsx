@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Terminal, ChevronUp, ChevronDown, Trash2, X, Copy, Check, Trash } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 export type LogEntry = {
   id: string;
@@ -47,6 +47,7 @@ function useLogStore() {
 
 export default function FooterTerminal() {
   const router = useRouter();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [panelHeight, setPanelHeight] = useState(220);
   const [copied, setCopied] = useState(false);
@@ -78,6 +79,12 @@ export default function FooterTerminal() {
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
   }, [panelHeight]);
+
+  // Hide on admin, auth, and pricing pages
+  const hiddenPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/pricing'];
+  if (hiddenPaths.includes(pathname) || pathname.startsWith('/admin')) {
+    return null;
+  }
 
   const handleCopyAll = () => {
     const text = logs.map(l => {

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
@@ -16,10 +17,24 @@ import { useDialog } from "@/components/DialogProvider";
 import { useAppContext } from "@/lib/AppContext";
 
 export default function Home() {
+  const router = useRouter();
   const { promptDialog, confirmDialog } = useDialog();
   const [openRequests, setOpenRequests] = useState<any[]>([]);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Redirect SUPER_ADMIN to admin panel
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user.role === "SUPER_ADMIN") {
+          router.replace("/admin");
+        }
+      } catch {}
+    }
+  }, []);
 
   useEffect(() => {
     const savedTabs = localStorage.getItem('jetapi_openTabs');
