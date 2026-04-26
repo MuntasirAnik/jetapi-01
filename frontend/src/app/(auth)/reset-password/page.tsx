@@ -54,7 +54,7 @@ function ResetPasswordContent() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-[var(--background)]">
-      <div className="w-full max-w-md bg-[var(--card)] p-8 rounded border border-[var(--border)] shadow-xl animate-in zoom-in-95 duration-300">
+      <div className="w-full max-w-md bg-[var(--card)] p-8 rounded border border-[var(--border)] shadow-xl anim-scale-in">
         
         {success ? (
           <div className="flex flex-col items-center justify-center text-center">

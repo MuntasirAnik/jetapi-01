@@ -13,6 +13,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { DialogProvider } from '@/components/DialogProvider';
 import { AppProvider } from '@/lib/AppContext';
 import GlobalTopBar from '@/components/GlobalTopBar';
+import FooterTerminal from '@/components/FooterTerminal';
 
 export default function RootLayout({
   children,
@@ -29,6 +30,7 @@ export default function RootLayout({
             <main className="flex-1 flex overflow-hidden">
               {children}
             </main>
+            <FooterTerminal />
           </DialogProvider>
         </AppProvider>
       </body>

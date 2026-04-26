@@ -57,6 +57,7 @@ export class CollectionsService {
       .leftJoinAndSelect('collection.sharedUsers', 'sharedUsers')
       .leftJoinAndSelect('collection.owner', 'owner')
       .leftJoinAndSelect('collection.workspace', 'workspace')
+      .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
       .where('collection.id IN (:...allowedIds)', { allowedIds })
       .getMany();
 

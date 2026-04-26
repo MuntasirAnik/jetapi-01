@@ -14,6 +14,7 @@ import ImportCollectionModal from "@/components/ImportCollectionModal";
 export default function UserDashboard() {
   const router = useRouter();
   const { activeOrganizationId } = useAppContext();
+
   const [userRole, setUserRole] = useState("Member");
   const [profile, setProfile] = useState<any>(null);
   const [collections, setCollections] = useState<any[]>([]);
@@ -29,6 +30,7 @@ export default function UserDashboard() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [sharingColId, setSharingColId] = useState<string | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
+
   
   // Password Change State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -42,7 +44,7 @@ export default function UserDashboard() {
          .then(res => res.json())
          .then(data => {
             if (Array.isArray(data)) {
-               setAllUsers(data); // Storing the full org-users array complete with roles for sharing
+               setAllUsers(data);
                const me = data.find((u: any) => u.id === profile.user.id);
                if (me && me.role) setUserRole(me.role);
             }
@@ -52,7 +54,7 @@ export default function UserDashboard() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [activeTab]);
 
   const fetchData = async () => {
     try {
@@ -70,12 +72,19 @@ export default function UserDashboard() {
       if (colRes.ok) setCollections(await colRes.json());
       if (sysUsersRes.ok) setSystemUsers(await sysUsersRes.json());
       
-      // Organizations load the robust user list array in the other independent useEffect 
-      // ensuring full synchronization with actual RBAC roles
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshSystemUsers = async () => {
+    try {
+      const res = await apiFetch("/api/auth/users");
+      if (res.ok) setSystemUsers(await res.json());
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -211,6 +220,7 @@ export default function UserDashboard() {
 
 
 
+
   if (loading && !profile) {
     return (
       <div className="flex items-center justify-center h-screen w-full bg-[var(--background)]">
@@ -251,7 +261,7 @@ export default function UserDashboard() {
       {/* Background Overlay Spinner for Refreshes without wiping state */}
       {loading && profile && (
         <div className="absolute inset-0 z-50 bg-[var(--background)]/40 backdrop-blur-[1px] flex items-center justify-center">
-           <div className="bg-[var(--card)] border border-[var(--border)] shadow-xl rounded-full p-3 flex items-center justify-center animate-in fade-in zoom-in-95 duration-200">
+           <div className="bg-[var(--card)] border border-[var(--border)] shadow-xl rounded-full p-3 flex items-center justify-center anim-scale-in">
              <Loader2 className="w-6 h-6 animate-spin text-[var(--color-brand-500)]" />
            </div>
         </div>
@@ -281,6 +291,9 @@ export default function UserDashboard() {
               <Users className="w-4 h-4" /> Access Control
             </button>
           )}
+          <button onClick={() => router.push('/users')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
+            <UserPlus className="w-4 h-4" /> Platform Users
+          </button>
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
@@ -298,7 +311,7 @@ export default function UserDashboard() {
         
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (
-          <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="max-w-4xl mx-auto anim-slide-up">
             <h2 className="text-2xl font-semibold mb-6">Profile Overview</h2>
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-6 mb-8 flex items-center gap-6">
               <div 
@@ -399,7 +412,7 @@ export default function UserDashboard() {
 
         {/* TAB: COLLECTIONS */}
         {activeTab === 'collections' && (
-          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="max-w-5xl mx-auto anim-slide-up">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold">My Collections</h2>
               <div className="flex gap-2">
@@ -417,8 +430,11 @@ export default function UserDashboard() {
                       <Folder className="text-[var(--color-brand-500)] w-4 h-4" /> {col.name}
                     </div>
                   </div>
-                  <div className="text-xs text-[var(--muted)] mb-4 flex-1">
-                    {col.requests?.length || col.requestsCount || 0} API Requests
+                  <div className="text-xs text-[var(--muted)] mb-4 flex-1 flex items-center gap-3">
+                    <span>{col.requestsCount || col.requests?.length || 0} APIs</span>
+                    <span className="flex items-center gap-1 bg-[var(--sidebar)] border border-[var(--border)] px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                      <Users className="w-3 h-3" /> {(col.sharedUsers?.length || 0) + 1} {(col.sharedUsers?.length || 0) + 1 === 1 ? 'member' : 'members'}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
                     <button onClick={() => handleExport(col.id, col.name)} className="px-3 py-1.5 flex items-center gap-1.5 bg-[var(--background)] hover:bg-[var(--sidebar)] border border-[var(--border)] rounded text-xs font-medium transition-colors">
@@ -455,64 +471,13 @@ export default function UserDashboard() {
 
         {/* TAB: ACCESS CONTROL */}
         {activeTab === 'access' && (
-          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-semibold mb-6">Access Control</h2>
-
-            {/* ── Consolidated Users List ── */}
-            {(() => {
-              // Build a map of userId -> { user, collections[] }
-              const userAccessMap = new Map<string, { user: any, collections: string[] }>();
-              ownedCollections.forEach(col => {
-                (col.sharedUsers || []).forEach((su: any) => {
-                  if (!userAccessMap.has(su.id)) {
-                    userAccessMap.set(su.id, { user: su, collections: [] });
-                  }
-                  userAccessMap.get(su.id)!.collections.push(col.name);
-                });
-              });
-              const accessList = Array.from(userAccessMap.values());
-
-              if (accessList.length > 0) {
-                return (
-                  <div className="mb-8">
-                    <h3 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-3">Users with Access to Your Collections ({accessList.length})</h3>
-                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-                      <div className="divide-y divide-[var(--border)]">
-                        {accessList.map(({ user: u, collections: cols }) => (
-                          <div key={u.id} className="flex items-center justify-between px-4 py-3 hover:bg-[var(--sidebar)] transition-colors">
-                            <div className="flex items-center gap-3">
-                              {u.avatarMimeType ? (
-                                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${u.id}/avatar`} alt="Avatar" className="w-8 h-8 rounded-full object-cover border border-[var(--border)] shrink-0" />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-[var(--color-brand-500)]/15 flex items-center justify-center text-[var(--color-brand-500)] font-bold text-xs uppercase border border-[var(--color-brand-500)]/20 overflow-hidden shrink-0">
-                                  {(u.name || u.email || '?').substring(0, 2)}
-                                </div>
-                              )}
-                              <div>
-                                <div className="text-sm font-medium">{u.name || u.email}</div>
-                                {u.name && <div className="text-xs text-[var(--muted)]">{u.email}</div>}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-wrap justify-end max-w-[50%]">
-                              {cols.map((colName, idx) => (
-                                <span key={idx} className="inline-flex items-center gap-1 bg-[var(--sidebar)] border border-[var(--border)] text-[10px] font-semibold px-2 py-0.5 rounded-full text-[var(--muted)]">
-                                  <Folder className="w-2.5 h-2.5" /> {colName}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <div className="mb-8 bg-[var(--card)] border border-[var(--border)] rounded-xl p-6 text-center">
-                  <p className="text-sm text-[var(--muted)]">No users currently have access to your collections.</p>
-                </div>
-              );
-            })()}
+          <div className="max-w-5xl mx-auto anim-slide-up">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold">Access Control</h2>
+              <a href="/users" className="btn-spring flex items-center gap-1.5 text-xs font-medium bg-[var(--color-brand-500)] text-white px-3 py-1.5 rounded-lg hover:brightness-110">
+                <Users className="w-3.5 h-3.5" /> View All Users
+              </a>
+            </div>
 
             <p className="text-[var(--muted)] text-sm mb-6">Manage who has access to each collection.</p>
             
@@ -540,6 +505,7 @@ export default function UserDashboard() {
                             className="text-xs bg-[var(--background)]/80 border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] focus:ring-4 focus:ring-[var(--color-brand-500)]/10 w-64 shadow-inner transition-all font-medium placeholder-[var(--muted)]"
                             value={shareEmails[col.id] || ''}
                             onChange={(e) => setShareEmails({...shareEmails, [col.id]: e.target.value})}
+                            onFocus={refreshSystemUsers}
                             required
                           />
                           <datalist id={`sys-users-${col.id}`}>

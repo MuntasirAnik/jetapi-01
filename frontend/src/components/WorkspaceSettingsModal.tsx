@@ -81,8 +81,8 @@ export default function WorkspaceSettingsModal({ workspaceId, organizationId, on
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden zoom-in-95 animate-in">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 modal-backdrop">
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden modal-content">
         
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-[var(--border)] bg-[var(--background)]">

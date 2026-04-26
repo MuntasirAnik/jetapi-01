@@ -55,8 +55,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       
       {/* Confirm Modal */}
       {confirmState?.isOpen && (
-        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 modal-backdrop">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden modal-content">
             <div className="p-5 flex gap-4">
               <div className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center flex-shrink-0">
                 <AlertCircle className="w-5 h-5" />
@@ -69,14 +69,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             <div className="p-4 border-t border-[var(--border)] bg-[var(--background)] flex items-center justify-end gap-2">
               <button 
                 onClick={() => handleConfirmClose(false)} 
-                className="px-4 py-2 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)] rounded transition-colors"
+                className="btn-spring px-4 py-2 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)] rounded"
               >
                 Cancel
               </button>
               <button 
                 autoFocus 
                 onClick={() => handleConfirmClose(true)} 
-                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded transition-colors shadow-sm"
+                className="btn-spring px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded shadow-sm"
               >
                 Confirm
               </button>
@@ -87,8 +87,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 
       {/* Prompt Modal */}
       {promptState?.isOpen && (
-        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 modal-backdrop">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden modal-content">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4 text-[var(--color-brand-500)]">
                 <HelpCircle className="w-5 h-5" />
@@ -109,13 +109,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             <div className="p-4 border-t border-[var(--border)] bg-[var(--background)] flex items-center justify-end gap-2">
               <button 
                 onClick={() => handlePromptClose(false)} 
-                className="px-4 py-2 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)] rounded transition-colors"
+                className="btn-spring px-4 py-2 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)] rounded"
               >
                 Cancel
               </button>
               <button 
                 onClick={() => handlePromptClose(true)} 
-                className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-brand-500)] hover:brightness-110 rounded transition-colors shadow-sm"
+                className="btn-spring px-4 py-2 text-sm font-medium text-white bg-[var(--color-brand-500)] hover:brightness-110 rounded shadow-sm"
               >
                 Submit
               </button>

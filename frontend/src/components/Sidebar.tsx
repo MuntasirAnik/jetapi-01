@@ -434,7 +434,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     {/* Global Context Menu Map */}
     {contextMenu && (
       <div 
-        className="fixed bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl py-1 z-[100] flex flex-col text-xs font-semibold min-w-40 overflow-hidden"
+        className="fixed bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl py-1 z-[100] flex flex-col text-xs font-semibold min-w-40 overflow-hidden dropdown-enter"
         style={{ top: contextMenu.y, left: contextMenu.x }}
         onClick={(e) => e.stopPropagation()}
       >

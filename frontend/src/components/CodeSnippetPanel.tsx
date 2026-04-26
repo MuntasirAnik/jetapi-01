@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { X, Copy, Check } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
+import StyledSelect from "./StyledSelect";
 
 // ---- SYNTAX HIGHLIGHTER ----
 const highlightSyntax = (code: string) => {
@@ -268,15 +269,12 @@ export default function CodeSnippetPanel({ request, onClose, envVariables = [] }
       </div>
 
       <div className="p-3 border-b border-[var(--border)] bg-[var(--background)]">
-        <select 
+        <StyledSelect
+          options={languages.map(l => ({ value: l.id, label: l.name }))}
           value={lang}
-          onChange={(e) => setLang(e.target.value)}
-          className="w-full bg-[var(--card)] border border-[var(--border)] rounded px-2 py-1.5 text-sm outline-none focus:border-[var(--color-brand-500)] text-[var(--foreground)] font-medium transition-colors"
-        >
-          {languages.map(l => (
-            <option key={l.id} value={l.id}>{l.name}</option>
-          ))}
-        </select>
+          onChange={(val) => setLang(val)}
+          size="sm"
+        />
       </div>
 
       <div className="flex-1 p-3 overflow-y-auto relative bg-[#1e1e1e] group selection:bg-[#264F78]">

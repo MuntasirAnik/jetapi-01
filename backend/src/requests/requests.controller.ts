@@ -18,6 +18,11 @@ export class RequestsController {
     return this.requestsService.findAll(req.user.sub);
   }
 
+  @Get('trash')
+  findTrash(@Request() req: any) {
+    return this.requestsService.findTrash(req.user.sub);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.requestsService.findOne(id, req.user.sub);
@@ -31,5 +36,15 @@ export class RequestsController {
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req: any) {
     return this.requestsService.remove(id, req.user.sub);
+  }
+
+  @Post(':id/restore')
+  restore(@Param('id') id: string, @Request() req: any) {
+    return this.requestsService.restore(id, req.user.sub);
+  }
+
+  @Delete(':id/permanent')
+  permanentDelete(@Param('id') id: string, @Request() req: any) {
+    return this.requestsService.permanentDelete(id, req.user.sub);
   }
 }

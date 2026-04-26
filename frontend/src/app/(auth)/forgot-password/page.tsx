@@ -49,7 +49,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-[var(--background)]">
-      <div className="w-full max-w-md bg-[var(--card)] p-8 rounded border border-[var(--border)] shadow-xl animate-in zoom-in-95 duration-300">
+      <div className="w-full max-w-md bg-[var(--card)] p-8 rounded border border-[var(--border)] shadow-xl anim-scale-in">
         
         <button onClick={() => router.back()} className="text-[var(--muted)] hover:text-[var(--foreground)] mb-6 flex items-center gap-1 text-sm font-semibold transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to Login

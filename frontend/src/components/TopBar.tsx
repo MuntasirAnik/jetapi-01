@@ -1,5 +1,6 @@
 "use client";
 import { apiFetch } from '@/lib/api';
+import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
 import { Settings, Eye, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell } from "lucide-react";
 import EnvironmentManager from "./EnvironmentManager";
@@ -271,17 +272,18 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
 
         {/* Right Nav (Environments & Profile) */}
         <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded text-sm px-2 py-1">
-          <select 
-            className="bg-transparent focus:outline-none text-[var(--foreground)] pr-2 w-40"
-            value={activeEnvId || ""}
-            onChange={(e: any) => onEnvChange(e.target.value || null)}
+          <StyledSelect
+            options={[
+              { value: '', label: 'No Environment' },
+              ...environments.map((env: any) => ({ value: env.id, label: env.name }))
+            ]}
+            value={activeEnvId || ''}
+            onChange={(val) => onEnvChange(val || null)}
             disabled={!workspaceId}
-          >
-            <option value="">No Environment</option>
-            {environments.map((env: any) => (
-               <option key={env.id} value={env.id}>{env.name}</option>
-            ))}
-          </select>
+            size="sm"
+            showCheckmark={true}
+            className="w-44"
+          />
           <div className="flex items-center gap-1 border-l border-[var(--border)] pl-2 ml-1">
             <div className="relative" ref={notificationsRef}>
               <button 
@@ -295,7 +297,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                 )}
               </button>
               {isNotificationsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2">
+                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-xl z-[99998] flex flex-col overflow-hidden dropdown-enter">
                   <div className="px-4 py-2.5 border-b border-[var(--border)] flex items-center justify-between bg-[var(--sidebar)]/50">
                     <span className="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Notifications</span>
                     {notifications.some(n => !n.isRead) && (

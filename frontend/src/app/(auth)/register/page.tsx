@@ -52,7 +52,7 @@ export default function RegisterPage() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-blue-500/10 blur-[150px] mix-blend-screen shadow-2xl"></div>
       </div>
 
-      <div className="w-full max-w-[1000px] h-[640px] mx-4 bg-[var(--card)]/60 backdrop-blur-2xl border border-[var(--border)] rounded-3xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] flex overflow-hidden z-10 animate-in zoom-in-95 duration-500 relative">
+      <div className="w-full max-w-[1000px] h-[640px] mx-4 bg-[var(--card)]/60 backdrop-blur-2xl border border-[var(--border)] rounded-3xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] flex overflow-hidden z-10 anim-scale-in relative">
         
         {/* Left Side: Branding & Marketing */}
         <div className="hidden md:flex flex-col justify-between w-1/2 p-12 relative overflow-hidden bg-gradient-to-br from-[var(--color-brand-500)]/10 to-[var(--background)] border-r border-[var(--border)]">

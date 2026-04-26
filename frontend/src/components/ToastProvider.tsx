@@ -1,22 +1,23 @@
 "use client";
 
-import { ToastContainer, Bounce } from "react-toastify";
+import { ToastContainer, Slide } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 export default function ToastProvider() {
   return (
     <ToastContainer
       position="bottom-right"
-      autoClose={4000}
+      autoClose={3500}
       hideProgressBar={false}
-      newestOnTop={false}
+      newestOnTop
       closeOnClick
       rtl={false}
-      pauseOnFocusLoss
+      pauseOnFocusLoss={false}
       draggable
       pauseOnHover
-      theme="light"
-      transition={Bounce}
+      theme="dark"
+      transition={Slide}
+      style={{ zIndex: 99999 }}
     />
   );
 }

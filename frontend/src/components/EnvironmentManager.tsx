@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { X, Plus, Trash2, Upload, Download, Eye, EyeOff, Search, Pencil } from "lucide-react";
 import { toast } from "react-toastify";
 import { useDialog } from "./DialogProvider";
+import StyledSelect from "./StyledSelect";
 
 export default function EnvironmentManager({ 
   workspaceId, 
@@ -323,14 +324,17 @@ export default function EnvironmentManager({
                   />
                 </td>
                 <td className="p-0 border-l border-[var(--border)]">
-                  <select 
-                    value={v.type || "default"}
-                    onChange={(e) => onUpdate(i, "type", e.target.value)}
-                    className="w-full bg-transparent p-2 focus:outline-none appearance-none text-[var(--muted)] cursor-pointer"
-                  >
-                    <option value="default">default</option>
-                    <option value="secret">secret</option>
-                  </select>
+                  <StyledSelect
+                    options={[
+                      { value: 'default', label: 'default' },
+                      { value: 'secret', label: 'secret' },
+                    ]}
+                    value={v.type || 'default'}
+                    onChange={(val) => onUpdate(i, 'type', val)}
+                    size="xs"
+                    showCheckmark={false}
+                    className="w-full"
+                  />
                 </td>
                 <td className="p-0 border-l border-[var(--border)] relative">
                   <input 
@@ -384,23 +388,20 @@ export default function EnvironmentManager({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[999] p-4">
-      <div className="bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-[900px] h-[85vh] max-h-[700px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[999] p-4 modal-backdrop">
+      <div className="bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-[900px] h-[85vh] max-h-[700px] flex flex-col overflow-hidden modal-content">
         
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] bg-[var(--card)] flex-shrink-0">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-bold text-[var(--foreground)]">Manage Environments</h2>
             {workspaceOptions.length > 1 && (
-              <select 
-                className="bg-[var(--sidebar)] border border-[var(--border)] text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[var(--color-brand-500)] text-[var(--foreground)]"
+              <StyledSelect
+                options={workspaceOptions.map(opt => ({ value: opt.id, label: opt.name }))}
                 value={currentWorkspaceId}
-                onChange={e => setCurrentWorkspaceId(e.target.value)}
-              >
-                {workspaceOptions.map(opt => (
-                  <option key={opt.id} value={opt.id}>{opt.name}</option>
-                ))}
-              </select>
+                onChange={(val) => setCurrentWorkspaceId(val)}
+                size="xs"
+              />
             )}
           </div>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-[var(--sidebar)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">

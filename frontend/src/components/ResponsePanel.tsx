@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Search, Copy, Check, Globe, MoreHorizontal, AlignLeft, Filter, Link2, Download, History, Code2, PlaySquare, Eye } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
+import StyledSelect from "./StyledSelect";
 
 export default function ResponsePanel({ response, loading, request }: any) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -461,23 +462,24 @@ export default function ResponsePanel({ response, loading, request }: any) {
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] text-xs text-[var(--muted)] bg-[var(--background)] select-none">
           {/* Format / View Toggles */}
           <div className="flex items-center gap-4">
-             <div className="relative flex items-center bg-[var(--card)] border border-[var(--border)] rounded text-[var(--foreground)] hover:border-[var(--color-brand-500)] transition-colors">
-               <dl className="absolute left-2 pointer-events-none text-xs font-mono font-bold text-[var(--color-brand-500)] pr-1">{'{}'}</dl>
-               <select 
-                  value={responseType}
-                  onChange={(e) => setResponseType(e.target.value as any)}
-                  className="appearance-none bg-transparent border-none outline-none pl-8 pr-6 py-1 text-xs cursor-pointer focus:ring-0"
-               >
-                  <option value="Auto">Auto</option>
-                  <option value="JSON">JSON</option>
-                  <option value="XML">XML</option>
-                  <option value="HTML">HTML</option>
-                  <option value="JavaScript">JavaScript</option>
-                  <option value="Text">Raw/Text</option>
-                  <option value="Hex">Hex</option>
-                  <option value="Base64">Base64</option>
-               </select>
-               <svg className="w-3 h-3 opacity-70 absolute right-2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+             <div className="relative flex items-center">
+               <dl className="absolute left-2 pointer-events-none text-xs font-mono font-bold text-[var(--color-brand-500)] pr-1 z-10">{'\{\}'}</dl>
+               <StyledSelect
+                 options={[
+                   { value: 'Auto', label: 'Auto' },
+                   { value: 'JSON', label: 'JSON' },
+                   { value: 'XML', label: 'XML' },
+                   { value: 'HTML', label: 'HTML' },
+                   { value: 'JavaScript', label: 'JavaScript' },
+                   { value: 'Text', label: 'Raw/Text' },
+                   { value: 'Hex', label: 'Hex' },
+                   { value: 'Base64', label: 'Base64' },
+                 ]}
+                 value={responseType}
+                 onChange={(val) => setResponseType(val as any)}
+                 size="xs"
+                 showCheckmark={false}
+               />
              </div>
              
              <button className="flex items-center gap-1.5 hover:text-[var(--foreground)] transition-colors">
@@ -554,8 +556,8 @@ export default function ResponsePanel({ response, loading, request }: any) {
 
       {/* 4. Export Modal Overlay */}
       {exportModalContent !== null && (
-        <div className="fixed inset-0 z-[150] bg-black/60 flex items-center justify-center p-4 custom-scrollbar">
-          <div className="bg-[var(--background)] border border-[var(--border)] rounded-lg shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden max-h-[90vh]">
+        <div className="fixed inset-0 z-[150] bg-black/60 flex items-center justify-center p-4 custom-scrollbar modal-backdrop">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-lg shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden max-h-[90vh] modal-content">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
               <h3 className="font-semibold text-sm">Export Payload</h3>
               <div className="flex gap-2">

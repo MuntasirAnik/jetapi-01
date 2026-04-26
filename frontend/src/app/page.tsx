@@ -8,6 +8,7 @@ import ResponsePanel from "@/components/ResponsePanel";
 import TopBar from "@/components/TopBar";
 import RightSidebar from "@/components/RightSidebar";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
+import StyledSelect from "@/components/StyledSelect";
 import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
 import { useAppContext } from "@/lib/AppContext";
@@ -780,8 +781,8 @@ export default function Home() {
 
       {/* Save Modal (Postman 1:1 Layout) */}
       {isSaveModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg w-full max-w-3xl h-[750px] shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center modal-backdrop">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg w-full max-w-3xl h-[750px] shadow-2xl flex flex-col overflow-hidden modal-content">
             
             {/* Header */}
             <div className="p-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--sidebar)]">
@@ -833,20 +834,20 @@ export default function Home() {
                         className="bg-transparent border-none outline-none text-sm text-[var(--foreground)] w-full placeholder-[var(--muted)]"
                       />
                     </div>
-                    <select 
+                    <StyledSelect
+                      options={[
+                        { value: '', label: 'Select Workspace' },
+                        ...saveWorkspaces.map(w => ({ value: w.id, label: w.name }))
+                      ]}
                       value={saveTargetWorkspaceId}
-                      onChange={(e) => {
-                        setSaveTargetWorkspaceId(e.target.value);
+                      onChange={(val) => {
+                        setSaveTargetWorkspaceId(val);
                         setSaveTargetCollectionId('');
                         setSaveTargetFolder('');
                       }}
-                      className="bg-[var(--background)] border border-[var(--border)] rounded px-3 py-1.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--color-brand-500)] max-w-[200px] cursor-pointer"
-                    >
-                      <option value="" disabled>Select Workspace</option>
-                      {saveWorkspaces.map(w => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))}
-                    </select>
+                      size="sm"
+                      className="max-w-[200px]"
+                    />
                   </div>
               
               {/* Explorer Tree */}

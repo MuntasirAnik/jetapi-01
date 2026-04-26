@@ -15,9 +15,9 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
 
-  const loadData = async () => {
+  const loadData = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const userStr = localStorage.getItem('user');
       if (userStr) {
          setCurrentUserEmail(JSON.parse(userStr).email);
@@ -60,7 +60,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
 
       toast.success(`Invited ${inviteEmail} successfully!`);
       setInviteEmail("");
-      loadData();
+      loadData(false);
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -74,7 +74,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
       });
       if (!res.ok) throw new Error("Failed to remove user");
       toast.success(`Removed ${email}`);
-      loadData();
+      loadData(false);
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -94,7 +94,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
       if (!res.ok) throw new Error("Failed to update name");
       toast.success("Team renamed successfully");
       setIsEditingName(false);
-      loadData();
+      loadData(false);
       window.dispatchEvent(new Event('postclone-refresh-sidebar'));
     } catch (err: any) {
       toast.error(err.message);
@@ -119,15 +119,15 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
       });
       if (!res.ok) throw new Error("Failed to update limit");
       toast.success(`Team member limit updated to ${newMax}`);
-      loadData();
+      loadData(false);
     } catch (err: any) {
       toast.error(err.message);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-      <div className="bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4 modal-backdrop">
+      <div className="bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden modal-content">
         <div className="flex items-center justify-between p-4 border-b border-[var(--border)] bg-[var(--card)]">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] rounded-lg">

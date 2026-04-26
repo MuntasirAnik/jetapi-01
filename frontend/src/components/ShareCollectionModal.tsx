@@ -90,15 +90,15 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
   }, [allUsers, searchQuery, sharedUserIds]);
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[var(--card)]/95 backdrop-blur-xl border border-[var(--border)] rounded-xl shadow-[0_16px_60px_rgba(0,0,0,0.5)] w-full max-w-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 slide-in-from-bottom-8 duration-300">
+    <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 modal-backdrop">
+      <div className="bg-[var(--card)]/95 backdrop-blur-xl border border-[var(--border)] rounded-xl shadow-[0_16px_60px_rgba(0,0,0,0.5)] w-full max-w-lg flex flex-col max-h-[85vh] modal-content">
         {/* Header */}
         <div className="p-5 flex items-center justify-between border-b border-[var(--border)]/50 bg-[var(--sidebar)]/50 rounded-t-xl">
           <div>
             <h2 className="text-base font-bold text-[var(--foreground)] drop-shadow-sm">Share Collection</h2>
             <p className="text-xs text-[var(--muted)] font-medium mt-0.5">{collectionName}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-[var(--color-brand-500)]/10 hover:text-[var(--color-brand-500)] text-[var(--muted)] transition-all duration-200 active:scale-95">
+          <button onClick={onClose} className="btn-spring p-2 rounded-full hover:bg-[var(--color-brand-500)]/10 hover:text-[var(--color-brand-500)] text-[var(--muted)]">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -132,6 +132,12 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
                         placeholder="Search users by email..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
+                        onFocus={async () => {
+                          try {
+                            const res = await apiFetch(`/api/auth/users`);
+                            if (res.ok) setAllUsers(await res.json());
+                          } catch {}
+                        }}
                         className="bg-transparent border-none outline-none text-sm text-[var(--foreground)] w-full font-medium placeholder-[var(--muted)]"
                         required
                       />
@@ -146,7 +152,7 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
                   <button 
                     type="submit" 
                     disabled={saving || !searchQuery}
-                    className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="btn-spring bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Invite"}
                   </button>
@@ -208,7 +214,7 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
         <div className="p-4 border-t border-[var(--border)]/50 bg-[var(--sidebar)]/50 flex justify-end rounded-b-xl">
           <button 
             onClick={onClose}
-            className="px-5 py-2.5 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white text-sm font-bold rounded-lg shadow-lg hover:shadow-xl hover:shadow-[var(--color-brand-500)]/20 transition-all duration-200 active:scale-95"
+            className="btn-spring px-5 py-2.5 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white text-sm font-bold rounded-lg shadow-lg hover:shadow-xl hover:shadow-[var(--color-brand-500)]/20"
           >
             Done
           </button>

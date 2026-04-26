@@ -1,5 +1,18 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+// Lazy import to avoid circular deps in SSR
+let pushLogFn: ((entry: any) => void) | null = null;
+function getPushLog() {
+  if (!pushLogFn && typeof window !== 'undefined') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('@/components/FooterTerminal');
+      pushLogFn = mod.pushLog;
+    } catch {}
+  }
+  return pushLogFn;
+}
+
 export async function apiFetch(url: string, options: RequestInit = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   
@@ -18,6 +31,9 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
   }
 
   const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+  const method = (options.method || 'GET').toUpperCase();
+  // Short display path (strip base url)
+  const displayUrl = fullUrl.replace(baseUrl, '');
   
   const headers: HeadersInit = {
     ...options.headers,
@@ -26,28 +42,39 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
   if (token) {
     (headers as any)['Authorization'] = `Bearer ${token}`;
   }
-  
-  // By default, if sending a body that is a generic object and not FormData, stringify it
-  // But wait, existing code might already be stringifying it if it uses fetch natively.
-  // We'll leave it to exactly mirror fetch's signature to avoid breaking existing code.
 
   const finalOptions = {
     ...options,
     headers,
   };
 
-  const response = await fetch(fullUrl, finalOptions);
+  // Log the request
+  const log = getPushLog();
+  log?.({ type: 'request', method, url: displayUrl });
   
-  if (response.status === 401) {
-    // Basic auto-logout on 401
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+  const startTime = performance.now();
+  
+  try {
+    const response = await fetch(fullUrl, finalOptions);
+    const duration = Math.round(performance.now() - startTime);
+    
+    // Log the response
+    log?.({ type: 'response', method, url: displayUrl, status: response.status, duration });
+    
+    if (response.status === 401) {
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login') && !fullUrl.includes('/api/init')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     }
+    
+    return response;
+  } catch (err: any) {
+    const duration = Math.round(performance.now() - startTime);
+    log?.({ type: 'error', message: `${method} ${displayUrl} — ${err.message} (${duration}ms)` });
+    throw err;
   }
-  
-  return response;
 }
 
 export function copyToClipboard(text: string) {

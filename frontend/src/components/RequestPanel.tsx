@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2 } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
+import StyledSelect from "./StyledSelect";
 
 export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, isSaving, envVariables = [] }: any) {
   const [activeTab, setActiveTab] = useState("Params");
@@ -51,6 +52,15 @@ export default function RequestPanel({ request, onChange, onSend, onSave, onSave
   }, [varSuggest]);
 
   const checkVarSuggest = (id: string, value: string, providedCursorPos?: number) => {
+    // Only show suggestions when the user is actively typing in an input
+    if (typeof document !== 'undefined') {
+      const activeEl = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+      if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA')) {
+        setVarSuggest(prev => prev.id === id ? { id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 } : prev);
+        return;
+      }
+    }
+
     let cursorPos = providedCursorPos ?? value?.length ?? 0;
     if (typeof providedCursorPos === 'undefined' && typeof document !== 'undefined') {
       const activeEl = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
@@ -420,6 +430,7 @@ const getMethodColor = (method: string) => {
                     type="text" 
                     value={item.key} 
                     onChange={e => handleChange(i, 'key', e.target.value)} 
+                    onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `${title || 'kvp'}-${i}-key` ? { ...prev, show: false } : prev), 150)}
                     className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
                     placeholder="Key" 
                     disabled={disableKey}
@@ -431,6 +442,7 @@ const getMethodColor = (method: string) => {
                     type="text" 
                     value={item.value} 
                     onChange={e => handleChange(i, 'value', e.target.value)} 
+                    onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `${title || 'kvp'}-${i}-value` ? { ...prev, show: false } : prev), 150)}
                     className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
                     placeholder="Value" 
                   />
@@ -517,23 +529,26 @@ const getMethodColor = (method: string) => {
                        type="text" 
                        value={item.key || ""} 
                        onChange={e => handleChange(i, 'key', e.target.value)} 
+                       onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `formdata-${i}-key` ? { ...prev, show: false } : prev), 150)}
                        className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
                        placeholder="Key" 
                      />
                      {renderVarSuggest(`formdata-${i}-key`, item.key || "", (val) => handleChange(i, 'key', val))}
                      {/* Hidden dropdown that appears on hover/focus to select Text vs File */}
-                     <select 
-                        value={item.type || 'text'}
-                        onChange={(e) => {
-                           handleChange(i, 'type', e.target.value);
-                           // Clear value if switching to file, since we can't safely maintain browser text -> file object states
-                           handleChange(i, 'value', ''); 
-                        }}
-                        className="opacity-0 group-hover:opacity-100 absolute right-1 bg-[var(--sidebar)] border border-[var(--border)] text-[10px] rounded p-0.5 outline-none cursor-pointer"
-                     >
-                        <option value="text">Text</option>
-                        <option value="file">File</option>
-                     </select>
+                     <StyledSelect
+                       options={[
+                         { value: 'text', label: 'Text' },
+                         { value: 'file', label: 'File' },
+                       ]}
+                       value={item.type || 'text'}
+                       onChange={(val) => {
+                         handleChange(i, 'type', val);
+                         handleChange(i, 'value', '');
+                       }}
+                       size="xs"
+                       showCheckmark={false}
+                       className="opacity-0 group-hover:opacity-100 absolute right-1 z-10 transition-opacity"
+                     />
                   </div>
                 </td>
                 <td className="p-0 border-l border-[var(--border)] relative">
@@ -561,6 +576,7 @@ const getMethodColor = (method: string) => {
                          type="text" 
                          value={item.value || ""} 
                          onChange={e => handleChange(i, 'value', e.target.value)} 
+                         onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `formdata-${i}-value` ? { ...prev, show: false } : prev), 150)}
                          className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
                          placeholder="Value" 
                        />
@@ -613,15 +629,16 @@ const getMethodColor = (method: string) => {
       <div className="flex h-full border-[var(--border)] relative bg-[var(--background)]">
         <div className="w-48 border-r border-[var(--border)] p-3 flex flex-col gap-2">
           <label className="text-[10px] text-[var(--muted)] font-semibold uppercase">Type</label>
-          <select 
-            className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] rounded text-xs p-1.5 outline-none focus:border-[var(--color-brand-500)]"
+          <StyledSelect
+            options={[
+              { value: 'none', label: 'No Auth' },
+              { value: 'bearer', label: 'Bearer Token' },
+              { value: 'basic', label: 'Basic Auth' },
+            ]}
             value={auth.type || 'none'}
-            onChange={e => handleAuthChange('type', e.target.value)}
-          >
-            <option value="none">No Auth</option>
-            <option value="bearer">Bearer Token</option>
-            <option value="basic">Basic Auth</option>
-          </select>
+            onChange={(val) => handleAuthChange('type', val)}
+            size="sm"
+          />
         </div>
         <div className="flex-1 p-6 relative bg-[var(--background)]">
           {auth.type === 'none' && (
@@ -740,17 +757,19 @@ const getMethodColor = (method: string) => {
 
           {bodyState.mode === 'raw' && (
             <div className="ml-auto flex items-center gap-2">
-              <select 
-                className="bg-[var(--card)] border border-[var(--border)] rounded px-2 py-1 outline-none focus:border-[var(--color-brand-500)] text-[#FF6C37]"
+              <StyledSelect
+                options={[
+                  { value: 'text', label: 'Text' },
+                  { value: 'javascript', label: 'JavaScript' },
+                  { value: 'json', label: 'JSON' },
+                  { value: 'html', label: 'HTML' },
+                  { value: 'xml', label: 'XML' },
+                ]}
                 value={bodyState.raw.language}
-                onChange={(e) => updateBodyObj({ raw: { ...bodyState.raw, language: e.target.value } })}
-              >
-                <option value="text">Text</option>
-                <option value="javascript">JavaScript</option>
-                <option value="json">JSON</option>
-                <option value="html">HTML</option>
-                <option value="xml">XML</option>
-              </select>
+                onChange={(val) => updateBodyObj({ raw: { ...bodyState.raw, language: val } })}
+                size="xs"
+                showCheckmark={false}
+              />
             </div>
           )}
         </div>

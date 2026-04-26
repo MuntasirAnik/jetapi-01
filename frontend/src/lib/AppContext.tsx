@@ -1,5 +1,6 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
 type AppContextType = {
@@ -44,7 +45,12 @@ function extractGlobalVars(workspaces: any[]): any[] {
   return Array.from(seen.values());
 }
 
+// Auth routes that don't require a valid session
+const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
@@ -62,12 +68,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ──── Single init call ────
   const initApp = useCallback(async () => {
-    // Don't attempt init if user isn't authenticated yet (e.g. on /register or /login)
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) return;
+    const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+
+    // No token and on a protected route → redirect to login
+    if (!token) {
+      if (!isPublicRoute && typeof window !== 'undefined') {
+        router.replace('/login');
+      }
+      setIsAppReady(true);
+      return;
+    }
 
     try {
       const res = await apiFetch("/api/init");
+
+      // Token expired or invalid → clear session and redirect
+      if (res.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          if (!isPublicRoute) {
+            router.replace('/login');
+          }
+        }
+        setIsAppReady(true);
+        return;
+      }
+
       if (!res.ok) return;
       const data = await res.json();
 

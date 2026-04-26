@@ -3,6 +3,7 @@ import { X, Upload, CheckCircle2, ChevronDown, Folder, Download } from 'lucide-r
 import { apiFetch } from '@/lib/api';
 import { toast } from 'react-toastify';
 import { useAppContext } from '@/lib/AppContext';
+import StyledSelect from './StyledSelect';
 
 export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) {
   const { workspaces, activeWorkspaceId } = useAppContext();
@@ -54,8 +55,8 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[var(--card)] w-full max-w-lg rounded-xl border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop">
+      <div className="bg-[var(--card)] w-full max-w-lg rounded-xl border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden modal-content">
         
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--sidebar)]">
@@ -75,19 +76,17 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-[var(--foreground)] uppercase max-w-fit">Destination Workspace</label>
             <div className="relative">
-              <select 
-                title="Workspace Destination"
-                className="w-full bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] text-sm rounded-lg pl-10 pr-10 py-3 outline-none focus:border-[var(--color-brand-500)] appearance-none cursor-pointer hover:bg-[var(--sidebar)] transition-colors"
+              <StyledSelect
+                options={
+                  workspaces && workspaces.length > 0
+                    ? workspaces.map((w: any) => ({ value: w.id, label: w.name }))
+                    : [{ value: '', label: 'No workspaces available' }]
+                }
                 value={selectedWorkspaceId}
-                onChange={e => setSelectedWorkspaceId(e.target.value)}
-              >
-                {workspaces?.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-                {(!workspaces || workspaces.length === 0) && <option value="" disabled>No workspaces available</option>}
-              </select>
-              <Folder className="w-4 h-4 text-[var(--color-brand-500)] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <ChevronDown className="w-4 h-4 text-[var(--muted)] absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                onChange={(val) => setSelectedWorkspaceId(val)}
+                size="md"
+                icon={<Folder className="w-4 h-4 text-[var(--color-brand-500)]" />}
+              />
             </div>
             <p className="text-xs text-[var(--muted)] flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-[var(--color-brand-500)] rounded-full animate-pulse"></span> Your collections will be safely isolated to this workspace.</p>
           </div>
