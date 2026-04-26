@@ -10,10 +10,12 @@ import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
 import { ShieldAlert, Shield } from "lucide-react";
 import ImportCollectionModal from "@/components/ImportCollectionModal";
+import { useDialog } from "@/components/DialogProvider";
 
 export default function UserDashboard() {
   const router = useRouter();
   const { activeOrganizationId } = useAppContext();
+  const { confirmDialog } = useDialog();
 
   const [userRole, setUserRole] = useState("Member");
   const [profile, setProfile] = useState<any>(null);
@@ -98,8 +100,8 @@ export default function UserDashboard() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be smaller than 2MB");
+    if (file.size > 3.5 * 1024 * 1024) {
+      toast.error("Image must be smaller than 3.5MB");
       return;
     }
 
@@ -174,12 +176,14 @@ export default function UserDashboard() {
     // Deprecated logic
   };
 
-  const handleDeleteCollection = async (id: string) => {
+  const handleDeleteCollection = async (id: string, name: string) => {
+    if (!(await confirmDialog(`Delete "${name}"? All requests in this collection will be permanently removed.`))) return;
     try {
       const res = await apiFetch(`/collections/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       toast.success("Collection deleted");
       fetchData();
+      window.dispatchEvent(new Event('postclone-refresh-sidebar'));
     } catch (err) {
       toast.error("Delete failed.");
     }
@@ -440,7 +444,12 @@ export default function UserDashboard() {
                     <button onClick={() => handleExport(col.id, col.name)} className="px-3 py-1.5 flex items-center gap-1.5 bg-[var(--background)] hover:bg-[var(--sidebar)] border border-[var(--border)] rounded text-xs font-medium transition-colors">
                       <Download className="w-4 h-4" /> Export
                     </button>
-
+                    <button
+                      onClick={() => handleDeleteCollection(col.id, col.name)}
+                      className="px-3 py-1.5 flex items-center gap-1.5 bg-[var(--background)] hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-[var(--border)] rounded text-xs font-medium text-[var(--muted)] transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
                   </div>
                 </div>
               ))}

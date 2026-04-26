@@ -63,7 +63,7 @@ export class AuthController {
 
   @UseGuards(AuthGuard)
   @Post('profile/avatar')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 3.5 * 1024 * 1024 } }))
   async updateAvatar(@Request() req: any, @UploadedFile() file: any) {
     if (!file) throw new BadRequestException('Avatar payload is required');
     const user = await this.usersService.updateAvatar(req.user.sub, file.buffer, file.mimetype);

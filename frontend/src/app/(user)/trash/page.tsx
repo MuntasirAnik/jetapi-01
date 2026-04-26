@@ -7,13 +7,12 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
-import { useAppContext } from "@/lib/AppContext";
 
 export default function TrashPage() {
   const router = useRouter();
   const { confirmDialog } = useDialog();
-  const { sharedCollections } = useAppContext();
   const [items, setItems] = useState<any[]>([]);
+  const [collections, setCollections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCollection, setFilterCollection] = useState("all");
@@ -30,8 +29,12 @@ export default function TrashPage() {
   const fetchTrash = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch("/requests/trash");
-      if (res.ok) setItems(await res.json());
+      const [trashRes, colRes] = await Promise.all([
+        apiFetch("/requests/trash"),
+        apiFetch("/collections"),
+      ]);
+      if (trashRes.ok) setItems(await trashRes.json());
+      if (colRes.ok) setCollections(await colRes.json());
     } catch (err) {
       console.error("Failed to fetch trash:", err);
     } finally {
@@ -48,14 +51,14 @@ export default function TrashPage() {
     return () => document.removeEventListener("click", handler);
   }, []);
 
-  // Only owned collections from context (exclude shared with me)
+  // Only owned collections (exclude shared with me)
   const collectionOptions = useMemo(() => {
-    return sharedCollections
+    return collections
       .filter((c: any) => !c.ownerId || c.ownerId === userId)
       .map((c: any) => c.name)
       .filter(Boolean)
       .sort();
-  }, [sharedCollections, userId]);
+  }, [collections, userId]);
 
   const deletedByOptions = useMemo(() => {
     const names = new Set(items.map(i => i.deletedByName || 'You').filter(Boolean));
