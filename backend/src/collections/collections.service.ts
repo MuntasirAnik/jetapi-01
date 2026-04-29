@@ -250,7 +250,24 @@ export class CollectionsService {
             url: typeof item.request.url === 'string' ? item.request.url : (item.request.url?.raw || ''),
             headers: item.request.header?.map((h: any) => ({ key: h.key, value: h.value })) || [],
             params: item.request.url?.query?.map((q: any) => ({ key: q.key, value: q.value })) || [],
-            body: item.request.body?.raw || '',
+            body: item.request.body ? JSON.stringify({
+              mode: item.request.body.mode || (item.request.body.raw ? 'raw' : 'none'),
+              raw: { language: 'json', data: typeof item.request.body.raw === 'string' ? item.request.body.raw : '' },
+              formdata: (item.request.body.formdata || []).map((fd: any) => ({
+                key: fd.key || '',
+                value: fd.type === 'file' ? (typeof fd.src === 'string' ? fd.src : (Array.isArray(fd.src) ? fd.src.join(', ') : '')) : (fd.value || ''),
+                type: fd.type || 'text',
+                description: fd.description || '',
+                enabled: fd.disabled !== true
+              })),
+              urlencoded: (item.request.body.urlencoded || []).map((urlc: any) => ({
+                key: urlc.key || '',
+                value: urlc.value || '',
+                description: urlc.description || '',
+                enabled: urlc.disabled !== true
+              })),
+              graphql: item.request.body.graphql || { query: '', variables: '' }
+            }) : '',
             folder: currentPath || null,
           });
         }

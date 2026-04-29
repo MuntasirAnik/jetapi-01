@@ -272,18 +272,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
 
         {/* Right Nav (Environments & Profile) */}
         <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded text-sm px-2 py-1">
-          <StyledSelect
-            options={[
-              { value: '', label: 'No Environment' },
-              ...environments.map((env: any) => ({ value: env.id, label: env.name }))
-            ]}
-            value={activeEnvId || ''}
-            onChange={(val) => onEnvChange(val || null)}
-            disabled={!workspaceId}
-            size="sm"
-            showCheckmark={true}
-            className="w-44"
-          />
+          {/* Environment dropdown removed as per request */}
           <div className="flex items-center gap-1 border-l border-[var(--border)] pl-2 ml-1">
             <div className="relative" ref={notificationsRef}>
               <button 
@@ -354,14 +343,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
             <button className="text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors" title="Quick Look">
               <Eye className="w-4 h-4" />
             </button>
-            <button 
-              onClick={() => setIsManagerOpen(true)}
-              className="text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors" 
-              title="Manage Environments"
-              disabled={!workspaceId}
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            {/* Manage Environments button removed as per request */}
           </div>
         </div>
       </div>

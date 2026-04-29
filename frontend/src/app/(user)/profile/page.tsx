@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { 
   User, LogOut, Layout, Folder, Activity, ChevronLeft, 
-  ShieldCheck, Download, Import, Trash2, Users, UserPlus, X, Server, Upload, Search, Loader2
+  ShieldCheck, Download, Import, Trash2, Users, UserPlus, X, Server, Upload, Search, Loader2,
+  Eye, EyeOff
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
@@ -39,6 +40,9 @@ export default function UserDashboard() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     if (activeOrganizationId && profile?.user?.id) {
@@ -372,33 +376,48 @@ export default function UserDashboard() {
                  <form onSubmit={handleChangePassword} className="flex flex-col gap-4 max-w-sm">
                     <div>
                       <label className="text-xs text-[var(--muted)] font-semibold uppercase mb-1 block">Current Password</label>
-                      <input 
-                        type="password" 
-                        value={currentPassword} 
-                        onChange={e => setCurrentPassword(e.target.value)} 
-                        className="w-full bg-[var(--background)] border border-[var(--border)] p-2 rounded outline-none focus:border-[var(--color-brand-500)] text-sm"
-                        required 
-                      />
+                      <div className="relative">
+                        <input 
+                          type={showCurrentPassword ? "text" : "password"} 
+                          value={currentPassword} 
+                          onChange={e => setCurrentPassword(e.target.value)} 
+                          className="w-full bg-[var(--background)] border border-[var(--border)] p-2 pr-10 rounded outline-none focus:border-[var(--color-brand-500)] text-sm"
+                          required 
+                        />
+                        <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--foreground)]">
+                          {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs text-[var(--muted)] font-semibold uppercase mb-1 block">New Password</label>
-                      <input 
-                        type="password" 
-                        value={newPassword} 
-                        onChange={e => setNewPassword(e.target.value)} 
-                        className="w-full bg-[var(--background)] border border-[var(--border)] p-2 rounded outline-none focus:border-[var(--color-brand-500)] text-sm"
-                        required 
-                      />
+                      <div className="relative">
+                        <input 
+                          type={showNewPassword ? "text" : "password"} 
+                          value={newPassword} 
+                          onChange={e => setNewPassword(e.target.value)} 
+                          className="w-full bg-[var(--background)] border border-[var(--border)] p-2 pr-10 rounded outline-none focus:border-[var(--color-brand-500)] text-sm"
+                          required 
+                        />
+                        <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--foreground)]">
+                          {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs text-[var(--muted)] font-semibold uppercase mb-1 block">Confirm New Password</label>
-                      <input 
-                        type="password" 
-                        value={confirmPassword} 
-                        onChange={e => setConfirmPassword(e.target.value)} 
-                        className="w-full bg-[var(--background)] border border-[var(--border)] p-2 rounded outline-none focus:border-[var(--color-brand-500)] text-sm"
-                        required 
-                      />
+                      <div className="relative">
+                        <input 
+                          type={showConfirmPassword ? "text" : "password"} 
+                          value={confirmPassword} 
+                          onChange={e => setConfirmPassword(e.target.value)} 
+                          className="w-full bg-[var(--background)] border border-[var(--border)] p-2 pr-10 rounded outline-none focus:border-[var(--color-brand-500)] text-sm"
+                          required 
+                        />
+                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--foreground)]">
+                          {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                     <button 
                       type="submit" 

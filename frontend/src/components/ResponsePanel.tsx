@@ -463,8 +463,8 @@ export default function ResponsePanel({ response, loading, request }: any) {
           {/* Format / View Toggles */}
           <div className="flex items-center gap-4">
              <div className="relative flex items-center">
-               <dl className="absolute left-2 pointer-events-none text-xs font-mono font-bold text-[var(--color-brand-500)] pr-1 z-10">{'\{\}'}</dl>
                <StyledSelect
+                 icon={<span className="text-[10px] font-mono font-bold text-[var(--color-brand-500)]">{'{}'}</span>}
                  options={[
                    { value: 'Auto', label: 'Auto' },
                    { value: 'JSON', label: 'JSON' },

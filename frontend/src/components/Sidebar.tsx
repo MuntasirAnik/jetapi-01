@@ -67,6 +67,38 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     return () => document.removeEventListener("click", handleClick);
   }, []);
 
+  useEffect(() => {
+    const handleExpand = (e: any) => {
+      const bc = e.detail.breadcrumb;
+      if (!bc || bc.length === 0) return;
+      
+      const colName = bc[0];
+      const activeWs = workspaces.find((ws: any) => ws.id === activeWorkspace);
+      const wsCollections = activeWs?.collections || [];
+      const sharedForWs = sharedCollections.filter((c: any) => c.workspaceId === activeWorkspace);
+      const mergedCollections = [...wsCollections, ...sharedForWs];
+      const collection = mergedCollections.find((c: any) => c.name === colName);
+      
+      if (collection) {
+        setExpandedCollections((prev: any) => ({ ...prev, [collection.id]: true }));
+        
+        if (bc.length > 1) {
+           let currentPath = '';
+           const newFolders: Record<string, boolean> = {};
+           bc.slice(1).forEach((part: string) => {
+             currentPath = currentPath ? `${currentPath}/${part}` : part;
+             newFolders[`${collection.id}-${currentPath}`] = true;
+           });
+           setExpandedFolders((prev: any) => ({ ...prev, ...newFolders }));
+        }
+        
+        setActiveTab('collections');
+      }
+    };
+    window.addEventListener('expand-sidebar-folder', handleExpand);
+    return () => window.removeEventListener('expand-sidebar-folder', handleExpand);
+  }, [workspaces, activeWorkspace, sharedCollections]);
+
   const handleContextMenuClick = (e: React.MouseEvent, type: 'collection' | 'folder' | 'request', id: string, name: string, folderPath?: string) => {
     e.stopPropagation();
     
@@ -702,7 +734,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
          </button>
          
          <button 
-           onClick={() => setActiveTab('apis')} 
+           onClick={() => toast.info('APIs functionality is coming soon!')} 
            className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='apis'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='apis'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
@@ -720,7 +752,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
          </button>
 
          <button 
-           onClick={() => setActiveTab('history')} 
+           onClick={() => toast.info('History functionality is coming soon!')} 
            className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='history'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='history'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>

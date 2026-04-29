@@ -103,6 +103,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
 
   const currentUserMembership = users.find(u => u.email === currentUserEmail);
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
+  const isOwner = currentUserMembership && currentUserMembership.role === 'OWNER';
 
   const maxUsers = org?.maxMembers || 3;
   const isFreeTier = org?.subscriptionTier === 'FREE';
@@ -185,7 +186,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                </div>
 
                {/* Max Members Control */}
-               {isOwnerOrAdmin && (
+               {isOwner && (
                  <div className="mt-3 flex items-center justify-between">
                    <span className="text-xs text-[var(--muted)] font-medium">Max Team Members</span>
                    <div className="flex items-center gap-1">
@@ -220,9 +221,12 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
 
           {/* Invitation Flow */}
           {isOwnerOrAdmin && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3">Invite Team Members</h3>
-              <form onSubmit={handleInvite} className="flex items-center gap-2">
+            <div className="opacity-60 cursor-not-allowed">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Invite Team Members</h3>
+                <span className="text-[10px] bg-[var(--sidebar)] border border-[var(--border)] px-2 py-0.5 rounded text-[var(--muted)]">Coming Soon</span>
+              </div>
+              <form onSubmit={(e) => e.preventDefault()} className="flex items-center gap-2 pointer-events-none">
                  <div className="relative flex-1">
                    <Mail className="w-4 h-4 absolute left-3 top-2.5 text-[var(--muted)]" />
                    <input 
@@ -230,14 +234,14 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                      required
                      value={inviteEmail}
                      onChange={e => setInviteEmail(e.target.value)}
-                     disabled={isAtLimit}
+                     disabled={true}
                      placeholder="colleague@company.com" 
                      className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-[var(--color-brand-500)] disabled:opacity-50"
                    />
                  </div>
                  <button 
-                   type="submit" 
-                   disabled={isAtLimit || !inviteEmail}
+                   type="button" 
+                   disabled={true}
                    className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                  >
                    <UserPlus className="w-4 h-4" />
