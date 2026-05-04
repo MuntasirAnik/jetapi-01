@@ -10,6 +10,7 @@ import RightSidebar from "@/components/RightSidebar";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
 import VariablesPanel from "@/components/VariablesPanel";
 import DocumentationPanel from "@/components/DocumentationPanel";
+import CommentsPanel from "@/components/CommentsPanel";
 import StyledSelect from "@/components/StyledSelect";
 import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
@@ -704,6 +705,17 @@ export default function Home() {
                   
                   const data = await res.json();
                   setResponseData(data);
+
+                  // Save to History
+                  window.dispatchEvent(new CustomEvent('jetapi-history-push', { detail: {
+                    method: reqData.method || 'GET',
+                    url: reqData.url || '',
+                    name: activeRequest?.name || 'Untitled',
+                    status: data.status,
+                    timeMs: data.timeMs || 0,
+                    timestamp: new Date().toISOString(),
+                    request: { ...activeRequest, _isNew: undefined },
+                  }}));
                 } catch (err: any) {
                   setResponseData({ error: err.message });
                 } finally {
@@ -789,6 +801,13 @@ export default function Home() {
            request={activeRequest} 
            onClose={() => setRightPanelOpen(null)} 
            envVariables={[...globalVariables, ...envVariables]}
+        />
+      )}
+
+      {rightPanelOpen === 'comments' && activeRequest && (
+        <CommentsPanel
+          request={activeRequest}
+          onClose={() => setRightPanelOpen(null)}
         />
       )}
 

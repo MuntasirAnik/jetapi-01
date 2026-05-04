@@ -21,6 +21,10 @@ import { OrganizationUser } from './organizations/organization-user.entity';
 import { Notification } from './notifications/notification.entity';
 import { NotificationsModule } from './notifications/notifications.module';
 import { InitModule } from './init/init.module';
+import { ActivityModule } from './activity/activity.module';
+import { Activity } from './activity/activity.entity';
+import { CommentsModule } from './comments/comments.module';
+import { Comment } from './comments/comment.entity';
 
 @Module({
   imports: [
@@ -45,7 +49,7 @@ import { InitModule } from './init/init.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification],
+          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment],
           synchronize: true, // Use carefully in production
         };
       },
@@ -61,6 +65,8 @@ import { InitModule } from './init/init.module';
     OrganizationsModule,
     NotificationsModule,
     InitModule,
+    ActivityModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

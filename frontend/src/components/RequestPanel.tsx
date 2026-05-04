@@ -1257,7 +1257,7 @@ const getMethodColor = (method: string) => {
               value={request.testScript || ""}
               onChange={e => onChange({...request, testScript: e.target.value})}
               className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
-              placeholder="// Write Javascript tests to execute after response is received&#10;pm.test('Status code is 200', function () {&#10;    pm.response.to.have.status(200);&#10;});" />
+              placeholder={"// Write Javascript tests to execute after response is received\npm.test('Status code is 200', function () {\n    pm.response.to.have.status(200);\n});"} />
           </div>
         )}
         {activeTab === "Docs" && (

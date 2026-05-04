@@ -2,7 +2,7 @@
 import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
-import { Settings, Eye, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell } from "lucide-react";
+import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell } from "lucide-react";
 import EnvironmentManager from "./EnvironmentManager";
 import TeamSettingsModal from "./TeamSettingsModal";
 import WorkspaceSettingsModal from "./WorkspaceSettingsModal";
@@ -340,9 +340,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
               )}
             </a>
             <ThemeToggle />
-            <button className="text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors" title="Quick Look">
-              <Eye className="w-4 h-4" />
-            </button>
+
             {/* Manage Environments button removed as per request */}
           </div>
         </div>

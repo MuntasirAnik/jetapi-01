@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { 
   User, LogOut, Layout, Folder, Activity, ChevronLeft, 
   ShieldCheck, Download, Import, Trash2, Users, UserPlus, X, Server, Upload, Search, Loader2,
-  Eye, EyeOff
+  Eye, EyeOff, Megaphone
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
@@ -43,6 +43,13 @@ export default function UserDashboard() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Preferences
+  const [announcementsOff, setAnnouncementsOff] = useState(false);
+
+  useEffect(() => {
+    setAnnouncementsOff(localStorage.getItem('jetapi_announcements_off') === 'true');
+  }, []);
 
   useEffect(() => {
     if (activeOrganizationId && profile?.user?.id) {
@@ -281,10 +288,6 @@ export default function UserDashboard() {
           <h1 className="text-xl font-bold flex items-center gap-2">
             <User className="text-[var(--color-brand-500)]" /> <span className="truncate">{user.name || user.email.split('@')[0]}</span>
           </h1>
-          <span className={`text-xs font-bold ml-8 flex items-center gap-1 capitalize ${userRole === 'OWNER' ? 'text-purple-500' : userRole === 'ADMIN' ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
-            {userRole === 'OWNER' ? <ShieldAlert className="w-3 h-3"/> : userRole === 'ADMIN' ? <Shield className="w-3 h-3"/> : <User className="w-3 h-3"/>}
-            {userRole.toLowerCase()}
-          </span>
         </div>
 
         <nav className="flex flex-col gap-1">
@@ -340,11 +343,7 @@ export default function UserDashboard() {
               <div>
                 <h3 className="text-xl font-bold">{user.name || user.email.split('@')[0]}</h3>
                 <p className="text-sm font-medium text-[var(--muted)] mb-1">{user.email}</p>
-                <p className="text-[var(--muted)] text-sm mb-2">Joined {new Date(user.createdAt).toLocaleDateString()}</p>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[var(--sidebar)] border border-[var(--border)] capitalize ${userRole === 'OWNER' ? 'text-purple-500' : userRole === 'ADMIN' ? 'text-blue-500' : 'text-[var(--foreground)]'}`}>
-                    {userRole === 'OWNER' ? <ShieldAlert className="w-3 h-3"/> : userRole === 'ADMIN' ? <Shield className="w-3 h-3"/> : <User className="w-3 h-3"/>}
-                    {userRole.toLowerCase()}
-                  </span>
+                <p className="text-[var(--muted)] text-sm">Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).replace(/^(\w+)/, (m: string) => m.toUpperCase())}</p>
               </div>
             </div>
             <h3 className="text-lg font-semibold mb-4">Your Statistics</h3>
@@ -430,6 +429,36 @@ export default function UserDashboard() {
               </div>
             </div>
 
+            <div className="border-t border-[var(--border)] pt-8 mb-8">
+              <h3 className="text-lg font-semibold mb-4">Preferences</h3>
+              <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold flex items-center gap-2">
+                      <Megaphone className="w-4 h-4 text-[var(--color-brand-500)]" /> Announcements Bar
+                    </h4>
+                    <p className="text-xs text-[var(--muted)] mt-1">Show the scrolling announcements strip below the top bar.</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newVal = !announcementsOff;
+                      setAnnouncementsOff(newVal);
+                      if (newVal) localStorage.setItem('jetapi_announcements_off', 'true');
+                      else localStorage.removeItem('jetapi_announcements_off');
+                      window.dispatchEvent(new Event('jetapi-announcements-toggle'));
+                    }}
+                    className={`relative w-11 h-6 rounded-full transition-colors duration-200 cursor-pointer ${
+                      !announcementsOff ? 'bg-[var(--color-brand-500)]' : 'bg-[var(--border)]'
+                    }`}
+                  >
+                    <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                      !announcementsOff ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    }`}></div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 
@@ -482,7 +511,7 @@ export default function UserDashboard() {
                   <Users className="w-5 h-5 text-blue-500" />
                   <div>
                     <h4 className="font-medium text-sm">{col.name}</h4>
-                    <p className="text-xs text-[var(--muted)]">Owner ID: {col.ownerId?.substring(0,8)}</p>
+                    <p className="text-xs text-[var(--muted)]">Shared with you</p>
                   </div>
                   <div className="ml-auto flex items-center gap-1">
                     <button onClick={() => handleExport(col.id, col.name)} className="p-1.5 text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card)] rounded transition-colors" title="Export">
@@ -565,21 +594,6 @@ export default function UserDashboard() {
                                 </div>
                               )}
                               <span>{u.email}</span>
-                                 <div className="inline-flex items-center gap-1.5 bg-[var(--sidebar)] px-2 py-0.5 rounded-full text-[10px] font-bold border border-[var(--border)] capitalize">
-                                  {(() => {
-                                    const actualRole = allUsers.find(au => au.id === u.id)?.role || 'MEMBER';
-                                    const isOwner = actualRole === 'OWNER';
-                                    const isAdmin = actualRole === 'ADMIN';
-                                    return (
-                                      <>
-                                        {isOwner ? <ShieldAlert className="w-3 h-3 text-purple-500" /> : isAdmin ? <Shield className="w-3 h-3 text-blue-500" /> : <User className="w-3 h-3 text-[var(--muted)]" />}
-                                        <span className={isOwner ? "text-purple-500" : isAdmin ? "text-blue-500" : "text-[var(--foreground)]"}>
-                                          {actualRole.toLowerCase()}
-                                        </span>
-                                      </>
-                                    );
-                                  })()}
-                                 </div>
                             </div>
                             <button onClick={() => handleUnshare(col.id, u.id)} disabled={revokingUserId === u.id} className="text-red-500 hover:text-white hover:bg-red-500 p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Revoke Access">
                               {revokingUserId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}

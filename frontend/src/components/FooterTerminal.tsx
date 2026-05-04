@@ -114,14 +114,14 @@ export default function FooterTerminal() {
     <div className="shrink-0 flex flex-col">
       {/* Console Panel */}
       {isOpen && (
-        <div className="border-t border-[var(--border)] bg-[#1a1a1a] flex flex-col anim-slide-up" style={{ height: panelHeight }}>
+        <div className="border-t border-[var(--border)] bg-[var(--sidebar)] flex flex-col anim-slide-up" style={{ height: panelHeight }}>
           {/* Resize handle */}
           <div
             className="h-1 cursor-ns-resize hover:bg-[var(--color-brand-500)]/40 transition-colors shrink-0"
             onMouseDown={handleMouseDown}
           />
           {/* Toolbar */}
-          <div className="flex items-center justify-between px-3 py-1 border-b border-[var(--border)] bg-[#1e1e1e] shrink-0">
+          <div className="flex items-center justify-between px-3 py-1 border-b border-[var(--border)] bg-[var(--card)] shrink-0">
             <div className="flex items-center gap-2">
               <Terminal className="w-3 h-3 text-[var(--color-brand-500)]" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Console</span>
@@ -149,7 +149,7 @@ export default function FooterTerminal() {
               logs.map((log) => {
                 const ts = log.timestamp.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
                 return (
-                  <div key={log.id} className="flex items-start gap-2 py-px hover:bg-white/[0.02] rounded px-1 -mx-1">
+                  <div key={log.id} className="flex items-start gap-2 py-px hover:bg-[var(--border)]/30 rounded px-1 -mx-1">
                     <span className="text-[var(--muted)]/40 shrink-0 tabular-nums">{ts}</span>
                     {log.type === "request" && (
                       <>

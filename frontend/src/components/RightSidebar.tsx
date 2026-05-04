@@ -16,8 +16,8 @@ export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: 
         <FileText className="w-[18px] h-[18px]" strokeWidth={2.5} />
       </button>
       <button 
-        onClick={() => notImplemented("Comments")}
-        className="p-1.5 text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] rounded transition-colors" 
+        onClick={() => onTogglePanel("comments")}
+        className={`p-1.5 rounded transition-colors ${activePanel === 'comments' ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]'}`} 
         title="Comments"
       >
         <MessageSquare className="w-[18px] h-[18px]" strokeWidth={2.5} />
