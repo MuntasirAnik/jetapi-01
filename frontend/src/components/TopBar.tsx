@@ -153,7 +153,8 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
               <span>JetAPI</span>
             </a>
 
-           {/* Team Dropdown */}
+           {/* Team & Workspace Dropdowns - hidden for admins */}
+           {organizations.length > 0 && localUser?.role !== 'SUPER_ADMIN' && localUser?.role !== 'ADMIN' ? (<>
            <div className="relative" ref={orgDropdownRef}>
               <div 
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer transition-colors ${isOrgDropdownOpen ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
@@ -203,7 +204,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                 </div>
               )}
            </div>
-           
+
            <div className="relative" ref={dropdownRef}>
               <div 
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer transition-colors ${isWsDropdownOpen ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
@@ -218,7 +219,6 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
 
               {isWsDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 w-72 bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl z-[9999] overflow-hidden flex flex-col">
-                  {/* Search Map */}
                   <div className="p-2 border-b border-[var(--border)] relative bg-[var(--background)]">
                      <Search className="w-3.5 h-3.5 absolute left-4 top-4 text-[var(--muted)]" />
                      <input 
@@ -229,7 +229,6 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                        autoFocus
                      />
                   </div>
-                  {/* Dynamic Populated List */}
                   <div className="max-h-64 overflow-y-auto p-1 flex flex-col gap-0.5">
                      <div className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Workspaces</div>
                      {workspaces.filter((w: any) => (w.name || "").toLowerCase().includes(wsSearch.toLowerCase())).map((ws: any) => (
@@ -248,7 +247,6 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                        </button>
                      ))}
                   </div>
-                  {/* Creation Action */}
                   <div className="border-t border-[var(--border)] p-1 bg-[var(--background)]">
                     <button 
                       onClick={() => { setIsWsDropdownOpen(false); setIsWsSettingsOpen(true); }}
@@ -268,6 +266,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                 </div>
               )}
            </div>
+           </>) : null}
         </div>
 
         {/* Right Nav (Environments & Profile) */}
@@ -333,7 +332,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
             </div>
             
             
-            <a href="/profile" className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all" title="User Profile">
+            <a href={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? '/admin' : '/profile'} className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all" title={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? 'Admin Panel' : 'User Profile'}>
               {localUser?.avatarMimeType ? (
                 <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" />
               ) : (

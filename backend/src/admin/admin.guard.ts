@@ -21,7 +21,7 @@ export class AdminGuard implements CanActivate {
     if (!userId) throw new ForbiddenException('Not authenticated');
 
     const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user || user.role !== 'SUPER_ADMIN') {
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN')) {
       throw new ForbiddenException('Admin access required');
     }
 

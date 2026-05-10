@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
@@ -22,19 +22,27 @@ export class AdminController {
     return this.adminService.getAllUsers(search);
   }
 
+  @Post('users')
+  createAdminUser(@Body() body: { name: string; email: string; password: string }) {
+    return this.adminService.createAdminUser(body);
+  }
+
   @Put('users/:id')
-  updateUser(@Param('id') id: string, @Body() body: { role?: string; name?: string }) {
-    return this.adminService.updateUser(id, body);
+  async updateUser(@Param('id') id: string, @Body() body: { role?: string; name?: string }, @Req() req: any) {
+    const requester = await this.adminService.getUserRole(req.user.sub);
+    return this.adminService.updateUser(id, body, requester);
   }
 
   @Delete('users/:id')
-  deleteUser(@Param('id') id: string, @Req() req: any) {
-    return this.adminService.deleteUser(id, req.user.sub);
+  async deleteUser(@Param('id') id: string, @Req() req: any) {
+    const requester = await this.adminService.getUserRole(req.user.sub);
+    return this.adminService.deleteUser(id, req.user.sub, requester);
   }
 
   @Put('users/:id/toggle-active')
-  toggleUserActive(@Param('id') id: string, @Req() req: any) {
-    return this.adminService.toggleUserActive(id, req.user.sub);
+  async toggleUserActive(@Param('id') id: string, @Req() req: any) {
+    const requester = await this.adminService.getUserRole(req.user.sub);
+    return this.adminService.toggleUserActive(id, req.user.sub, requester);
   }
 
   // ── Organizations ──
@@ -86,5 +94,27 @@ export class AdminController {
       year ? parseInt(year) : undefined,
       month ? parseInt(month) : undefined,
     );
+  }
+
+  // ── Banners ──
+
+  @Get('banners')
+  getBanners() {
+    return this.adminService.getAllBanners();
+  }
+
+  @Post('banners')
+  createBanner(@Body() body: { text: string }) {
+    return this.adminService.createBanner(body.text);
+  }
+
+  @Put('banners/:id')
+  updateBanner(@Param('id') id: string, @Body() body: { text?: string; isActive?: boolean; sortOrder?: number; isDeleted?: boolean }) {
+    return this.adminService.updateBanner(id, body);
+  }
+
+  @Delete('banners/:id')
+  deleteBanner(@Param('id') id: string) {
+    return this.adminService.deleteBanner(id);
   }
 }

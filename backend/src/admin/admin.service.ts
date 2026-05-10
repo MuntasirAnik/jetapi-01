@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -8,7 +8,9 @@ import { Collection } from '../collections/collection.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 import { PlanOverride } from './plan-override.entity';
 import { Payment } from '../subscriptions/payment.entity';
+import { Banner } from './banner.entity';
 import { PLANS, PlanId } from '../subscriptions/plans.config';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AdminService {
@@ -27,7 +29,28 @@ export class AdminService {
     private overrideRepo: Repository<PlanOverride>,
     @InjectRepository(Payment)
     private paymentRepo: Repository<Payment>,
-  ) {}
+    @InjectRepository(Banner)
+    private bannerRepo: Repository<Banner>,
+  ) {
+    this.seedDefaultBanners();
+  }
+
+  // ── Admin User Creation ──
+
+  async createAdminUser(data: { name: string; email: string; password: string }) {
+    const existing = await this.userRepo.findOneBy({ email: data.email });
+    if (existing) throw new BadRequestException('A user with this email already exists');
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    const user = this.userRepo.create({
+      name: data.name,
+      email: data.email,
+      passwordHash,
+      role: 'ADMIN',
+      isActive: true,
+    });
+    const saved = await this.userRepo.save(user);
+    return { id: saved.id, name: saved.name, email: saved.email, role: saved.role };
+  }
 
   // ── Stats ──
 
@@ -63,6 +86,13 @@ export class AdminService {
       totalPayments: payments.length,
       planBreakdown,
     };
+  }
+
+  // ── Helpers ──
+
+  async getUserRole(userId: string): Promise<string> {
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['role'] });
+    return user?.role || 'USER';
   }
 
   // ── Users ──
@@ -105,9 +135,12 @@ export class AdminService {
     return result;
   }
 
-  async updateUser(userId: string, data: { role?: string; name?: string }) {
+  async updateUser(userId: string, data: { role?: string; name?: string }, requesterRole?: string) {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+    if (user.role === 'SUPER_ADMIN' && requesterRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Only Super Admins can modify other Super Admins');
+    }
 
     if (data.role) user.role = data.role;
     if (data.name !== undefined) user.name = data.name;
@@ -115,19 +148,25 @@ export class AdminService {
     return this.userRepo.save(user);
   }
 
-  async deleteUser(userId: string, requesterId: string) {
+  async deleteUser(userId: string, requesterId: string, requesterRole?: string) {
     if (userId === requesterId) throw new ForbiddenException('You cannot deactivate yourself.');
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+    if (user.role === 'SUPER_ADMIN' && requesterRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Only Super Admins can deactivate other Super Admins');
+    }
     user.isActive = false;
     await this.userRepo.save(user);
     return { deactivated: true };
   }
 
-  async toggleUserActive(userId: string, requesterId: string) {
+  async toggleUserActive(userId: string, requesterId: string, requesterRole?: string) {
     if (userId === requesterId) throw new ForbiddenException('You cannot deactivate yourself.');
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+    if (user.role === 'SUPER_ADMIN' && requesterRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Only Super Admins can modify other Super Admins');
+    }
     user.isActive = !user.isActive;
     await this.userRepo.save(user);
     return { isActive: user.isActive };
@@ -279,5 +318,51 @@ export class AdminService {
       year: year || new Date().getFullYear(),
       month: month || new Date().getMonth() + 1,
     };
+  }
+
+  // ── Banners ──
+
+  private async seedDefaultBanners() {
+    const count = await this.bannerRepo.count();
+    if (count > 0) return;
+    const defaults = [
+      '🚀 JetAPI v2.0 — History panel is now live! Track all your requests automatically.',
+      '💡 Tip: Use {{variables}} in your URLs and headers for dynamic environments.',
+      '⌨️ Shortcut: Press Ctrl+S (⌘+S) to save your request instantly.',
+      '🔗 Share collections with your team — right-click any collection → Share.',
+      '🌙 Toggle between dark and light themes from the top bar.',
+    ];
+    const banners = defaults.map((text, i) => this.bannerRepo.create({ text, isActive: true, sortOrder: i }));
+    await this.bannerRepo.save(banners);
+  }
+
+  async getAllBanners() {
+    return this.bannerRepo.find({ order: { isDeleted: 'ASC', sortOrder: 'ASC', createdAt: 'ASC' } });
+  }
+
+  async getActiveBanners() {
+    return this.bannerRepo.find({ where: { isActive: true, isDeleted: false }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
+  }
+
+  async createBanner(text: string) {
+    const maxSort = await this.bannerRepo.maximum('sortOrder') || 0;
+    const banner = this.bannerRepo.create({ text, isActive: true, sortOrder: maxSort + 1 });
+    return this.bannerRepo.save(banner);
+  }
+
+  async updateBanner(id: string, data: { text?: string; isActive?: boolean; sortOrder?: number; isDeleted?: boolean }) {
+    const banner = await this.bannerRepo.findOneBy({ id });
+    if (!banner) throw new NotFoundException('Banner not found');
+    Object.assign(banner, data);
+    return this.bannerRepo.save(banner);
+  }
+
+  async deleteBanner(id: string) {
+    const banner = await this.bannerRepo.findOneBy({ id });
+    if (!banner) throw new NotFoundException('Banner not found');
+    banner.isDeleted = true;
+    banner.isActive = false;
+    await this.bannerRepo.save(banner);
+    return { deleted: true };
   }
 }

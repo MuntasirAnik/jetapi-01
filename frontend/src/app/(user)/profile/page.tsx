@@ -294,20 +294,29 @@ export default function UserDashboard() {
           <button onClick={() => setActiveTab('overview')} className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'overview' ? 'bg-[var(--card)] text-[var(--color-brand-500)] shadow-sm' : 'hover:bg-[var(--card)] text-[var(--muted)]'}`}>
             <Activity className="w-4 h-4" /> Overview
           </button>
-          <button onClick={() => setActiveTab('collections')} className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'collections' ? 'bg-[var(--card)] text-[var(--color-brand-500)] shadow-sm' : 'hover:bg-[var(--card)] text-[var(--muted)]'}`}>
-            <Folder className="w-4 h-4" /> My Collections
-          </button>
-          {ownedCollections.length > 0 && (
-            <button onClick={() => setActiveTab('access')} className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'access' ? 'bg-[var(--card)] text-[var(--color-brand-500)] shadow-sm' : 'hover:bg-[var(--card)] text-[var(--muted)]'}`}>
-              <Users className="w-4 h-4" /> Access Control
+          {user.role !== 'SUPER_ADMIN' && (
+            <>
+              <button onClick={() => setActiveTab('collections')} className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'collections' ? 'bg-[var(--card)] text-[var(--color-brand-500)] shadow-sm' : 'hover:bg-[var(--card)] text-[var(--muted)]'}`}>
+                <Folder className="w-4 h-4" /> My Collections
+              </button>
+              {ownedCollections.length > 0 && (
+                <button onClick={() => setActiveTab('access')} className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'access' ? 'bg-[var(--card)] text-[var(--color-brand-500)] shadow-sm' : 'hover:bg-[var(--card)] text-[var(--muted)]'}`}>
+                  <Users className="w-4 h-4" /> Access Control
+                </button>
+              )}
+              <button onClick={() => router.push('/users')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
+                <UserPlus className="w-4 h-4" /> Platform Users
+              </button>
+              <button onClick={() => router.push('/billing')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
+                <CreditCard className="w-4 h-4" /> Billing & Subscription
+              </button>
+            </>
+          )}
+          {user.role === 'SUPER_ADMIN' && (
+            <button onClick={() => router.push('/admin')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
+              <Shield className="w-4 h-4" /> Admin Panel
             </button>
           )}
-          <button onClick={() => router.push('/users')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
-            <UserPlus className="w-4 h-4" /> Platform Users
-          </button>
-          <button onClick={() => router.push('/billing')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
-            <CreditCard className="w-4 h-4" /> Billing & Subscription
-          </button>
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">

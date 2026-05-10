@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
+import { BannersController } from './banners.controller';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { PlanOverride } from './plan-override.entity';
+import { Banner } from './banner.entity';
 import { User } from '../users/user.entity';
 import { Organization } from '../organizations/organization.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
@@ -22,13 +24,14 @@ import { Payment } from '../subscriptions/payment.entity';
       Collection,
       Subscription,
       Payment,
+      Banner,
     ]),
     JwtModule.register({
       secret: 'YOUR_SECRET_KEY',
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  controllers: [AdminController],
+  controllers: [AdminController, BannersController],
   providers: [AdminService, AdminGuard],
   exports: [AdminService],
 })

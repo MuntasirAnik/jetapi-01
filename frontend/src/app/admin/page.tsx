@@ -9,9 +9,10 @@ import {
   LayoutDashboard, Users, Building2, CreditCard, Sliders, ChevronLeft,
   Search, Shield, Trash2, UserCog, Crown, Save, RotateCcw, Edit3,
   DollarSign, ChevronRight, Smartphone, Calendar, Ban, CheckCircle,
+  Megaphone, Plus, Eye, EyeOff, GripVertical, Pencil,
 } from "lucide-react";
 
-type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments";
+type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function AdminPage() {
   const [subs, setSubs] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [payments, setPayments] = useState<any>(null);
+  const [banners, setBanners] = useState<any[]>([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -89,6 +91,11 @@ export default function AdminPage() {
           if (res.ok) setPayments(await res.json());
           break;
         }
+        case "banners": {
+          const res = await apiFetch("/admin/banners");
+          if (res.ok) setBanners(await res.json());
+          break;
+        }
       }
     } catch (e) {
       console.error(e);
@@ -111,7 +118,7 @@ export default function AdminPage() {
   };
 
   const handleToggleAdmin = async (id: string, currentRole: string) => {
-    const newRole = currentRole === "SUPER_ADMIN" ? "USER" : "SUPER_ADMIN";
+    const newRole = (currentRole === "ADMIN" || currentRole === "SUPER_ADMIN") ? "USER" : "ADMIN";
     if (!(await confirmDialog(`Change role to ${newRole}?`))) return;
     const res = await apiFetch(`/admin/users/${id}`, {
       method: "PUT",
@@ -119,7 +126,10 @@ export default function AdminPage() {
       body: JSON.stringify({ role: newRole }),
     });
     if (res.ok) { toast.success(`Role updated to ${newRole}`); loadTabData(); }
-    else toast.error("Failed to update role");
+    else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.message || "Failed to update role");
+    }
   };
 
   const handleDeleteOrg = async (id: string, name: string) => {
@@ -156,6 +166,7 @@ export default function AdminPage() {
     { id: "subscriptions", label: "Subscriptions", icon: <CreditCard className="w-4 h-4" /> },
     { id: "plans", label: "Plan Config", icon: <Sliders className="w-4 h-4" /> },
     { id: "payments", label: "Payments", icon: <DollarSign className="w-4 h-4" /> },
+    { id: "banners", label: "Announcements", icon: <Megaphone className="w-4 h-4" /> },
   ];
 
   return (
@@ -185,14 +196,14 @@ export default function AdminPage() {
           ))}
         </nav>
 
-        <div className="mt-auto flex flex-col gap-2">
+        <div className="mt-auto">
           <button
             onClick={() => {
               localStorage.removeItem("token");
               localStorage.removeItem("user");
               router.push("/login");
             }}
-            className="text-sm text-red-400 hover:text-red-300 flex items-center gap-2 border-t border-[var(--border)] pt-4 px-2"
+            className="text-sm text-red-400 hover:text-white hover:bg-red-500 flex items-center gap-2 border-t border-[var(--border)] pt-4 px-3 py-2 rounded transition-colors w-full"
           >
             <ChevronLeft className="w-4 h-4" /> Logout
           </button>
@@ -212,12 +223,14 @@ export default function AdminPage() {
               onDelete={handleDeleteUser}
               onToggleAdmin={handleToggleAdmin}
               onToggleActive={handleToggleActive}
+              currentUserRole={(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role; } catch { return 'ADMIN'; } })()}
             />
           )}
           {tab === "organizations" && <OrganizationsTab orgs={orgs} onDelete={handleDeleteOrg} />}
           {tab === "subscriptions" && <SubscriptionsTab subs={subs} onOverride={handleOverridePlan} />}
           {tab === "plans" && <PlansTab plans={plans} onReload={loadTabData} />}
           {tab === "payments" && <PaymentsTab data={payments} onReload={loadTabData} />}
+          {tab === "banners" && <BannersTab banners={banners} onReload={loadTabData} />}
         </div>
       </div>
     </div>
@@ -229,58 +242,207 @@ function OverviewTab({ stats }: { stats: any }) {
   if (!stats) return null;
 
   const cards = [
-    { label: "Total Users", value: stats.totalUsers, color: "text-blue-400" },
-    { label: "Organizations", value: stats.totalOrgs, color: "text-emerald-400" },
-    { label: "Collections", value: stats.totalCollections, color: "text-[var(--color-brand-500)]" },
-    { label: "Active Subscriptions", value: stats.totalSubscriptions, color: "text-violet-400" },
-    { label: "Total Revenue", value: `$${stats.totalRevenue || 0}`, color: "text-green-400" },
-    { label: "Payments", value: stats.totalPayments || 0, color: "text-amber-400" },
+    { label: "Total Users", value: stats.totalUsers, icon: <Users className="w-5 h-5" />, gradient: "from-blue-500/20 to-blue-600/5", iconBg: "bg-blue-500/20 text-blue-400", border: "border-blue-500/20" },
+    { label: "Organizations", value: stats.totalOrgs, icon: <Building2 className="w-5 h-5" />, gradient: "from-emerald-500/20 to-emerald-600/5", iconBg: "bg-emerald-500/20 text-emerald-400", border: "border-emerald-500/20" },
+    { label: "Collections", value: stats.totalCollections, icon: <Sliders className="w-5 h-5" />, gradient: "from-violet-500/20 to-violet-600/5", iconBg: "bg-violet-500/20 text-violet-400", border: "border-violet-500/20" },
+    { label: "Subscriptions", value: stats.totalSubscriptions, icon: <CreditCard className="w-5 h-5" />, gradient: "from-amber-500/20 to-amber-600/5", iconBg: "bg-amber-500/20 text-amber-400", border: "border-amber-500/20" },
+    { label: "Total Revenue", value: `$${stats.totalRevenue || 0}`, icon: <DollarSign className="w-5 h-5" />, gradient: "from-green-500/20 to-green-600/5", iconBg: "bg-green-500/20 text-green-400", border: "border-green-500/20" },
+    { label: "Payments", value: stats.totalPayments || 0, icon: <CheckCircle className="w-5 h-5" />, gradient: "from-pink-500/20 to-pink-600/5", iconBg: "bg-pink-500/20 text-pink-400", border: "border-pink-500/20" },
   ];
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-1">Platform Overview</h1>
-      <p className="text-[var(--muted)] text-sm mb-5">System-wide metrics and status</p>
+      {/* Welcome Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-brand-500)] to-[var(--color-brand-600)] flex items-center justify-center shadow-lg shadow-[var(--color-brand-500)]/20">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+            <p className="text-sm text-[var(--muted)]">Platform overview and system metrics</p>
+          </div>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {cards.map((c, i) => (
-          <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-            <p className="text-xs text-[var(--muted)] font-medium uppercase tracking-wider mb-1">{c.label}</p>
-            <p className={`text-3xl font-black ${c.color}`}>{c.value}</p>
+          <div key={i} className={`rounded-xl border ${c.border} bg-gradient-to-br ${c.gradient} p-5 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-200`}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-[var(--muted)] font-semibold uppercase tracking-wider">{c.label}</p>
+              <div className={`w-9 h-9 rounded-lg ${c.iconBg} flex items-center justify-center`}>{c.icon}</div>
+            </div>
+            <p className="text-3xl font-black text-[var(--foreground)]">{c.value}</p>
+            {/* Decorative circle */}
+            <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full bg-white/[0.03] group-hover:bg-white/[0.05] transition-colors"></div>
           </div>
         ))}
       </div>
 
-      {stats.planBreakdown?.length > 0 && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-          <h3 className="text-sm font-bold text-[var(--muted)] uppercase tracking-wider mb-3">Plan Distribution</h3>
-          <div className="flex gap-4">
-            {stats.planBreakdown.map((p: any) => (
-              <div key={p.plan} className="flex items-center gap-2">
-                <span className="text-sm font-semibold">{p.plan}</span>
-                <span className="text-xs bg-[var(--sidebar)] text-[var(--foreground)] px-2 py-0.5 rounded-full font-bold">{p.count}</span>
-              </div>
-            ))}
+      {/* Plan Distribution & System Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Plan Distribution */}
+        {stats.planBreakdown?.length > 0 && (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+            <h3 className="text-sm font-bold text-[var(--foreground)] mb-4 flex items-center gap-2">
+              <Crown className="w-4 h-4 text-amber-400" /> Plan Distribution
+            </h3>
+            <div className="space-y-3">
+              {stats.planBreakdown.map((p: any) => {
+                const total = stats.planBreakdown.reduce((s: number, x: any) => s + parseInt(x.count), 0);
+                const pct = total > 0 ? Math.round((parseInt(p.count) / total) * 100) : 0;
+                return (
+                  <div key={p.plan}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-semibold">{p.plan}</span>
+                      <span className="text-xs text-[var(--muted)]">{p.count} users ({pct}%)</span>
+                    </div>
+                    <div className="h-2 bg-[var(--sidebar)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[var(--color-brand-500)] to-[var(--color-brand-400)] rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* System Health */}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+          <h3 className="text-sm font-bold text-[var(--foreground)] mb-4 flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-green-400" /> System Status
+          </h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-2 border-b border-[var(--border)]">
+              <span className="text-sm text-[var(--muted)]">API Server</span>
+              <span className="text-xs font-semibold bg-green-500/10 text-green-400 px-2.5 py-1 rounded-full">● Online</span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-[var(--border)]">
+              <span className="text-sm text-[var(--muted)]">Database</span>
+              <span className="text-xs font-semibold bg-green-500/10 text-green-400 px-2.5 py-1 rounded-full">● Connected</span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-[var(--border)]">
+              <span className="text-sm text-[var(--muted)]">Active Users</span>
+              <span className="text-sm font-bold">{stats.totalUsers}</span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm text-[var(--muted)]">Platform Version</span>
+              <span className="text-xs font-mono bg-[var(--sidebar)] px-2.5 py-1 rounded-full">v2.0.0</span>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 // ─── Users Tab ───────────────────────────────────────
 function UsersTab({
-  users, search, setSearch, onSearch, onDelete, onToggleAdmin, onToggleActive,
+  users, search, setSearch, onSearch, onDelete, onToggleAdmin, onToggleActive, currentUserRole,
 }: {
   users: any[]; search: string; setSearch: (s: string) => void;
   onSearch: () => void; onDelete: (id: string, email: string) => void;
   onToggleAdmin: (id: string, role: string) => void;
   onToggleActive: (id: string, email: string, isActive: boolean) => void;
+  currentUserRole?: string;
 }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [newAdmin, setNewAdmin] = useState({ name: "", email: "", password: "" });
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateAdmin = async () => {
+    if (!newAdmin.name.trim() || !newAdmin.email.trim() || !newAdmin.password.trim()) {
+      toast.error("All fields are required");
+      return;
+    }
+    if (newAdmin.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await apiFetch("/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newAdmin),
+      });
+      if (res.ok) {
+        toast.success("Admin user created successfully");
+        setNewAdmin({ name: "", email: "", password: "" });
+        setShowCreate(false);
+        onSearch();
+      } else {
+        const data = await res.json();
+        toast.error(data.message || "Failed to create admin");
+      }
+    } catch {
+      toast.error("Failed to create admin");
+    }
+    setCreating(false);
+  };
+
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-1">Users</h1>
-      <p className="text-[var(--muted)] text-sm mb-4">Manage all platform users</p>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Users</h1>
+          <p className="text-[var(--muted)] text-sm">Manage all platform users</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(!showCreate)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${showCreate ? 'bg-[var(--sidebar)] text-[var(--muted)]' : 'bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white'}`}
+        >
+          {showCreate ? <RotateCcw className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          {showCreate ? "Cancel" : "Create Admin"}
+        </button>
+      </div>
+
+      {/* Create Admin Form */}
+      {showCreate && (
+        <div className="mb-6 p-5 rounded-xl border border-[var(--color-brand-500)]/30 bg-[var(--color-brand-500)]/5">
+          <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
+            <Shield className="w-4 h-4 text-[var(--color-brand-500)]" /> Create New Admin User
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={newAdmin.name}
+              onChange={(e) => setNewAdmin({ ...newAdmin, name: e.target.value })}
+              className="bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-500)] transition-colors"
+            />
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={newAdmin.email}
+              onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+              className="bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-500)] transition-colors"
+            />
+            <input
+              type="password"
+              placeholder="Password (min 6 chars)"
+              value={newAdmin.password}
+              onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+              className="bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-500)] transition-colors"
+              onKeyDown={(e) => e.key === "Enter" && handleCreateAdmin()}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-[var(--muted)]">This user will be created with <strong className="text-amber-400">ADMIN</strong> role</p>
+            <button
+              onClick={handleCreateAdmin}
+              disabled={creating}
+              className="flex items-center gap-2 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              {creating ? "Creating..." : "Create Admin"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-4">
         <div className="relative flex-1">
@@ -357,6 +519,7 @@ function UsersTab({
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    {(u.role !== 'SUPER_ADMIN' || currentUserRole === 'SUPER_ADMIN') ? (<>
                     <button
                       onClick={() => onToggleActive(u.id, u.email, u.isActive !== false)}
                       title={u.isActive !== false ? "Deactivate User" : "Activate User"}
@@ -370,11 +533,14 @@ function UsersTab({
                     </button>
                     <button
                       onClick={() => onToggleAdmin(u.id, u.role)}
-                      title={u.role === "SUPER_ADMIN" ? "Revoke Admin" : "Make Admin"}
+                      title={(u.role === "ADMIN" || u.role === "SUPER_ADMIN") ? "Revoke Admin" : "Make Admin"}
                       className="p-1.5 rounded hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                     >
                       <UserCog className="w-4 h-4" />
                     </button>
+                    </>) : (
+                      <span className="text-[10px] text-[var(--muted)] italic">Protected</span>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -760,6 +926,228 @@ function PaymentsTab({ data, onReload }: { data: any; onReload: () => void }) {
         {!loading && payments.length === 0 && (
           <div className="text-center py-8 text-[var(--muted)] text-sm">No payments found for {monthNames[month - 1]} {year}</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Banners Tab ────────────────────────────────────────────
+function BannersTab({ banners, onReload }: { banners: any[]; onReload: () => void }) {
+  const [newText, setNewText] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const reloadAndNotify = () => {
+    onReload();
+    window.dispatchEvent(new Event("banners-updated"));
+  };
+
+  const handleCreate = async () => {
+    if (!newText.trim()) return;
+    setSaving(true);
+    const res = await apiFetch("/admin/banners", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: newText.trim() }),
+    });
+    if (res.ok) {
+      toast.success("Announcement created");
+      setNewText("");
+      reloadAndNotify();
+    } else {
+      toast.error("Failed to create announcement");
+    }
+    setSaving(false);
+  };
+
+  const handleToggle = async (id: string, isActive: boolean) => {
+    const res = await apiFetch(`/admin/banners/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !isActive }),
+    });
+    if (res.ok) {
+      toast.success(`Announcement ${isActive ? "hidden" : "shown"}`);
+      reloadAndNotify();
+    }
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    if (!editText.trim()) return;
+    const res = await apiFetch(`/admin/banners/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: editText.trim() }),
+    });
+    if (res.ok) {
+      toast.success("Announcement updated");
+      setEditingId(null);
+      reloadAndNotify();
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this banner? It can be restored later.")) return;
+    const res = await apiFetch(`/admin/banners/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Announcement deleted");
+      reloadAndNotify();
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    const res = await apiFetch(`/admin/banners/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isDeleted: false, isActive: true }),
+    });
+    if (res.ok) {
+      toast.success("Announcement restored");
+      reloadAndNotify();
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-1">Announcement Management</h2>
+      <p className="text-sm text-[var(--muted)] mb-6">Control the announcement ticker shown to all users below the top bar.</p>
+
+      {/* Add new banner */}
+      <div className="flex gap-3 mb-6">
+        <input
+          type="text"
+          value={newText}
+          onChange={(e) => setNewText(e.target.value)}
+          placeholder="Enter new announcement text (supports emojis 🚀)..."
+          className="flex-1 bg-[var(--sidebar)] border border-[var(--border)] px-4 py-2.5 rounded-lg text-sm outline-none focus:border-[var(--color-brand-500)] transition-colors"
+          onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+        />
+        <button
+          onClick={handleCreate}
+          disabled={saving || !newText.trim()}
+          className="flex items-center gap-2 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+        >
+          <Plus className="w-4 h-4" /> Add Announcement
+        </button>
+      </div>
+
+      {/* Banner list */}
+      <div className="flex flex-col gap-2">
+        {banners.filter(b => !b.isDeleted).map((b, i) => (
+          <div
+            key={b.id}
+            className={`flex items-center gap-3 bg-[var(--card)] border border-[var(--border)] rounded-lg px-4 py-3 group transition-all ${
+              !b.isActive ? "opacity-50" : ""
+            }`}
+          >
+            <span className="text-xs text-[var(--muted)] font-mono w-6 text-center shrink-0">{i + 1}</span>
+
+            {editingId === b.id ? (
+              <input
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                className="flex-1 bg-[var(--sidebar)] border border-[var(--color-brand-500)] px-3 py-1.5 rounded text-sm outline-none"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveEdit(b.id);
+                  if (e.key === "Escape") setEditingId(null);
+                }}
+              />
+            ) : (
+              <span className="flex-1 text-sm truncate">{b.text}</span>
+            )}
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {editingId === b.id ? (
+                <>
+                  <button
+                    onClick={() => handleSaveEdit(b.id)}
+                    className="p-1.5 rounded hover:bg-green-500/20 text-green-400 transition-colors"
+                    title="Save"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="p-1.5 rounded hover:bg-[var(--card)] text-[var(--muted)] transition-colors"
+                    title="Cancel"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleToggle(b.id, b.isActive)}
+                    className={`p-1.5 rounded transition-colors ${
+                      b.isActive
+                        ? "hover:bg-yellow-500/20 text-green-400"
+                        : "hover:bg-green-500/20 text-[var(--muted)]"
+                    }`}
+                    title={b.isActive ? "Hide banner" : "Show banner"}
+                  >
+                    {b.isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingId(b.id);
+                      setEditText(b.text);
+                    }}
+                    className="p-1.5 rounded hover:bg-blue-500/20 text-[var(--muted)] hover:text-blue-400 transition-colors"
+                    title="Edit"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(b.id)}
+                    className="p-1.5 rounded hover:bg-red-500/20 text-[var(--muted)] hover:text-red-400 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Deleted banners section */}
+        {banners.some(b => b.isDeleted) && (
+          <>
+            <div className="mt-6 mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)] flex items-center gap-2">
+              <Trash2 className="w-3.5 h-3.5" /> Deleted Announcements
+            </div>
+            {banners.filter(b => b.isDeleted).map((b) => (
+              <div
+                key={b.id}
+                className="flex items-center gap-3 bg-[var(--card)] border border-dashed border-[var(--border)] rounded-lg px-4 py-3 opacity-40 hover:opacity-70 transition-all"
+              >
+                <span className="flex-1 text-sm truncate line-through">{b.text}</span>
+                <button
+                  onClick={() => handleRestore(b.id)}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs font-semibold transition-colors"
+                  title="Restore banner"
+                >
+                  <RotateCcw className="w-3 h-3" /> Restore
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+
+        {banners.length === 0 && (
+          <div className="text-center py-12 text-[var(--muted)] text-sm border border-dashed border-[var(--border)] rounded-lg">
+            No announcements yet. Add one above to get started.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 p-4 bg-[var(--sidebar)] rounded-lg border border-[var(--border)]">
+        <p className="text-xs text-[var(--muted)]">
+          <strong className="text-[var(--foreground)]">How it works:</strong> Active banners are displayed in the scrolling ticker below the top bar for all users.
+          Users can individually hide the ticker from their Profile → Preferences. Toggle the <Eye className="w-3 h-3 inline" /> icon to show/hide specific banners.
+        </p>
       </div>
     </div>
   );

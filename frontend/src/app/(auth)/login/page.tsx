@@ -24,7 +24,10 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) throw new Error("Invalid credentials");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || "Invalid credentials");
+      }
       
       const data = await res.json();
       localStorage.setItem("token", data.access_token);
@@ -33,7 +36,7 @@ export default function LoginPage() {
       toast.success("Welcome back to JetAPI");
       
       // Redirect based on role
-      if (data.user.role === 'SUPER_ADMIN') {
+      if (data.user.role === 'SUPER_ADMIN' || data.user.role === 'ADMIN') {
         router.push("/admin");
       } else {
         router.push("/");
