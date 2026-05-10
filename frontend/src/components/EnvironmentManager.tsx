@@ -1,5 +1,5 @@
 "use client";
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getApiError } from '@/lib/api';
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, Upload, Download, Eye, EyeOff, Search, Pencil } from "lucide-react";
 import { toast } from "react-toastify";
@@ -132,7 +132,7 @@ export default function EnvironmentManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: envName, variables: cleanedVars })
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to save environment")); return; }
       setVariables([...cleanedVars, { key: "", type: "default", initialValue: "", currentValue: "", enabled: true }]);
       // Re-fetch to sync sidebar list with the saved name, passing the current env ID
       fetchEnvironments(activeEnvId);

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiError } from "@/lib/api";
 import {
   Search, ChevronLeft, Loader2, RotateCcw, Trash2, Info, MoreHorizontal, ChevronDown
 } from "lucide-react";
@@ -88,7 +88,7 @@ export default function TrashPage() {
     setActiveMenu(null);
     try {
       const res = await apiFetch(`/requests/${id}/restore`, { method: "POST" });
-      if (!res.ok) throw new Error("Failed to restore");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to restore request")); return; }
       toast.success("Request restored successfully");
       setItems(prev => prev.filter(item => item.id !== id));
       window.dispatchEvent(new Event("postclone-refresh-sidebar"));
@@ -105,7 +105,7 @@ export default function TrashPage() {
     setDeletingId(id);
     try {
       const res = await apiFetch(`/requests/${id}/permanent`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to delete permanently")); return; }
       toast.success("Permanently deleted");
       setItems(prev => prev.filter(item => item.id !== id));
     } catch {

@@ -354,11 +354,11 @@ export default function UserDashboard() {
               </div>
               <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
                 <div className="flex items-center gap-2 text-[var(--muted)] mb-2"><Folder className="w-4 h-4"/> My Collections</div>
-                <div className="text-3xl font-bold">{ownedCollections.length}</div>
+                <div className="text-3xl font-bold">{stats.collections}</div>
               </div>
               <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
                 <div className="flex items-center gap-2 text-[var(--muted)] mb-2"><Users className="w-4 h-4"/> Shared Collections</div>
-                <div className="text-3xl font-bold">{sharedWithMe.length}</div>
+                <div className="text-3xl font-bold">{stats.sharedCollections}</div>
               </div>
               <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
                 <div className="flex items-center gap-2 text-[var(--muted)] mb-2"><Activity className="w-4 h-4"/> Requests</div>

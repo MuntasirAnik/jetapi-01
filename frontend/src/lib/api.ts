@@ -91,3 +91,17 @@ export function copyToClipboard(text: string) {
     document.body.removeChild(ta);
   }
 }
+
+/**
+ * Extract the actual error message from a failed API response.
+ * NestJS returns { message, error, statusCode } — this grabs `message`.
+ * Falls back to the provided default if parsing fails.
+ */
+export async function getApiError(res: Response, fallback = 'Something went wrong'): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.message || data?.error || fallback;
+  } catch {
+    return fallback;
+  }
+}

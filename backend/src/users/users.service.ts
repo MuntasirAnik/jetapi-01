@@ -51,15 +51,20 @@ export class UsersService {
   }
 
   async getUserStats(userId: string) {
-    const [collections, requests, workspaces] = await Promise.all([
+    const [collections, requests, workspaces, sharedCollections] = await Promise.all([
       this.collectionRepository.count({ where: { ownerId: userId } }),
       this.requestRepository.count({ where: { ownerId: userId } }),
       this.workspaceRepository
         .createQueryBuilder('ws')
-        .innerJoin('organization_user', 'ou', 'ou."organizationId"::text = ws."organizationId"::text')
-        .where('ou."userId" = :userId', { userId })
+        .innerJoin('organization', 'org', 'org.id::text = ws."organizationId"::text')
+        .where('org."ownerId" = :userId', { userId })
+        .getCount(),
+      this.collectionRepository
+        .createQueryBuilder('col')
+        .innerJoin('collection_shared_users', 'csu', 'csu."collectionId" = col.id')
+        .where('csu."userId" = :userId', { userId })
         .getCount(),
     ]);
-    return { workspaces, collections, requests };
+    return { workspaces, collections, requests, sharedCollections };
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiError } from "@/lib/api";
 import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import RequestPanel from "@/components/RequestPanel";
@@ -626,7 +626,7 @@ export default function Home() {
                   if (!(await confirmDialog("Are you sure you want to delete this Request? This cannot be undone."))) return;
                   try {
                     const res = await apiFetch(`/requests/${req.id}`, { method: 'DELETE' });
-                    if (!res.ok) throw new Error("Delete failed");
+                    if (!res.ok) { toast.error(await getApiError(res, "Failed to delete request")); return; }
                     toast.success("Request deleted successfully");
                     setOpenRequests(prev => prev.filter(r => r.id !== req.id));
                     setActiveRequestId(null);
@@ -1194,6 +1194,8 @@ export default function Home() {
                        if (wsRes.ok) setSaveWorkspaces(await wsRes.json());
                        window.dispatchEvent(new Event('postclone-refresh-sidebar'));
                        toast.success("Collection created successfully!");
+                     } else {
+                       toast.error(await getApiError(res, "Failed to create collection"));
                      }
                    } catch (e: any) { toast.error("Failed to create collection"); }
                  }

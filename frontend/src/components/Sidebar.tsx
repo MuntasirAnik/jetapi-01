@@ -1,5 +1,5 @@
 "use client";
-import { apiFetch, copyToClipboard } from '@/lib/api';
+import { apiFetch, copyToClipboard, getApiError } from '@/lib/api';
 import { useState, useEffect, useRef } from "react";
 import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
@@ -426,7 +426,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, workspaceId: activeWorkspace })
       });
-      if (!res.ok) throw new Error("Creation failed");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to create collection")); return; }
       window.dispatchEvent(new Event('postclone-refresh-sidebar'));
       toast.success("Collection created");
     } catch (err) {
@@ -445,7 +445,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName })
       });
-      if (!res.ok) throw new Error("Rename failed");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to rename collection")); return; }
       toast.success(`Collection renamed to ${newName}`);
       window.dispatchEvent(new Event('postclone-refresh-sidebar'));
     } catch (err) {
@@ -461,7 +461,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     }
     try {
         const exportRes = await apiFetch(`/collections/${collectionId}/export`);
-        if (!exportRes.ok) throw new Error("Export failed");
+        if (!exportRes.ok) { toast.error(await getApiError(exportRes, "Failed to export collection")); return; }
         const collectionData = await exportRes.json();
         
         collectionData.info.name = `${collectionName} Copy`;
@@ -471,7 +471,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ workspaceId: activeWorkspace, data: collectionData })
         });
-        if (!importRes.ok) throw new Error("Import failed");
+        if (!importRes.ok) { toast.error(await getApiError(importRes, "Failed to duplicate collection")); return; }
         
         toast.success(`Collection duplicated!`);
         window.dispatchEvent(new Event('postclone-refresh-sidebar'));
@@ -492,7 +492,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
       if (!(await confirmDialog(`Are you sure you want to delete ${requestName}?`))) return;
       setIsDeletingId(requestId);
       const res = await apiFetch(`/requests/${requestId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Delete failed");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to delete request")); return; }
       toast.success(`Request deleted`);
       if (activeRequestId === requestId) onSelectRequest(null);
       window.dispatchEvent(new Event('postclone-refresh-sidebar'));

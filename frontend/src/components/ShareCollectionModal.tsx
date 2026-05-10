@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiError } from "@/lib/api";
 import { Search, X, ShieldCheck, User as UserIcon, Loader2, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useDialog } from "./DialogProvider";
@@ -43,13 +43,13 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
       });
-      if (!res.ok) throw new Error((await res.json()).message || "Failed to share collection");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to share collection")); return; }
       toast.success(`Shared with ${email}`);
       setSearchQuery("");
-      fetchData(false); // Reload to get updated sharedUsers without showing generic overlay
+      fetchData(false);
       if (onUpdate) onUpdate();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to share collection");
     } finally {
       setSaving(false);
     }
@@ -62,7 +62,7 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
       const res = await apiFetch(`/collections/${collectionId}/share/${userId}`, {
         method: "DELETE"
       });
-      if (!res.ok) throw new Error("Failed to remove access");
+      if (!res.ok) { toast.error(await getApiError(res, "Failed to remove access")); return; }
       toast.success("Access removed.");
       fetchData(false);
       if (onUpdate) onUpdate();
