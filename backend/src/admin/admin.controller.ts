@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
@@ -28,8 +28,13 @@ export class AdminController {
   }
 
   @Delete('users/:id')
-  deleteUser(@Param('id') id: string) {
-    return this.adminService.deleteUser(id);
+  deleteUser(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteUser(id, req.user.sub);
+  }
+
+  @Put('users/:id/toggle-active')
+  toggleUserActive(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.toggleUserActive(id, req.user.sub);
   }
 
   // ── Organizations ──

@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import {
   User, LogOut, Layout, Folder, Activity, ChevronLeft,
   ShieldCheck, Download, Import, Trash2, Users, UserPlus, X, Server, Upload, Search, Loader2,
-  Eye, EyeOff, Megaphone
+  Eye, EyeOff, Megaphone, CreditCard
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";

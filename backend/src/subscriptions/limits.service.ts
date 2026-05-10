@@ -38,6 +38,7 @@ export class LimitsService {
         ...(override.maxCollections !== null && { maxCollections: override.maxCollections }),
         ...(override.maxRequestsPerCollection !== null && { maxRequestsPerCollection: override.maxRequestsPerCollection }),
         ...(override.maxMembers !== null && { maxMembers: override.maxMembers }),
+        ...(override.maxCollaborators !== null && { maxCollaborators: override.maxCollaborators }),
         ...(override.maxEnvironments !== null && { maxEnvironments: override.maxEnvironments }),
         ...(override.historyDays !== null && { historyDays: override.historyDays }),
         ...(override.maxUploadMb !== null && { maxUploadMb: override.maxUploadMb }),
@@ -153,12 +154,27 @@ export class LimitsService {
       environments = 0;
     }
 
+    // Count total collaborators (shared users across all owned collections)
+    let collaborators = 0;
+    try {
+      const ownedCollections = await this.collectionRepo.find({
+        where: { ownerId: userId },
+        relations: ['sharedUsers'],
+      });
+      for (const col of ownedCollections) {
+        collaborators += (col as any).sharedUsers?.length || 0;
+      }
+    } catch {
+      collaborators = 0;
+    }
+
     return {
       plan,
       limits,
       usage: {
         collections,
         members,
+        collaborators,
         environments,
       },
     };

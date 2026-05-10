@@ -25,6 +25,11 @@ import { ActivityModule } from './activity/activity.module';
 import { Activity } from './activity/activity.entity';
 import { CommentsModule } from './comments/comments.module';
 import { Comment } from './comments/comment.entity';
+import { AdminModule } from './admin/admin.module';
+import { PlanOverride } from './admin/plan-override.entity';
+import { Subscription } from './subscriptions/subscription.entity';
+import { Payment } from './subscriptions/payment.entity';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -49,7 +54,7 @@ import { Comment } from './comments/comment.entity';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment],
+          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment],
           synchronize: true, // Use carefully in production
         };
       },
@@ -67,6 +72,8 @@ import { Comment } from './comments/comment.entity';
     InitModule,
     ActivityModule,
     CommentsModule,
+    AdminModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

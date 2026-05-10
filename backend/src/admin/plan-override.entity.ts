@@ -15,6 +15,9 @@ export class PlanOverride {
   maxMembers: number | null;
 
   @Column({ type: 'int', nullable: true })
+  maxCollaborators: number | null;
+
+  @Column({ type: 'int', nullable: true })
   maxEnvironments: number | null;
 
   @Column({ type: 'int', nullable: true })

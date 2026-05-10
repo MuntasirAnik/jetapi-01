@@ -8,7 +8,7 @@ import { useDialog } from "@/components/DialogProvider";
 import {
   LayoutDashboard, Users, Building2, CreditCard, Sliders, ChevronLeft,
   Search, Shield, Trash2, UserCog, Crown, Save, RotateCcw, Edit3,
-  DollarSign, ChevronRight, Smartphone, Calendar,
+  DollarSign, ChevronRight, Smartphone, Calendar, Ban, CheckCircle,
 } from "lucide-react";
 
 type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments";
@@ -96,10 +96,18 @@ export default function AdminPage() {
   };
 
   const handleDeleteUser = async (id: string, email: string) => {
-    if (!(await confirmDialog(`Permanently delete user ${email}? This cannot be undone.`))) return;
+    if (!(await confirmDialog(`Deactivate user ${email}? They will not be able to login until reactivated.`))) return;
     const res = await apiFetch(`/admin/users/${id}`, { method: "DELETE" });
-    if (res.ok) { toast.success(`Deleted ${email}`); loadTabData(); }
-    else toast.error("Failed to delete user");
+    if (res.ok) { toast.success(`Deactivated ${email}`); loadTabData(); }
+    else toast.error("Failed to deactivate user");
+  };
+
+  const handleToggleActive = async (id: string, email: string, isActive: boolean) => {
+    const action = isActive ? 'Deactivate' : 'Activate';
+    if (!(await confirmDialog(`${action} user ${email}?`))) return;
+    const res = await apiFetch(`/admin/users/${id}/toggle-active`, { method: "PUT" });
+    if (res.ok) { toast.success(`${email} ${isActive ? 'deactivated' : 'activated'}`); loadTabData(); }
+    else { const err = await res.json().catch(() => null); toast.error(err?.message || `Failed to ${action.toLowerCase()} user`); }
   };
 
   const handleToggleAdmin = async (id: string, currentRole: string) => {
@@ -203,6 +211,7 @@ export default function AdminPage() {
               onSearch={loadTabData}
               onDelete={handleDeleteUser}
               onToggleAdmin={handleToggleAdmin}
+              onToggleActive={handleToggleActive}
             />
           )}
           {tab === "organizations" && <OrganizationsTab orgs={orgs} onDelete={handleDeleteOrg} />}
@@ -261,11 +270,12 @@ function OverviewTab({ stats }: { stats: any }) {
 
 // ─── Users Tab ───────────────────────────────────────
 function UsersTab({
-  users, search, setSearch, onSearch, onDelete, onToggleAdmin,
+  users, search, setSearch, onSearch, onDelete, onToggleAdmin, onToggleActive,
 }: {
   users: any[]; search: string; setSearch: (s: string) => void;
   onSearch: () => void; onDelete: (id: string, email: string) => void;
   onToggleAdmin: (id: string, role: string) => void;
+  onToggleActive: (id: string, email: string, isActive: boolean) => void;
 }) {
   return (
     <div>
@@ -295,6 +305,7 @@ function UsersTab({
             <tr className="bg-[var(--sidebar)] text-[var(--muted)] text-xs uppercase tracking-wider">
               <th className="text-left px-4 py-3 font-semibold">User</th>
               <th className="text-left px-4 py-3 font-semibold">Role</th>
+              <th className="text-left px-4 py-3 font-semibold">Status</th>
               <th className="text-left px-4 py-3 font-semibold">Plan</th>
               <th className="text-left px-4 py-3 font-semibold">Joined</th>
               <th className="text-right px-4 py-3 font-semibold">Actions</th>
@@ -302,7 +313,7 @@ function UsersTab({
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {users.map((u) => (
-              <tr key={u.id} className="hover:bg-[var(--sidebar)] transition-colors">
+              <tr key={u.id} className={`hover:bg-[var(--sidebar)] transition-colors ${u.isActive === false ? 'opacity-60' : ''}`}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[var(--color-brand-500)]/20 flex items-center justify-center text-[var(--color-brand-500)] text-xs font-bold uppercase">
@@ -324,6 +335,15 @@ function UsersTab({
                   </span>
                 </td>
                 <td className="px-4 py-3">
+                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded ${
+                    u.isActive !== false
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : "bg-red-500/20 text-red-400"
+                  }`}>
+                    {u.isActive !== false ? <><CheckCircle className="w-3 h-3" /> Active</> : <><Ban className="w-3 h-3" /> Inactive</>}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded ${
                     u.plan === "FREE" ? "bg-[var(--sidebar)] text-[var(--foreground)]" :
                     u.plan === "PRO" ? "bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)]" :
@@ -338,17 +358,22 @@ function UsersTab({
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <button
+                      onClick={() => onToggleActive(u.id, u.email, u.isActive !== false)}
+                      title={u.isActive !== false ? "Deactivate User" : "Activate User"}
+                      className={`p-1.5 rounded transition-colors ${
+                        u.isActive !== false
+                          ? "hover:bg-red-500/10 text-[var(--muted)] hover:text-red-400"
+                          : "hover:bg-emerald-500/10 text-[var(--muted)] hover:text-emerald-400"
+                      }`}
+                    >
+                      {u.isActive !== false ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                    </button>
+                    <button
                       onClick={() => onToggleAdmin(u.id, u.role)}
                       title={u.role === "SUPER_ADMIN" ? "Revoke Admin" : "Make Admin"}
                       className="p-1.5 rounded hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                     >
                       <UserCog className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => onDelete(u.id, u.email)}
-                      className="p-1.5 rounded hover:bg-red-500/10 text-[var(--muted)] hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </td>
@@ -526,6 +551,7 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
     { key: "maxCollections", label: "Max Collections", hint: "-1 = unlimited" },
     { key: "maxRequestsPerCollection", label: "Max Requests/Collection", hint: "-1 = unlimited" },
     { key: "maxMembers", label: "Max Team Members", hint: "" },
+    { key: "maxCollaborators", label: "Max Collaborators", hint: "-1 = unlimited" },
     { key: "maxEnvironments", label: "Max Environments", hint: "-1 = unlimited" },
     { key: "historyDays", label: "History (days)", hint: "" },
     { key: "maxUploadMb", label: "Max Upload (MB)", hint: "" },

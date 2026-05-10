@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -74,6 +74,7 @@ export class AdminService {
         'user.email',
         'user.name',
         'user.role',
+        'user.isActive',
         'user.createdAt',
         'user.stripeCustomerId',
       ]);
@@ -114,11 +115,22 @@ export class AdminService {
     return this.userRepo.save(user);
   }
 
-  async deleteUser(userId: string) {
+  async deleteUser(userId: string, requesterId: string) {
+    if (userId === requesterId) throw new ForbiddenException('You cannot deactivate yourself.');
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    await this.userRepo.remove(user);
-    return { deleted: true };
+    user.isActive = false;
+    await this.userRepo.save(user);
+    return { deactivated: true };
+  }
+
+  async toggleUserActive(userId: string, requesterId: string) {
+    if (userId === requesterId) throw new ForbiddenException('You cannot deactivate yourself.');
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    user.isActive = !user.isActive;
+    await this.userRepo.save(user);
+    return { isActive: user.isActive };
   }
 
   // ── Organizations ──
@@ -202,6 +214,7 @@ export class AdminService {
         if (override.maxCollections !== null) mergedLimits.maxCollections = override.maxCollections;
         if (override.maxRequestsPerCollection !== null) mergedLimits.maxRequestsPerCollection = override.maxRequestsPerCollection;
         if (override.maxMembers !== null) mergedLimits.maxMembers = override.maxMembers;
+        if (override.maxCollaborators !== null) mergedLimits.maxCollaborators = override.maxCollaborators;
         if (override.maxEnvironments !== null) mergedLimits.maxEnvironments = override.maxEnvironments;
         if (override.historyDays !== null) mergedLimits.historyDays = override.historyDays;
         if (override.maxUploadMb !== null) mergedLimits.maxUploadMb = override.maxUploadMb;

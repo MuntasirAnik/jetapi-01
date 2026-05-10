@@ -26,22 +26,14 @@ export default function BillingPage() {
       if (subRes.ok) {
         setSubscription(await subRes.json());
       }
-    } catch (e) {
-      console.error("Failed to load subscription:", e);
-    }
+    } catch { /* Subscriptions module not available */ }
 
     try {
       const usageRes = await apiFetch("/subscriptions/usage");
       if (usageRes.ok) {
-        const data = await usageRes.json();
-        console.log("Usage data:", data);
-        setUsage(data);
-      } else {
-        console.error("Usage API error:", usageRes.status);
+        setUsage(await usageRes.json());
       }
-    } catch (e) {
-      console.error("Failed to load usage:", e);
-    }
+    } catch { /* Subscriptions module not available */ }
 
     setLoading(false);
   };
@@ -319,6 +311,11 @@ export default function BillingPage() {
               max={usage.limits?.maxMembers || 1}
             />
             <UsageMeter
+              label="Collaborators"
+              current={usage.usage?.collaborators || 0}
+              max={usage.limits?.maxCollaborators || 3}
+            />
+            <UsageMeter
               label="Environments"
               current={usage.usage?.environments || 0}
               max={usage.limits?.maxEnvironments || 2}
@@ -334,6 +331,7 @@ export default function BillingPage() {
               { label: "Collections", value: plan.limits?.maxCollections === -1 ? "Unlimited" : plan.limits?.maxCollections || 3 },
               { label: "Requests/Collection", value: plan.limits?.maxRequestsPerCollection === -1 ? "Unlimited" : plan.limits?.maxRequestsPerCollection || 25 },
               { label: "Team Members", value: plan.limits?.maxMembers || 1 },
+              { label: "Collaborators", value: plan.limits?.maxCollaborators === -1 ? "Unlimited" : plan.limits?.maxCollaborators || 3 },
               { label: "Environments", value: plan.limits?.maxEnvironments === -1 ? "Unlimited" : plan.limits?.maxEnvironments || 2 },
               { label: "History", value: `${plan.limits?.historyDays || 7} days` },
               { label: "Upload Size", value: `${plan.limits?.maxUploadMb || 1} MB` },

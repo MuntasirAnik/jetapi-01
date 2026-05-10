@@ -32,6 +32,9 @@ export class User {
   @Column({ default: 'USER' })
   role: string; // 'USER' | 'SUPER_ADMIN'
 
+  @Column({ default: true })
+  isActive: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

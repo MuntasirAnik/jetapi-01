@@ -4,6 +4,7 @@ export interface PlanLimits {
   maxCollections: number;
   maxRequestsPerCollection: number;
   maxMembers: number;
+  maxCollaborators: number;
   maxEnvironments: number;
   sharedCollections: boolean;
   apiDocExport: boolean;
@@ -36,7 +37,8 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     limits: {
       maxCollections: 3,
       maxRequestsPerCollection: 25,
-      maxMembers: 1,
+      maxMembers: 2,
+      maxCollaborators: 3,
       maxEnvironments: 2,
       sharedCollections: false,
       apiDocExport: false,
@@ -46,6 +48,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     features: [
       '3 Collections',
       '25 Requests per collection',
+      '3 Collaborators',
       '2 Environments',
       '7-day request history',
       '1 MB file uploads',
@@ -63,6 +66,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       maxCollections: -1, // unlimited
       maxRequestsPerCollection: -1,
       maxMembers: 3,
+      maxCollaborators: 10,
       maxEnvironments: 10,
       sharedCollections: true,
       apiDocExport: true,
@@ -73,6 +77,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       'Unlimited Collections',
       'Unlimited Requests',
       'Up to 3 team members',
+      '10 Collaborators per collection',
       '10 Environments',
       'Shared collections',
       'API Documentation export',
@@ -93,6 +98,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       maxCollections: -1,
       maxRequestsPerCollection: -1,
       maxMembers: 15,
+      maxCollaborators: -1, // unlimited
       maxEnvironments: -1,
       sharedCollections: true,
       apiDocExport: true,
@@ -102,6 +108,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     features: [
       'Everything in Pro',
       'Up to 15 team members',
+      'Unlimited Collaborators',
       'Unlimited Environments',
       '90-day request history',
       '10 MB file uploads',
