@@ -11,7 +11,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const [loading, setLoading] = useState(true);
   const [org, setOrg] = useState<any>(null);
   const [planData, setPlanData] = useState<any>(null);
-  
+
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
@@ -21,7 +21,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
       if (showLoading) setLoading(true);
       const userStr = localStorage.getItem('user');
       if (userStr) {
-         setCurrentUserEmail(JSON.parse(userStr).email);
+        setCurrentUserEmail(JSON.parse(userStr).email);
       }
 
       const orgRes = await apiFetch(`/organizations/${organizationId}`);
@@ -40,7 +40,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
         if (usageRes.ok) {
           setPlanData(await usageRes.json());
         }
-      } catch {}
+      } catch { }
     } catch (e) {
       console.error(e);
     } finally {
@@ -61,7 +61,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: inviteEmail })
       });
-      
+
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || 'Failed to invite user');
@@ -112,6 +112,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
 
   const currentUserMembership = users.find(u => u.email === currentUserEmail);
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
+  const isOwner = currentUserMembership && currentUserMembership.role === 'OWNER';
 
   const currentPlan = planData?.plan || 'FREE';
   const maxUsers = planData?.limits?.maxMembers || 1;
@@ -157,65 +158,90 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
         </div>
 
         <div className="p-6 flex flex-col gap-6 flex-1 overflow-y-auto">
-          
+
           {/* Billing Context */}
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 flex flex-col gap-3">
-             <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[var(--muted)] uppercase tracking-wider">Plan Details</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${currentPlan === 'FREE' ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)]'} border border-[var(--border)]`}>
-                   {currentPlan} PLAN
-                </span>
-             </div>
-             
-             <div>
-               <div className="flex items-center justify-between text-sm mb-2 font-medium">
-                 <span>Team Seats</span>
-                 <span>{seatsUsed} of {maxUsers === -1 ? '∞' : maxUsers} Used</span>
-               </div>
-               <div className="w-full bg-[var(--sidebar)] h-2 rounded-full overflow-hidden">
-                 <div 
-                   className={`h-full rounded-full transition-all duration-500 ${isAtLimit ? 'bg-red-500' : 'bg-[var(--color-brand-500)]'}`} 
-                   style={{ width: `${maxUsers === -1 ? 10 : Math.min((seatsUsed / maxUsers) * 100, 100)}%` }}
-                 />
-               </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[var(--muted)] uppercase tracking-wider">Plan Details</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${currentPlan === 'FREE' ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)]'} border border-[var(--border)]`}>
+                {currentPlan} PLAN
+              </span>
+            </div>
 
+            <div>
+              <div className="flex items-center justify-between text-sm mb-2 font-medium">
+                <span>Team Seats</span>
+                <span>{seatsUsed} of {maxUsers === -1 ? '∞' : maxUsers} Used</span>
+              </div>
+              <div className="w-full bg-[var(--sidebar)] h-2 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${isAtLimit ? 'bg-red-500' : 'bg-[var(--color-brand-500)]'}`}
+                  style={{ width: `${maxUsers === -1 ? 10 : Math.min((seatsUsed / maxUsers) * 100, 100)}%` }}
+                />
+              </div>
 
-               {isAtLimit && (
-                 <div className="mt-3 flex items-start gap-2 text-xs text-red-400 bg-red-400/10 p-2 rounded">
-                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                   <p>You have reached the {maxUsers}-member limit. <a href="/pricing" className="underline font-semibold hover:text-red-300">Upgrade your plan</a> to add more members.</p>
-                 </div>
-               )}
-             </div>
+              {/* Max Members Control */}
+              {isOwner && (
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-[var(--muted)] font-medium">Max Team Members</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleUpdateMaxMembers(maxUsers - 1)}
+                      disabled={maxUsers <= 1 || maxUsers <= seatsUsed}
+                      className="w-7 h-7 flex items-center justify-center rounded bg-[var(--sidebar)] border border-[var(--border)] text-sm font-bold hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      −
+                    </button>
+                    <span className="w-10 text-center text-sm font-semibold tabular-nums">{maxUsers}</span>
+                    <button
+                      onClick={() => handleUpdateMaxMembers(maxUsers + 1)}
+                      className="w-7 h-7 flex items-center justify-center rounded bg-[var(--sidebar)] border border-[var(--border)] text-sm font-bold hover:bg-[var(--border)] transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isAtLimit && (
+                <div className="mt-3 flex items-start gap-2 text-xs text-red-400 bg-red-400/10 p-2 rounded">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <p>You have reached the {maxUsers}-member limit. <a href="/pricing" className="underline font-semibold hover:text-red-300">Upgrade your plan</a> to add more members.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="border-t border-[var(--border)]"></div>
 
           {/* Invitation Flow */}
           {isOwnerOrAdmin && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3">Invite Team Members</h3>
-              <form onSubmit={handleInvite} className="flex items-center gap-2">
-                 <div className="relative flex-1">
-                   <Mail className="w-4 h-4 absolute left-3 top-2.5 text-[var(--muted)]" />
-                   <input 
-                     type="email" 
-                     required
-                     value={inviteEmail}
-                     onChange={e => setInviteEmail(e.target.value)}
-                     disabled={isAtLimit}
-                     placeholder="colleague@company.com" 
-                     className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-[var(--color-brand-500)] disabled:opacity-50"
-                   />
-                 </div>
-                 <button 
-                   type="submit" 
-                   disabled={isAtLimit || !inviteEmail}
-                   className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                 >
-                   <UserPlus className="w-4 h-4" />
-                   Invite
-                 </button>
+            <div className="opacity-60 cursor-not-allowed">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Invite Team Members</h3>
+                <span className="text-[10px] bg-[var(--sidebar)] border border-[var(--border)] px-2 py-0.5 rounded text-[var(--muted)]">Coming Soon</span>
+              </div>
+              <form onSubmit={(e) => e.preventDefault()} className="flex items-center gap-2 pointer-events-none">
+                <div className="relative flex-1">
+                  <Mail className="w-4 h-4 absolute left-3 top-2.5 text-[var(--muted)]" />
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    disabled={true}
+                    placeholder="colleague@company.com"
+                    className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-[var(--color-brand-500)] disabled:opacity-50"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={true}
+                  className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Invite
+                </button>
               </form>
             </div>
           )}
@@ -236,15 +262,15 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                       <div className="flex flex-col">
                         <span className="text-sm font-medium">{u.email} {u.email === currentUserEmail && <span className="text-[10px] bg-[var(--foreground)] text-[var(--background)] px-1 rounded ml-1">You</span>}</span>
                         <div className="flex items-center gap-1 text-[10px] text-[var(--muted)] mt-0.5">
-                           {u.role === 'OWNER' && <ShieldCheck className="w-3 h-3 text-[var(--color-brand-500)]" />}
-                           {u.role}
+                          {u.role === 'OWNER' && <ShieldCheck className="w-3 h-3 text-[var(--color-brand-500)]" />}
+                          {u.role}
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Can only remove if not self-owner or if admin removing members */}
                     {isOwnerOrAdmin && (u.role !== 'OWNER' || users.length === 1) && u.email !== currentUserEmail && (
-                      <button 
+                      <button
                         onClick={() => handleRemove(u.id, u.email)}
                         className="p-1.5 text-[var(--muted)] hover:bg-red-500/10 hover:text-red-500 rounded transition-colors"
                         title="Remove User"

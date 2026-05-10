@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2 } from "lucide-react";
+import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2, Eye, EyeOff, Wand2 } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
@@ -8,6 +8,8 @@ export default function RequestPanel({ request, onChange, onSend, onSave, onSave
   const [activeTab, setActiveTab] = useState("Params");
   const [isUrlFocused, setIsUrlFocused] = useState(false);
   const [isMethodDropdownOpen, setIsMethodDropdownOpen] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [showBasicPassword, setShowBasicPassword] = useState(false);
   const methodDropdownRef = useRef<HTMLDivElement>(null);
 
   const [varSuggest, setVarSuggest] = useState<{ id: string, show: boolean, filtered: any[], replaceIndex: number, replaceLength: number, cursorPos: number, selectedIndex: number }>({ id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 });
@@ -272,13 +274,14 @@ const getMethodColor = (method: string) => {
       }
       
       const encodedPath = urlObj.pathname + (urlObj.hash ? urlObj.hash : '');
+      const searchString = urlObj.search;
       
       let finalUrl = "";
       if (isRelativeOrVar) {
          // Reconstruct cleanly bypassing dummy.local host
-         finalUrl = currentUrl.split('?')[0];
+         finalUrl = currentUrl.split('?')[0] + searchString;
       } else {
-         finalUrl = urlObj.protocol + "//" + urlObj.host + encodedPath.replace(/%7B/g, '{').replace(/%7D/g, '}');
+         finalUrl = urlObj.protocol + "//" + urlObj.host + encodedPath.replace(/%7B/g, '{').replace(/%7D/g, '}') + searchString;
       }
       
       // Restore {{ and }} which new URL() encodes to %7B and %7D
@@ -373,6 +376,29 @@ const getMethodColor = (method: string) => {
     });
   };
 
+  const renderHighlightedJson = (str: string) => {
+    let htmlContent = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const htmlRegex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
+    htmlContent = htmlContent.replace(htmlRegex, (match) => {
+      let cls = 'text-[var(--foreground)]';
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'text-[#9CDCFE]'; // Key
+        } else {
+          cls = 'text-[#D69D85]'; // String
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'text-[#569CD6] font-semibold';
+      } else if (/null/.test(match)) {
+        cls = 'text-[#569CD6] italic';
+      } else {
+        cls = 'text-[#B5CEA8]'; // Number
+      }
+      return `<span class="${cls}">${match}</span>`;
+    });
+    return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
+  };
+
   const renderGenericKVPTable = (list: any[], setList: (newList: any[]) => void, title?: string, hideEnableLabel?: boolean, disableKey?: boolean) => {
     const allEnabled = list.length > 0 && list.every((item: any) => item.enabled !== false);
 
@@ -438,13 +464,13 @@ const getMethodColor = (method: string) => {
                   {renderVarSuggest(`${title || 'kvp'}-${i}-key`, item.key, (val) => handleChange(i, 'key', val))}
                 </td>
                 <td className="p-0 border-l border-[var(--border)] relative">
-                  <input 
-                    type="text" 
+                  <textarea 
                     value={item.value} 
                     onChange={e => handleChange(i, 'value', e.target.value)} 
                     onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `${title || 'kvp'}-${i}-value` ? { ...prev, show: false } : prev), 150)}
-                    className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
+                    className="w-full bg-transparent px-2 py-1.5 outline-none font-mono min-h-[30px] resize-y" 
                     placeholder="Value" 
+                    rows={1}
                   />
                   {renderVarSuggest(`${title || 'kvp'}-${i}-value`, item.value, (val) => handleChange(i, 'value', val))}
                 </td>
@@ -572,13 +598,13 @@ const getMethodColor = (method: string) => {
                      </div>
                   ) : (
                      <>
-                       <input 
-                         type="text" 
+                       <textarea 
                          value={item.value || ""} 
                          onChange={e => handleChange(i, 'value', e.target.value)} 
                          onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `formdata-${i}-value` ? { ...prev, show: false } : prev), 150)}
-                         className="w-full bg-transparent px-2 py-1.5 outline-none font-mono" 
+                         className="w-full bg-transparent px-2 py-1.5 outline-none font-mono min-h-[30px] resize-y" 
                          placeholder="Value" 
+                         rows={1}
                        />
                        {renderVarSuggest(`formdata-${i}-value`, item.value || "", (val) => handleChange(i, 'value', val))}
                      </>
@@ -653,10 +679,10 @@ const getMethodColor = (method: string) => {
               <div className="flex flex-col gap-2">
                 <label className="text-xs text-[var(--muted)]">Token</label>
                 <div className="relative bg-[var(--card)] border border-[var(--border)] rounded focus-within:border-[var(--color-brand-500)] transition-colors overflow-visible flex">
-                  {/* Invisible Native Input */}
+                  {/* Native Input */}
                   <input 
                     id={`auth-token-${request.id}`}
-                    type="text" 
+                    type={showToken ? "text" : "password"} 
                     value={auth.bearerToken || ''} 
                     onChange={e => handleAuthChange('bearerToken', e.target.value)}
                     onScroll={(e) => {
@@ -664,17 +690,27 @@ const getMethodColor = (method: string) => {
                       if (overlay) overlay.scrollLeft = e.currentTarget.scrollLeft;
                     }}
                     spellCheck={false}
-                    className="w-full bg-transparent p-2 outline-none text-sm font-mono caret-[var(--foreground)] text-transparent selection:bg-[var(--color-brand-500)]/30 z-10"
+                    className={`w-full bg-transparent p-2 pr-10 outline-none text-sm font-mono caret-[var(--foreground)] z-10 ${showToken ? 'text-transparent selection:bg-[var(--color-brand-500)]/30' : 'text-[var(--foreground)]'}`}
                   />
                   
-                  {/* Syntax Highlighter Overlay */}
-                  <div 
-                    id={`token-overlay-${request.id}`}
-                    className="absolute inset-0 p-2 pointer-events-none whitespace-pre text-sm font-mono overflow-hidden z-20"
-                    aria-hidden="true"
+                  {/* Syntax Highlighter Overlay (Only when visible) */}
+                  {showToken && (
+                    <div 
+                      id={`token-overlay-${request.id}`}
+                      className="absolute inset-y-0 left-0 right-10 p-2 pointer-events-none whitespace-pre text-sm font-mono overflow-hidden z-20"
+                      aria-hidden="true"
+                    >
+                      {auth.bearerToken ? renderHighlightedUrl(auth.bearerToken, `auth-token-${request.id}`) : <span className="text-[var(--muted)] opacity-50">Token</span>}
+                    </div>
+                  )}
+
+                  <button 
+                    type="button" 
+                    onClick={() => setShowToken(!showToken)} 
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--foreground)] z-30"
                   >
-                    {auth.bearerToken ? renderHighlightedUrl(auth.bearerToken, `auth-token-${request.id}`) : <span className="text-[var(--muted)] opacity-50">Token</span>}
-                  </div>
+                    {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                   
                   {/* Autocomplete Dropdown */}
                   {renderVarSuggest(`auth-bearerToken`, auth.bearerToken || '', (val) => handleAuthChange('bearerToken', val))}
@@ -700,13 +736,22 @@ const getMethodColor = (method: string) => {
                 </div>
                 <div className="flex flex-col gap-2 relative">
                   <label className="text-xs text-[var(--muted)]">Password</label>
-                  <input 
-                    type="password" 
-                    value={auth.basicPassword || ''} 
-                    onChange={e => handleAuthChange('basicPassword', e.target.value)}
-                    placeholder="Password"
-                    className="bg-[var(--card)] border border-[var(--border)] p-2 rounded w-full outline-none focus:border-[var(--color-brand-500)] text-sm font-mono"
-                  />
+                  <div className="relative flex">
+                    <input 
+                      type={showBasicPassword ? "text" : "password"} 
+                      value={auth.basicPassword || ''} 
+                      onChange={e => handleAuthChange('basicPassword', e.target.value)}
+                      placeholder="Password"
+                      className="bg-[var(--card)] border border-[var(--border)] p-2 pr-10 rounded w-full outline-none focus:border-[var(--color-brand-500)] text-sm font-mono"
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowBasicPassword(!showBasicPassword)} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--foreground)] z-30"
+                    >
+                      {showBasicPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   {renderVarSuggest(`auth-basicPassword`, auth.basicPassword || '', (val) => handleAuthChange('basicPassword', val))}
                 </div>
               </div>
@@ -719,7 +764,15 @@ const getMethodColor = (method: string) => {
 
   const getBodyObj = () => {
     if (!request.body) return { mode: 'none', raw: { language: 'json', data: '' }, formdata: [], urlencoded: [], graphql: { query: '', variables: '' } };
-    if (typeof request.body === 'string') return { mode: 'raw', raw: { language: 'json', data: request.body }, formdata: [], urlencoded: [], graphql: { query: '', variables: '' } };
+    if (typeof request.body === 'string') {
+      try {
+        const parsed = JSON.parse(request.body);
+        if (parsed && typeof parsed === 'object' && parsed.mode) {
+          return parsed;
+        }
+      } catch (e) {}
+      return { mode: 'raw', raw: { language: 'json', data: request.body }, formdata: [], urlencoded: [], graphql: { query: '', variables: '' } };
+    }
     return request.body;
   };
 
@@ -757,6 +810,23 @@ const getMethodColor = (method: string) => {
 
           {bodyState.mode === 'raw' && (
             <div className="ml-auto flex items-center gap-2">
+              {bodyState.raw.language === 'json' && (
+                <button 
+                  onClick={() => {
+                     try {
+                        const parsed = JSON.parse(bodyState.raw.data || '');
+                        updateBodyObj({ raw: { ...bodyState.raw, data: JSON.stringify(parsed, null, 2) } });
+                        toast.success("JSON formatted!");
+                     } catch(e) {
+                        toast.error("Invalid JSON. Cannot format.");
+                     }
+                  }}
+                  className="text-[var(--muted)] hover:text-[var(--color-brand-500)] flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-[var(--sidebar)] border border-[var(--border)] transition-colors hover:border-[var(--color-brand-500)]"
+                  title="Format JSON"
+                >
+                  <Wand2 className="w-3 h-3" /> Prettier
+                </button>
+              )}
               <StyledSelect
                 options={[
                   { value: 'text', label: 'Text' },
@@ -786,12 +856,30 @@ const getMethodColor = (method: string) => {
           {bodyState.mode === 'urlencoded' && renderGenericKVPTable(bodyState.urlencoded || [], (newList) => updateBodyObj({ urlencoded: newList }))}
 
           {bodyState.mode === 'raw' && (
-             <div className="p-3 h-full flex flex-col">
-               <textarea 
-                 value={bodyState.raw.data || ""}
-                 onChange={e => updateBodyObj({ raw: { ...bodyState.raw, data: e.target.value } })}
-                 className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded p-2 text-xs font-mono outline-none focus:border-[var(--color-brand-500)] resize-none"
-                 placeholder="Enter raw payload..." />
+             <div className="p-3 h-full flex flex-col relative">
+               <div className="relative flex-1 flex rounded border border-[var(--border)] focus-within:border-[var(--color-brand-500)] bg-[var(--sidebar)] overflow-hidden transition-colors">
+                 <textarea 
+                   value={bodyState.raw.data || ""}
+                   onChange={e => updateBodyObj({ raw: { ...bodyState.raw, data: e.target.value } })}
+                   onScroll={(e) => {
+                     const overlay = document.getElementById(`raw-overlay-${request.id}`);
+                     if (overlay) {
+                       overlay.scrollTop = e.currentTarget.scrollTop;
+                       overlay.scrollLeft = e.currentTarget.scrollLeft;
+                     }
+                   }}
+                   className={`absolute inset-0 w-full h-full p-3 text-xs font-mono outline-none resize-none z-10 bg-transparent ${bodyState.raw.language === 'json' ? 'text-transparent caret-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30' : 'text-[var(--foreground)]'}`}
+                   spellCheck={false}
+                   placeholder="Enter raw payload..." />
+                 {bodyState.raw.language === 'json' && (
+                   <div 
+                     id={`raw-overlay-${request.id}`}
+                     className="absolute inset-0 w-full h-full p-3 text-xs font-mono pointer-events-none whitespace-pre-wrap break-words overflow-auto z-0 text-[var(--foreground)]"
+                   >
+                     {renderHighlightedJson((bodyState.raw.data || '') + (bodyState.raw.data?.endsWith('\n') ? ' ' : ''))}
+                   </div>
+                 )}
+               </div>
              </div>
           )}
 
@@ -906,7 +994,16 @@ const getMethodColor = (method: string) => {
           <div className="flex items-center gap-1.5 text-[11px] text-[#8b8b8b] font-medium">
             {request._breadcrumb.map((bc: string, i: number) => (
                <span key={i} className="flex items-center gap-1.5">
-                 <span className="hover:text-[var(--foreground)] hover:underline cursor-pointer transition-colors max-w-[200px] truncate" title={bc}>{bc}</span>
+                 <span 
+                   className="hover:text-[var(--foreground)] hover:underline cursor-pointer transition-colors max-w-[200px] truncate" 
+                   title={bc}
+                   onClick={() => {
+                     const pathUpToClick = request._breadcrumb.slice(0, i + 1);
+                     window.dispatchEvent(new CustomEvent('expand-sidebar-folder', { detail: { breadcrumb: pathUpToClick } }));
+                   }}
+                 >
+                   {bc}
+                 </span>
                  {i < request._breadcrumb.length - 1 && <span className="opacity-50">/</span>}
                </span>
             ))}
@@ -926,7 +1023,32 @@ const getMethodColor = (method: string) => {
             <button 
               onClick={() => {
                 if (request.url) {
-                  copyToClipboard(request.url);
+                  let resolvedUrl = request.url;
+                  
+                  // 1. Resolve {{variables}}
+                  const matches = request.url.match(/{{([^}]+)}}/g);
+                  if (matches) {
+                    matches.forEach((match: string) => {
+                      const key = match.slice(2, -2);
+                      const envVar = envVariables.find((v: any) => v.key === key);
+                      if (envVar) {
+                        const val = envVar.currentValue !== undefined ? envVar.currentValue : (envVar.value !== undefined ? envVar.value : envVar.initialValue);
+                        resolvedUrl = resolvedUrl.replace(match, val || '');
+                      }
+                    });
+                  }
+                  
+                  // 2. Resolve :pathVariables
+                  if (request.pathVariables && request.pathVariables.length > 0) {
+                    request.pathVariables.forEach((pv: any) => {
+                      if (pv.key && pv.value) {
+                         const regex = new RegExp(`:${pv.key}(?=[/?#]|$)`, 'g');
+                         resolvedUrl = resolvedUrl.replace(regex, pv.value);
+                      }
+                    });
+                  }
+                  
+                  copyToClipboard(resolvedUrl);
                   toast.success("URL copied to clipboard!");
                 } else {
                   toast.info("No URL to copy yet.");
