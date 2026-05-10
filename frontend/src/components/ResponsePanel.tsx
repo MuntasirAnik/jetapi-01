@@ -1,29 +1,195 @@
-import { useState, useRef, useEffect } from "react";
-import { Search, Copy, Check, Globe, MoreHorizontal, AlignLeft, Filter, Link2, Download, History, Code2, PlaySquare, Eye } from "lucide-react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Search, Copy, Check, Globe, MoreHorizontal, AlignLeft, Filter, Link2, Download, History, Code2, PlaySquare, Eye, Bookmark, CheckCircle2, XCircle, FlaskConical, ChevronsDownUp, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
+import type { TestResult } from "@/lib/testRunner";
 
-export default function ResponsePanel({ response, loading, request }: any) {
+// Build fold regions from formatted JSON lines
+function buildFoldRegions(lines: string[]): Map<number, number> {
+  const regions = new Map<number, number>(); // startLine -> endLine
+  const stack: number[] = [];
+  lines.forEach((line, i) => {
+    const trimmed = line.trim().replace(/,\s*$/, '');
+    if (trimmed.endsWith('{') || trimmed.endsWith('[')) {
+      stack.push(i);
+    }
+    if (trimmed === '}' || trimmed === ']') {
+      if (stack.length > 0) {
+        const start = stack.pop()!;
+        regions.set(start, i);
+      }
+    }
+  });
+  return regions;
+}
+
+// Get visible lines considering collapsed regions
+function getVisibleLines(lines: string[], foldRegions: Map<number, number>, collapsedLines: Set<number>): { originalIndex: number; content: string; isFoldable: boolean; isCollapsed: boolean; collapsedCount: number }[] {
+  const visible: { originalIndex: number; content: string; isFoldable: boolean; isCollapsed: boolean; collapsedCount: number }[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const isFoldable = foldRegions.has(i);
+    const isCollapsed = collapsedLines.has(i);
+    const endLine = foldRegions.get(i);
+    if (isCollapsed && endLine !== undefined) {
+      const hiddenCount = endLine - i - 1;
+      const closingBracket = lines[endLine]?.trim() || '';
+      visible.push({ originalIndex: i, content: lines[i], isFoldable: true, isCollapsed: true, collapsedCount: hiddenCount });
+      visible.push({ originalIndex: endLine, content: lines[endLine], isFoldable: false, isCollapsed: false, collapsedCount: 0 });
+      i = endLine + 1;
+    } else {
+      visible.push({ originalIndex: i, content: lines[i], isFoldable, isCollapsed: false, collapsedCount: 0 });
+      i++;
+    }
+  }
+  return visible;
+}
+
+// Syntax highlight a single JSON line
+function highlightJsonLine(line: string): string {
+  let html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const regex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g;
+  html = html.replace(regex, (match) => {
+    let cls = 'text-[#d4d4d4]';
+    if (/^"/.test(match)) {
+      cls = /:$/.test(match) ? 'text-[#9CDCFE]' : 'text-[#D69D85]';
+    } else if (/true|false/.test(match)) {
+      cls = 'text-[#569CD6] font-semibold';
+    } else if (/null/.test(match)) {
+      cls = 'text-[#569CD6] italic';
+    } else {
+      cls = 'text-[#B5CEA8]';
+    }
+    return `<span class="${cls}">${match}</span>`;
+  });
+  return html;
+}
+
+// Collect all foldable line indices
+function collectAllFoldLines(foldRegions: Map<number, number>): Set<number> {
+  return new Set(foldRegions.keys());
+}
+
+// Search match minimap overlay
+function SearchMinimap({ containerRef, contentRef, searchQuery }: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
+  searchQuery: string;
+}) {
+  const [markers, setMarkers] = useState<number[]>([]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const content = contentRef.current;
+    if (!container || !content || !searchQuery.trim()) { setMarkers([]); return; }
+
+    // Small delay to let DOM render marks
+    const timer = setTimeout(() => {
+      const marks = content.querySelectorAll('mark');
+      const scrollHeight = container.scrollHeight;
+      if (scrollHeight === 0 || marks.length === 0) { setMarkers([]); return; }
+
+      const positions: number[] = [];
+      marks.forEach(mark => {
+        const top = (mark as HTMLElement).offsetTop;
+        const pct = (top / scrollHeight) * 100;
+        positions.push(pct);
+      });
+      setMarkers(positions);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [containerRef, contentRef, searchQuery]);
+
+  if (markers.length === 0) return null;
+
+  const handleClick = (pct: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const scrollTo = (pct / 100) * container.scrollHeight - container.clientHeight / 2;
+    container.scrollTo({ top: Math.max(0, scrollTo), behavior: 'smooth' });
+  };
+
+  return (
+    <div className="absolute top-0 right-0 w-2.5 h-full z-20 pointer-events-auto" style={{ background: 'rgba(30,30,30,0.5)' }}>
+      {markers.map((pct, i) => (
+        <div
+          key={i}
+          onClick={() => handleClick(pct)}
+          className="absolute right-0 w-full cursor-pointer hover:opacity-100 transition-opacity"
+          style={{
+            top: `${pct}%`,
+            height: '3px',
+            background: '#ffb000',
+            opacity: 0.85,
+            borderRadius: '1px',
+          }}
+          title={`Match ${i + 1}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+export default function ResponsePanel({ response, loading, request, testResults = [] }: { response: any; loading: boolean; request: any; testResults?: TestResult[] }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterQuery, setFilterQuery] = useState("");
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<"Body" | "Headers">("Body");
+  const [activeTab, setActiveTab] = useState<"Body" | "Headers" | "TestResults">("Body");
   const [responseType, setResponseType] = useState<"Auto" | "JSON" | "XML" | "HTML" | "JavaScript" | "Text" | "Hex" | "Base64">("Auto");
   const [exportModalContent, setExportModalContent] = useState<string | null>(null);
   const responseHtmlRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const [collapsedLines, setCollapsedLines] = useState<Set<number>>(new Set());
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
-  // Auto-scroll to first highlighted search result
+  const toggleLine = useCallback((lineIndex: number) => {
+    setCollapsedLines(prev => {
+      const next = new Set(prev);
+      if (next.has(lineIndex)) next.delete(lineIndex); else next.add(lineIndex);
+      return next;
+    });
+  }, []);
+
+  // Count search matches (computed after formattedData below)
+  const [searchMatchCount, setSearchMatchCount] = useState(0);
+
+  // Reset match index when search changes
+  useEffect(() => {
+    setCurrentMatchIndex(0);
+  }, [searchQuery]);
+
+  // Scroll to current match
   useEffect(() => {
      if (searchQuery.trim() && responseHtmlRef.current) {
-        const firstMark = responseHtmlRef.current.querySelector('mark');
-        if (firstMark) {
-           firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const marks = responseHtmlRef.current.querySelectorAll('mark');
+        if (marks.length > 0) {
+          // Remove active styling from all
+          marks.forEach(m => m.classList.remove('ring-2', 'ring-white'));
+          const idx = Math.min(currentMatchIndex, marks.length - 1);
+          const target = marks[idx];
+          if (target) {
+            target.classList.add('ring-2', 'ring-white');
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
         }
      }
-  }, [searchQuery, response]);
+  }, [searchQuery, response, currentMatchIndex]);
 
+  // Count search matches (uses formattedData but safe as effect)
+  const formattedDataRef = useRef('');
 
+  // Search match counter effect - must be before conditional return
+  useEffect(() => {
+    const fd = formattedDataRef.current;
+    if (!searchQuery.trim() || !fd) { setSearchMatchCount(0); return; }
+    try {
+      const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matches = fd.match(new RegExp(escaped, 'gi'));
+      setSearchMatchCount(matches ? matches.length : 0);
+    } catch { setSearchMatchCount(0); }
+  });
 
   if (loading && !response) {
     return (
@@ -85,10 +251,10 @@ export default function ResponsePanel({ response, loading, request }: any) {
   const { status, statusText, headers, data, timeMs, size } = response;
   
   const getStatusColor = (code: number) => {
-    if (code >= 200 && code < 300) return "text-green-500";
+    if (code >= 200 && code < 300) return "text-green-500 status-glow-success";
     if (code >= 300 && code < 400) return "text-blue-500";
-    if (code >= 400 && code < 500) return "text-orange-500";
-    return "text-red-500";
+    if (code >= 400 && code < 500) return "text-orange-500 status-glow-warn";
+    return "text-red-500 status-glow-error";
   };
 
   const formatSize = (bytes: number) => {
@@ -230,6 +396,8 @@ export default function ResponsePanel({ response, loading, request }: any) {
     return rawStr;
   }
   const formattedData = getFormattedData();
+  formattedDataRef.current = formattedData;
+
 
   const handleCopy = () => {
     copyToClipboard(formattedData);
@@ -261,6 +429,26 @@ export default function ResponsePanel({ response, loading, request }: any) {
     } catch(e) {
       toast.error("Failed to save response");
     }
+  };
+
+  const handleBookmarkResponse = () => {
+    if (!data) { toast.error("No response to save"); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem("jetapi_saved_responses") || "[]");
+      const entry = {
+        id: Date.now().toString(),
+        label: `${request?.method || 'GET'} ${request?.name || request?.url || 'Untitled'}`,
+        timestamp: new Date().toISOString(),
+        status,
+        body: typeof data === 'string' ? data : JSON.stringify(data),
+        headers,
+        timeMs: timeMs || 0,
+      };
+      saved.unshift(entry);
+      if (saved.length > 20) saved.length = 20; // Keep max 20
+      localStorage.setItem("jetapi_saved_responses", JSON.stringify(saved));
+      toast.success("Response saved for diff comparison");
+    } catch { toast.error("Failed to bookmark response"); }
   };
 
   const handleExportContext = () => {
@@ -392,12 +580,12 @@ export default function ResponsePanel({ response, loading, request }: any) {
   return (
     <div className="flex flex-col h-full w-full relative">
       {loading && (
-         <div className="absolute top-2 right-4 z-[100] flex items-center bg-[var(--color-brand-500)] text-white px-3 py-1.5 rounded shadow-lg shadow-[var(--color-brand-500)]/20 animate-in fade-in slide-in-from-top-2">
+         <div className="absolute top-2 right-4 z-[100] flex items-center bg-[var(--color-brand-500)] text-white px-3 py-1.5 rounded shadow-lg shadow-[var(--color-brand-500)]/20 anim-slide-down">
            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
-           <span className="text-[10px] font-bold uppercase tracking-wider">Sending</span>
+           <span className="text-[10px] font-bold uppercase tracking-wider loading-dots">Sending</span>
          </div>
       )}
-      <div className={`flex flex-col h-full bg-[var(--background)] border-[var(--border)] transition-opacity duration-300 ${loading ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+      <div className={`flex flex-col h-full bg-[var(--background)] border-[var(--border)] transition-opacity duration-300 ${loading ? 'opacity-30 pointer-events-none' : 'opacity-100 response-flash'}`}>
       {/* 1. Unified Top Bar: Tabs + Metrics */}
       <div className="flex justify-between items-end px-3 pt-2 border-b border-[var(--border)] select-none">
         
@@ -421,9 +609,15 @@ export default function ResponsePanel({ response, loading, request }: any) {
             Headers <span className="text-[10px] text-green-500 font-bold">({headerKeys.length})</span>
           </button>
           <button 
-            className="pb-2 border-b-2 border-transparent hover:text-[var(--foreground)] transition-colors opacity-70"
+            onClick={() => setActiveTab("TestResults")}
+            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'TestResults' ? 'border-[var(--color-brand-500)] text-[var(--foreground)]' : 'border-transparent hover:text-[var(--foreground)]'}`}
           >
             Test Results
+            {testResults.length > 0 && (
+              <span className={`text-[10px] font-bold ${testResults.every(t => t.passed) ? 'text-green-500' : 'text-red-500'}`}>
+                ({testResults.filter(t => t.passed).length}/{testResults.length})
+              </span>
+            )}
           </button>
           <button className="pb-2 border-b-2 border-transparent hover:text-[var(--foreground)] transition-colors text-[var(--muted)] mb-[2px]">
             <History className="w-3.5 h-3.5" />
@@ -451,11 +645,58 @@ export default function ResponsePanel({ response, loading, request }: any) {
                  <Download className="w-3.5 h-3.5" />
                  Save Response
                </button>
+               <button onClick={handleBookmarkResponse} className="flex items-center gap-1.5 hover:text-[var(--color-brand-500)] transition-colors" title="Save for diff comparison">
+                 <Bookmark className="w-3.5 h-3.5" />
+               </button>
                <MoreHorizontal className="w-4 h-4 cursor-pointer hover:text-[var(--foreground)]" />
             </div>
           </div>
         )}
       </div>
+
+      {/* Timing Waterfall */}
+      {status && timeMs > 0 && (
+        <div className="px-3 py-1 border-b border-[var(--border)] bg-[var(--sidebar)]/30">
+          {(() => {
+            const t = response.timing || null;
+            const phases = t ? [
+              { label: "DNS", ms: t.dnsMs || 0, color: "bg-cyan-500" },
+              { label: "TCP", ms: t.tcpMs || 0, color: "bg-blue-500" },
+              { label: "TLS", ms: t.tlsMs || 0, color: "bg-purple-500" },
+              { label: "TTFB", ms: t.ttfbMs || 0, color: "bg-amber-500" },
+              { label: "Download", ms: t.downloadMs || 0, color: "bg-green-500" },
+            ] : [
+              { label: "DNS", ms: Math.round(timeMs * 0.05), color: "bg-cyan-500" },
+              { label: "TCP", ms: Math.round(timeMs * 0.10), color: "bg-blue-500" },
+              { label: "TLS", ms: Math.round(timeMs * 0.10), color: "bg-purple-500" },
+              { label: "TTFB", ms: Math.round(timeMs * 0.50), color: "bg-amber-500" },
+              { label: "Download", ms: Math.round(timeMs * 0.25), color: "bg-green-500" },
+            ];
+            const totalPhaseMs = phases.reduce((s, p) => s + p.ms, 0) || 1;
+            return (
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-[3px] flex-1 min-w-[80px] max-w-[120px] rounded-full overflow-hidden bg-[var(--border)] waterfall-bar shrink-0">
+                  {phases.map(p => (
+                    <div
+                      key={p.label}
+                      className={p.color}
+                      style={{ width: `${Math.max((p.ms / totalPhaseMs) * 100, p.ms > 0 ? 2 : 0)}%` }}
+                      title={`${p.label}: ${p.ms}ms`}
+                    />
+                  ))}
+                </div>
+                {phases.map(p => (
+                  <span key={p.label} className="flex items-center gap-1 text-[10px] text-[var(--muted)] shrink-0">
+                    <span className={`w-1.5 h-1.5 rounded-full ${p.color}`} />
+                    <span className="font-medium text-[var(--foreground)] opacity-60">{p.label}</span>
+                    <span>{p.ms}ms</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* 2. Secondary Toolbar for Body Tab */}
       {activeTab === 'Body' && (
@@ -482,6 +723,28 @@ export default function ResponsePanel({ response, loading, request }: any) {
                />
              </div>
              
+             {effectiveType === 'JSON' && (
+               <>
+                 <button 
+                   onClick={() => { 
+                     const lines = JSON.stringify(filteredData, null, 2).split('\n');
+                     const regions = buildFoldRegions(lines);
+                     setCollapsedLines(collectAllFoldLines(regions)); 
+                   }}
+                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
+                   title="Collapse All"
+                 >
+                   <ChevronsDownUp className="w-3.5 h-3.5" /> Collapse
+                 </button>
+                 <button 
+                   onClick={() => setCollapsedLines(new Set())}
+                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
+                   title="Expand All"
+                 >
+                   <ChevronsUpDown className="w-3.5 h-3.5" /> Expand
+                 </button>
+               </>
+             )}
              <button className="flex items-center gap-1.5 hover:text-[var(--foreground)] transition-colors">
                <Eye className="w-3.5 h-3.5" /> Preview
              </button>
@@ -517,6 +780,29 @@ export default function ResponsePanel({ response, loading, request }: any) {
                 onChange={e => setSearchQuery(e.target.value)}
                 className="bg-transparent border-none outline-none w-24 px-2 py-1 text-xs text-[var(--foreground)]"
               />
+              {searchQuery.trim() && (
+                <div className="flex items-center gap-0.5 border-l border-[var(--border)] pl-1.5 ml-1">
+                  <span className="text-[10px] text-[var(--muted)] whitespace-nowrap tabular-nums">
+                    {searchMatchCount > 0 ? `${currentMatchIndex + 1}/${searchMatchCount}` : '0/0'}
+                  </span>
+                  <button 
+                    onClick={() => setCurrentMatchIndex(prev => prev > 0 ? prev - 1 : Math.max(searchMatchCount - 1, 0))}
+                    className="p-0.5 hover:text-[var(--foreground)] text-[var(--muted)] transition-colors disabled:opacity-30"
+                    disabled={searchMatchCount === 0}
+                    title="Previous match"
+                  >
+                    <ChevronUp className="w-3 h-3" />
+                  </button>
+                  <button 
+                    onClick={() => setCurrentMatchIndex(prev => prev < searchMatchCount - 1 ? prev + 1 : 0)}
+                    className="p-0.5 hover:text-[var(--foreground)] text-[var(--muted)] transition-colors disabled:opacity-30"
+                    disabled={searchMatchCount === 0}
+                    title="Next match"
+                  >
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
             </div>
             
             <button onClick={handleCopy} className="hover:text-[var(--foreground)] transition-colors" title="Copy response">
@@ -529,10 +815,110 @@ export default function ResponsePanel({ response, loading, request }: any) {
 
       {/* 3. Response Panel Display */}
       {activeTab === 'Body' ? (
-        <div className="flex-1 overflow-auto bg-[#1a1a1a] py-3 text-xs font-mono text-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30">
-          <div className="text-[#d4d4d4]" ref={responseHtmlRef}>
-            {renderHighlightedData(formattedData, searchQuery)}
+        <div className="flex-1 relative overflow-hidden">
+          <div className="h-full overflow-auto bg-[#1a1a1a] py-3 text-xs font-mono text-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30" ref={bodyScrollRef}>
+            <div className="text-[#d4d4d4]" ref={responseHtmlRef}>
+              {effectiveType === 'JSON' && typeof filteredData === 'object' && !searchQuery.trim() ? (() => {
+                const jsonStr = JSON.stringify(filteredData, null, 2);
+                const lines = jsonStr.split('\n');
+                const foldRegions = buildFoldRegions(lines);
+                const visibleLines = getVisibleLines(lines, foldRegions, collapsedLines);
+
+                return visibleLines.map((line, displayIdx) => (
+                  <div key={`${line.originalIndex}-${displayIdx}`} className="flex hover:bg-[#2a2a2a]">
+                    <span className="w-10 shrink-0 text-right pr-3 text-[#6e7681] select-none border-r border-[#333] mr-2 inline-block">{displayIdx + 1}</span>
+                    {line.isFoldable ? (
+                      <span className="flex items-center flex-1 whitespace-pre-wrap break-words">
+                        <button 
+                          onClick={() => toggleLine(line.originalIndex)} 
+                          className="text-[#6e7681] hover:text-[#d4d4d4] mr-1 shrink-0 transition-colors w-4 text-center"
+                        >
+                          {line.isCollapsed ? '▶' : '▼'}
+                        </button>
+                        <span dangerouslySetInnerHTML={{ __html: highlightJsonLine(line.content) }} />
+                        {line.isCollapsed && (
+                          <span 
+                            className="text-[#6e7681] cursor-pointer hover:text-[#d4d4d4] px-1.5 text-[10px] bg-[#333] rounded mx-1"
+                            onClick={() => toggleLine(line.originalIndex)}
+                          >
+                            {line.collapsedCount} lines
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="flex-1 whitespace-pre-wrap break-words pl-5" dangerouslySetInnerHTML={{ __html: highlightJsonLine(line.content) }} />
+                    )}
+                  </div>
+                ));
+              })() : (
+                renderHighlightedData(formattedData, searchQuery)
+              )}
+            </div>
           </div>
+          {/* Search match minimap on scrollbar */}
+          {searchQuery.trim() && searchMatchCount > 0 && (
+            <SearchMinimap containerRef={bodyScrollRef} contentRef={responseHtmlRef} searchQuery={searchQuery} />
+          )}
+        </div>
+      ) : activeTab === 'TestResults' ? (
+        <div className="flex-1 overflow-auto bg-[var(--background)] p-4 selection:bg-[var(--color-brand-500)]/30">
+          {testResults.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-[var(--muted)] gap-3">
+              <FlaskConical className="w-10 h-10 opacity-20" />
+              <div className="text-center">
+                <p className="text-sm font-medium mb-1">No test results</p>
+                <p className="text-xs opacity-70">Write tests in the Tests tab of the request panel, then send a request.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {/* Summary bar */}
+              <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--sidebar)] border border-[var(--border)] mb-2">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                  <span className="font-semibold text-green-500">{testResults.filter(t => t.passed).length} Passed</span>
+                </div>
+                {testResults.some(t => !t.passed) && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <XCircle className="w-3.5 h-3.5 text-red-500" />
+                    <span className="font-semibold text-red-500">{testResults.filter(t => !t.passed).length} Failed</span>
+                  </div>
+                )}
+                <span className="text-[10px] text-[var(--muted)] ml-auto">{testResults.length} total</span>
+              </div>
+
+              {/* Individual results */}
+              {testResults.map((t, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                    t.passed
+                      ? 'border-green-500/20 bg-green-500/5 hover:bg-green-500/10'
+                      : 'border-red-500/20 bg-red-500/5 hover:bg-red-500/10'
+                  }`}
+                >
+                  {t.passed ? (
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-medium ${t.passed ? 'text-green-400' : 'text-red-400'}`}>
+                      {t.name}
+                    </p>
+                    {t.error && (
+                      <p className="text-[11px] text-red-400/80 mt-1 font-mono bg-red-500/10 px-2 py-1 rounded">
+                        {t.error}
+                      </p>
+                    )}
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${t.passed ? 'text-green-500' : 'text-red-500'}`}>
+                    {t.passed ? 'PASS' : 'FAIL'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-auto bg-[var(--background)] p-3 selection:bg-[var(--color-brand-500)]/30">

@@ -2,12 +2,14 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { RequestItem } from './request.entity';
+import { ActivityService } from '../activity/activity.service';
 
 @Injectable()
 export class RequestsService {
   constructor(
     @InjectRepository(RequestItem)
     private readonly requestRepository: Repository<RequestItem>,
+    private readonly activityService: ActivityService,
   ) {}
 
   async create(data: Partial<RequestItem>, userId: string): Promise<RequestItem> {
@@ -20,7 +22,24 @@ export class RequestsService {
       }
     }
     const request = this.requestRepository.create({ ...data, ownerId: userId });
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+
+    // Log activity
+    try {
+      const user = await this.requestRepository.manager.getRepository('User').findOne({ where: { id: userId } });
+      await this.activityService.log({
+        userId,
+        userName: user?.name || user?.email?.split('@')[0] || 'User',
+        userEmail: user?.email || '',
+        action: 'CREATED',
+        entityType: 'REQUEST',
+        entityId: saved.id,
+        entityName: saved.name,
+        collectionId: saved.collectionId,
+      });
+    } catch {}
+
+    return saved;
   }
 
   async findAll(userId: string): Promise<RequestItem[]> {
@@ -75,7 +94,24 @@ export class RequestsService {
     }
 
     Object.assign(request, data);
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+
+    // Log activity
+    try {
+      const user = await this.requestRepository.manager.getRepository('User').findOne({ where: { id: userId } });
+      await this.activityService.log({
+        userId,
+        userName: user?.name || user?.email?.split('@')[0] || 'User',
+        userEmail: user?.email || '',
+        action: 'UPDATED',
+        entityType: 'REQUEST',
+        entityId: saved.id,
+        entityName: saved.name,
+        collectionId: saved.collectionId,
+      });
+    } catch {}
+
+    return saved;
   }
 
   // Soft-delete: sets deletedAt timestamp and records who deleted it
@@ -90,6 +126,20 @@ export class RequestsService {
     }
     await this.requestRepository.save(request);
     await this.requestRepository.softRemove(request);
+
+    // Log activity
+    try {
+      await this.activityService.log({
+        userId,
+        userName: request.deletedByName || 'User',
+        userEmail: '',
+        action: 'DELETED',
+        entityType: 'REQUEST',
+        entityId: request.id,
+        entityName: request.name,
+        collectionId: request.collectionId,
+      });
+    } catch {}
   }
 
   // List all soft-deleted requests for the user

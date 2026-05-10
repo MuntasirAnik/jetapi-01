@@ -1,4 +1,4 @@
-import { Code2, FileText, MessageSquare, Info, Layers } from "lucide-react";
+import { Code2, FileText, MessageSquare, Info, Layers, ArrowLeftRight } from "lucide-react";
 import { toast } from "react-toastify";
 
 export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: { activeTab?: string, activePanel: string | null, onTogglePanel: (p: string) => void }) {
@@ -16,8 +16,8 @@ export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: 
         <FileText className="w-[18px] h-[18px]" strokeWidth={2.5} />
       </button>
       <button 
-        onClick={() => notImplemented("Comments")}
-        className="p-1.5 text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] rounded transition-colors" 
+        onClick={() => onTogglePanel("comments")}
+        className={`p-1.5 rounded transition-colors ${activePanel === 'comments' ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]'}`} 
         title="Comments"
       >
         <MessageSquare className="w-[18px] h-[18px]" strokeWidth={2.5} />
@@ -36,6 +36,13 @@ export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: 
         title="Code Snippet"
       >
         <Code2 className="w-[18px] h-[18px]" strokeWidth={2.5} />
+      </button>
+      <button 
+        onClick={() => onTogglePanel("diff")}
+        className={`p-1.5 rounded transition-colors ${activePanel === 'diff' ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]'}`} 
+        title="Response Diff"
+      >
+        <ArrowLeftRight className="w-[18px] h-[18px]" strokeWidth={2.5} />
       </button>
       <button 
         onClick={() => notImplemented("Request Info")}

@@ -11,10 +11,14 @@ import RightSidebar from "@/components/RightSidebar";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
 import VariablesPanel from "@/components/VariablesPanel";
 import DocumentationPanel from "@/components/DocumentationPanel";
+import CommentsPanel from "@/components/CommentsPanel";
+import ResponseDiffPanel from "@/components/ResponseDiffPanel";
+import CommandPalette from "@/components/CommandPalette";
 import StyledSelect from "@/components/StyledSelect";
 import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
 import { useAppContext } from "@/lib/AppContext";
+import { runTestScript, TestResult } from "@/lib/testRunner";
 
 export default function Home() {
   const router = useRouter();
@@ -63,10 +67,16 @@ export default function Home() {
 
   const activeRequest = openRequests.find(r => r.id === activeRequestId) || null;
   const [responseData, setResponseData] = useState<any>(null);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(false); // Global States
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Right Context Menu State
   const [rightPanelOpen, setRightPanelOpen] = useState<string | null>(null);
+
+  // Command Palette
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const sidebarTabRef = useRef<((tab: string) => void) | null>(null);
 
   // Save Modal States
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -254,6 +264,18 @@ export default function Home() {
     globalVariables,
   } = useAppContext();
 
+  // ⌘+K Command Palette shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Horizontal Resizable Sidebar Logic
   const [sidebarWidth, setSidebarWidth] = useState(320); // Default 320px
   const [isSidebarDragging, setIsSidebarDragging] = useState(false);
@@ -284,6 +306,27 @@ export default function Home() {
       interpolated = interpolated.replace(new RegExp(`{{\\s*${v.key}\\s*}}`, 'g'), () => activeValue);
       interpolated = interpolated.replace(new RegExp(`%7B%7B\\s*${v.key}\\s*%7D%7D`, 'i'), () => activeValue);
     });
+
+    // Request chaining: resolve {{$response.path.to.field}} from last response
+    interpolated = interpolated.replace(/\{\{\s*\$response\.(.+?)\s*\}\}/g, (match, path) => {
+      try {
+        const lastResp = JSON.parse(localStorage.getItem('jetapi_last_response') || '{}');
+        const value = path.split('.').reduce((obj: any, key: string) => obj?.[key], lastResp);
+        return value !== undefined ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : match;
+      } catch { return match; }
+    });
+
+    // Chaining by request name: {{$req["Request Name"].path}} 
+    interpolated = interpolated.replace(/\{\{\s*\$req\["(.+?)"\]\.(.+?)\s*\}\}/g, (match, reqName, path) => {
+      try {
+        const store = JSON.parse(localStorage.getItem('jetapi_response_store') || '{}');
+        const respData = store[reqName];
+        if (!respData) return match;
+        const value = path.split('.').reduce((obj: any, key: string) => obj?.[key], respData);
+        return value !== undefined ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : match;
+      } catch { return match; }
+    });
+
     return interpolated;
   };
 
@@ -511,9 +554,10 @@ export default function Home() {
               <div 
                 key={req.id} 
                 className={`group flex flex-shrink-0 items-center h-full border-r border-[var(--border)] pl-3 pr-2 min-w-[120px] max-w-[220px] cursor-pointer transition-colors relative select-none ${
-                  activeRequestId === req.id ? 'bg-[var(--card)]' : 'bg-transparent hover:bg-[var(--card)]/50'
+                  activeRequestId === req.id ? 'bg-[var(--card)] tab-active-glow' : 'bg-transparent hover:bg-[var(--card)]/50'
                 }`}
                 onClick={() => setActiveRequestId(req.id)}
+                title={`${req.method || 'GET'} ${req.name || 'Untitled'}\n${req.url || ''}\nLast modified: ${req.updatedAt ? new Date(req.updatedAt).toLocaleString() : 'never'}`}
               >
                 {/* Active Indicator Bar */}
                 {activeRequestId === req.id && (
@@ -633,6 +677,9 @@ export default function Home() {
               }}
               onSaveAs={(req: any) => openSaveModal({ ...req, id: 'new', name: req.name + ' Copy' })}
               onSend={async (reqData: any) => {
+                // Create a new AbortController for this request
+                const controller = new AbortController();
+                abortControllerRef.current = controller;
                 setLoading(true);
                 try {
                   // Process Authorization Tab Injection
@@ -699,6 +746,28 @@ export default function Home() {
                      payloadData = interpolate(bd);
                   }
 
+                  // Merge query params from UI table into the URL
+                  const uiParams = reqData.params || {};
+                  if (Object.keys(uiParams).length > 0) {
+                    try {
+                      const urlObj = new URL(cleanUrl);
+                      Object.entries(uiParams).forEach(([k, v]: [string, any]) => {
+                        if (!urlObj.searchParams.has(k)) {
+                          urlObj.searchParams.set(k, v || '');
+                        }
+                      });
+                      cleanUrl = urlObj.toString();
+                    } catch {
+                      // If URL parsing fails, append manually
+                      const paramStr = Object.entries(uiParams)
+                        .map(([k, v]: [string, any]) => `${encodeURIComponent(k)}=${encodeURIComponent(v || '')}`)
+                        .join('&');
+                      if (paramStr) {
+                        cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + paramStr;
+                      }
+                    }
+                  }
+
                   const payload = {
                     ...reqData,
                     url: cleanUrl,
@@ -707,30 +776,78 @@ export default function Home() {
                       acc[key] = typeof finalHeaders[key] === 'string' ? interpolate(finalHeaders[key]) : finalHeaders[key]; 
                       return acc; 
                     }, {}),
-                    params: {}
+                    params: undefined
                   };
 
                   // API Call to our NestJS proxy
                   const res = await apiFetch("/proxy/execute", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    signal: controller.signal,
                   });
                   
                   const data = await res.json();
                   setResponseData(data);
+
+                  // Execute test scripts if present
+                  if (activeRequest?.testScript?.trim()) {
+                    const results = runTestScript(activeRequest.testScript, {
+                      status: data.status,
+                      statusText: data.statusText || '',
+                      headers: data.headers || {},
+                      data: data.data,
+                      timeMs: data.timeMs || 0,
+                      size: data.size || 0,
+                    });
+                    setTestResults(results);
+                  } else {
+                    setTestResults([]);
+                  }
+
+                  // Request chaining: store response data for {{$response.x}} syntax
+                  try {
+                    localStorage.setItem('jetapi_last_response', JSON.stringify(data.data || data));
+                    if (activeRequest?.name) {
+                      const store = JSON.parse(localStorage.getItem('jetapi_response_store') || '{}');
+                      store[activeRequest.name] = data.data || data;
+                      localStorage.setItem('jetapi_response_store', JSON.stringify(store));
+                    }
+                  } catch {}
+
+                  // Save to History
+                  window.dispatchEvent(new CustomEvent('jetapi-history-push', { detail: {
+                    method: reqData.method || 'GET',
+                    url: reqData.url || '',
+                    name: activeRequest?.name || 'Untitled',
+                    status: data.status,
+                    timeMs: data.timeMs || 0,
+                    timestamp: new Date().toISOString(),
+                    request: { ...activeRequest, _isNew: undefined },
+                  }}));
                 } catch (err: any) {
-                  setResponseData({ error: err.message });
+                  if (err.name === 'AbortError') {
+                    setResponseData({ error: 'Request cancelled by user', status: 0 });
+                  } else {
+                    setResponseData({ error: err.message });
+                  }
                 } finally {
+                  abortControllerRef.current = null;
                   setLoading(false);
                 }
               }}
               loading={loading}
+              onCancel={() => {
+                if (abortControllerRef.current) {
+                  abortControllerRef.current.abort();
+                  abortControllerRef.current = null;
+                }
+              }}
               envVariables={[...envVariables, ...globalVariables]}
             />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-[var(--muted)] bg-[var(--card)]/30">
-                <div className="bg-[var(--sidebar)] p-4 rounded-2xl mb-4 border border-[var(--border)] shadow-sm">
+                <div className="bg-[var(--sidebar)] p-4 rounded-2xl mb-4 border border-[var(--border)] shadow-sm empty-float">
                   <svg className="w-12 h-12 text-[var(--color-brand-500)]/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                 </div>
                 <h3 className="text-lg font-semibold text-[var(--foreground)] tracking-tight mb-2">No Request Selected</h3>
@@ -775,6 +892,7 @@ export default function Home() {
               response={responseData}
               loading={loading}
               request={activeRequest}
+              testResults={testResults}
             />
           </div>
         </div>
@@ -804,6 +922,19 @@ export default function Home() {
            request={activeRequest} 
            onClose={() => setRightPanelOpen(null)} 
            envVariables={[...globalVariables, ...envVariables]}
+        />
+      )}
+
+      {rightPanelOpen === 'comments' && activeRequest && (
+        <CommentsPanel
+          request={activeRequest}
+          onClose={() => setRightPanelOpen(null)}
+        />
+      )}
+
+      {rightPanelOpen === 'diff' && (
+        <ResponseDiffPanel
+          onClose={() => setRightPanelOpen(null)}
         />
       )}
 
@@ -1110,6 +1241,21 @@ export default function Home() {
         </div>
       </div>
     )}
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        workspaces={workspaces}
+        onSelectRequest={(req: any) => {
+          setOpenRequests(prev => {
+            if (!prev.find(p => p.id === req.id)) return [...prev, req];
+            return prev;
+          });
+          setActiveRequestId(req.id);
+          setRightPanelOpen(null);
+        }}
+      />
 
     </div>
   );

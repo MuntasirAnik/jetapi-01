@@ -21,11 +21,10 @@ import { OrganizationUser } from './organizations/organization-user.entity';
 import { Notification } from './notifications/notification.entity';
 import { NotificationsModule } from './notifications/notifications.module';
 import { InitModule } from './init/init.module';
-import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { Subscription } from './subscriptions/subscription.entity';
-import { AdminModule } from './admin/admin.module';
-import { PlanOverride } from './admin/plan-override.entity';
-import { Payment } from './subscriptions/payment.entity';
+import { ActivityModule } from './activity/activity.module';
+import { Activity } from './activity/activity.entity';
+import { CommentsModule } from './comments/comments.module';
+import { Comment } from './comments/comment.entity';
 
 @Module({
   imports: [
@@ -36,7 +35,7 @@ import { Payment } from './subscriptions/payment.entity';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
         const isLocal = configService.get<string>('DB_HOST') === 'localhost' || configService.get<string>('DB_HOST') === '127.0.0.1';
-        
+
         return {
           type: 'postgres',
           host: configService.get<string>('DB_HOST'),
@@ -50,7 +49,7 @@ import { Payment } from './subscriptions/payment.entity';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Subscription, PlanOverride, Payment],
+          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment],
           synchronize: true, // Use carefully in production
         };
       },
@@ -66,10 +65,10 @@ import { Payment } from './subscriptions/payment.entity';
     OrganizationsModule,
     NotificationsModule,
     InitModule,
-    SubscriptionsModule,
-    AdminModule,
+    ActivityModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

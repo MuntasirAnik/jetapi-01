@@ -164,17 +164,6 @@ export default function ShareCollectionModal({ collectionId, collectionName, onC
                 <label className="block text-xs font-semibold text-[var(--muted)] mb-3 uppercase tracking-wider">Current Access</label>
                 <div className="flex flex-col gap-1.5 p-2 bg-[var(--background)]/50 border border-[var(--border)] rounded-xl shadow-inner">
                   
-                  {/* Owner Row */}
-                  <div className="flex items-center justify-between p-2.5 bg-[var(--sidebar)] border border-[var(--border)]/50 rounded-lg shadow-sm group">
-                    <div className="flex items-center gap-3">
-                       <div className="p-1.5 rounded-md bg-[var(--color-brand-500)]/10 border border-[var(--color-brand-500)]/20">
-                         <ShieldCheck className="w-4 h-4 text-[var(--color-brand-500)]" />
-                       </div>
-                       <div className="text-sm font-semibold text-[var(--foreground)]">Workspace Owner</div>
-                    </div>
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] ring-1 ring-[var(--color-brand-500)]/20">Owner</span>
-                  </div>
-                  
                   {/* Shared Users */}
                   {collection?.sharedUsers?.length > 0 ? (
                     collection.sharedUsers.map((user: any) => (

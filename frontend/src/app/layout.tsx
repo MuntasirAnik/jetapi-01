@@ -13,6 +13,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { DialogProvider } from '@/components/DialogProvider';
 import { AppProvider } from '@/lib/AppContext';
 import GlobalTopBar from '@/components/GlobalTopBar';
+import AnnouncementTicker from '@/components/AnnouncementTicker';
 import FooterTerminal from '@/components/FooterTerminal';
 
 export default function RootLayout({
@@ -27,6 +28,7 @@ export default function RootLayout({
           <DialogProvider>
             <ToastProvider />
             <GlobalTopBar />
+            <AnnouncementTicker />
             <main className="flex-1 flex overflow-hidden">
               {children}
             </main>
