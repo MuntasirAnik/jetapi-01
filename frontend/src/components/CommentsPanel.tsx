@@ -125,7 +125,7 @@ export default function CommentsPanel({ request, onClose }: { request: any; onCl
 
   return (
     <div
-      className="h-full border-l border-[var(--border)] bg-[var(--sidebar)] flex flex-col overflow-hidden shrink-0 relative"
+      className="h-full border-l border-[var(--border)] bg-[var(--sidebar)] flex flex-col overflow-hidden shrink-0 relative panel-slide-right"
       style={{ width: panelWidth }}
     >
       {/* Drag handle */}

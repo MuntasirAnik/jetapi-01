@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2, Eye, EyeOff, Wand2 } from "lucide-react";
+import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2, Eye, EyeOff, Wand2, XCircle } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
 
-export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, isSaving, envVariables = [] }: any) {
+export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, onCancel, isSaving, envVariables = [] }: any) {
   const [activeTab, setActiveTab] = useState("Params");
   const [isUrlFocused, setIsUrlFocused] = useState(false);
   const [isMethodDropdownOpen, setIsMethodDropdownOpen] = useState(false);
@@ -71,7 +71,7 @@ export default function RequestPanel({ request, onChange, onSend, onSave, onSave
       }
     }
 
-    if (!value) {
+    if (!value || typeof value !== 'string') {
        setVarSuggest(prev => prev.id === id ? { id: '', show: false, filtered: [], replaceIndex: 0, replaceLength: 0, cursorPos: 0, selectedIndex: 0 } : prev);
        return;
     }
@@ -348,7 +348,8 @@ const getMethodColor = (method: string) => {
           return (
              <span 
                key={i} 
-               className="text-[#FF6C37] font-bold pointer-events-auto cursor-text" 
+               className="font-bold pointer-events-auto cursor-text" 
+               style={{ color: 'var(--color-brand-500)' }}
                title={`Current: ${resolveVal}\nInitial: ${activeVar.initialValue || 'empty'}\nScope: ${activeVar.type}`}
                onClick={() => {
                  if (inputId) document.getElementById(inputId)?.focus();
@@ -1161,6 +1162,10 @@ const getMethodColor = (method: string) => {
           
           <button 
             onClick={() => {
+              if (loading && onCancel) {
+                onCancel();
+                return;
+              }
               const missingVars = (request.pathVariables || []).filter((pv: any) => pv.key && !pv.value && request.url.includes(`:${pv.key}`));
               if (missingVars.length > 0) {
                  toast.error("Please provide values for path variables: " + missingVars.map((v:any) => v.key).join(", "));
@@ -1168,11 +1173,11 @@ const getMethodColor = (method: string) => {
               }
               onSend(formatRequestForAxios());
             }}
-            disabled={loading || !request.url}
-            className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-1.5 rounded font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!loading && !request.url}
+            className={`btn-spring ${loading ? 'bg-red-500 hover:bg-red-600' : 'bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)]'} text-white px-4 py-1.5 rounded font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {loading ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex"></span>
+              <><span>Cancel</span><XCircle className="w-3.5 h-3.5" /></>
             ) : (
               <><span>Send</span><Send className="w-3.5 h-3.5" /></>
             )}
@@ -1250,16 +1255,94 @@ const getMethodColor = (method: string) => {
               placeholder="// Write Javascript code to execute before this request runs&#10;console.log('Running pre-request...');" />
           </div>
         )}
-        {activeTab === "Tests" && (
-          <div className="p-4 h-full flex flex-col">
-            <div className="text-xs text-[var(--muted)] mb-2 uppercase font-semibold">Tests Script</div>
-            <textarea 
-              value={request.testScript || ""}
-              onChange={e => onChange({...request, testScript: e.target.value})}
-              className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
-              placeholder={"// Write Javascript tests to execute after response is received\npm.test('Status code is 200', function () {\n    pm.response.to.have.status(200);\n});"} />
-          </div>
-        )}
+        {activeTab === "Tests" && (() => {
+          const snippets = [
+            { label: "Status is 200", code: `pm.test("Status code is 200", function () {\n    pm.response.to.have.status(200);\n});\n` },
+            { label: "Status is not 404", code: `pm.test("Status is not 404", function () {\n    pm.response.to.not.have.status(404);\n});\n` },
+            { label: "Response is OK (2xx)", code: `pm.test("Response is OK", function () {\n    pm.response.to.be.ok;\n});\n` },
+            { label: "Response has JSON body", code: `pm.test("Response has JSON body", function () {\n    pm.response.to.have.jsonBody();\n});\n` },
+            { label: "JSON has property", code: `pm.test("Body has property 'data'", function () {\n    const json = pm.response.json();\n    pm.expect(json).to.have.property("data");\n});\n` },
+            { label: "Check value equals", code: `pm.test("Check value", function () {\n    const json = pm.response.json();\n    pm.expect(json.success).to.equal(true);\n});\n` },
+            { label: "Array is not empty", code: `pm.test("Array is not empty", function () {\n    const json = pm.response.json();\n    pm.expect(json.data.length).to.be.above(0);\n});\n` },
+            { label: "Response time < 500ms", code: `pm.test("Response time is acceptable", function () {\n    pm.expect(pm.response.responseTime).to.be.below(500);\n});\n` },
+            { label: "Header exists", code: `pm.test("Content-Type header exists", function () {\n    pm.response.to.have.header("content-type");\n});\n` },
+            { label: "Body contains string", code: `pm.test("Body contains expected text", function () {\n    pm.response.to.have.body("success");\n});\n` },
+            { label: "Deep equality check", code: `pm.test("Object matches expected", function () {\n    const json = pm.response.json();\n    pm.expect(json.status).to.eql("active");\n});\n` },
+            { label: "Type check", code: `pm.test("Data is an object", function () {\n    const json = pm.response.json();\n    pm.expect(json.data).to.be.an("object");\n});\n` },
+          ];
+
+          const insertSnippet = (code: string) => {
+            const current = request.testScript || "";
+            const newScript = current ? current.trimEnd() + "\n\n" + code : code;
+            onChange({ ...request, testScript: newScript });
+          };
+
+          return (
+            <div className="flex h-full overflow-hidden">
+              {/* Editor */}
+              <div className="flex-1 flex flex-col p-4 overflow-hidden">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-[var(--muted)] uppercase font-semibold">Tests Script</div>
+                  {(request.testScript || "").trim() && (
+                    <button
+                      onClick={() => onChange({ ...request, testScript: "" })}
+                      className="text-[10px] text-red-400 hover:text-red-300 font-medium transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <textarea 
+                  value={request.testScript || ""}
+                  onChange={e => onChange({...request, testScript: e.target.value})}
+                  className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
+                  placeholder={"// Write Javascript tests to execute after response is received\npm.test('Status code is 200', function () {\n    pm.response.to.have.status(200);\n});"} />
+              </div>
+
+              {/* Snippets Sidebar */}
+              <div className="w-52 shrink-0 border-l border-[var(--border)] bg-[var(--sidebar)]/50 flex flex-col overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-[var(--border)] bg-[var(--sidebar)]">
+                  <span className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Snippets</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-0.5 custom-scrollbar">
+                  {snippets.map((s, i) => {
+                    const alreadyAdded = (request.testScript || "").includes(s.code.split("\n")[0]);
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (alreadyAdded) {
+                            // Remove this snippet from the script
+                            const current = request.testScript || "";
+                            const cleaned = current.replace(s.code, "").replace(/\n{3,}/g, "\n\n").trim();
+                            onChange({ ...request, testScript: cleaned });
+                          } else {
+                            insertSnippet(s.code);
+                          }
+                        }}
+                        className={`text-left px-2.5 py-2 rounded-md text-[11px] transition-colors group flex items-center gap-2 ${
+                          alreadyAdded 
+                            ? 'text-green-500 hover:text-red-400 bg-green-500/5 hover:bg-red-500/5' 
+                            : 'text-[var(--foreground)] hover:bg-[var(--card)] hover:text-[var(--color-brand-500)]'
+                        }`}
+                        title={alreadyAdded ? "Click to remove" : "Click to add"}
+                      >
+                        {alreadyAdded 
+                          ? <span className="w-3 h-3 shrink-0 flex items-center justify-center text-[10px] group-hover:hidden">✓</span>
+                          : <span className="w-1 h-1 rounded-full bg-[var(--muted)] group-hover:bg-[var(--color-brand-500)] shrink-0 transition-colors" />
+                        }
+                        {alreadyAdded && (
+                          <span className="w-3 h-3 shrink-0 items-center justify-center text-[10px] hidden group-hover:flex">✕</span>
+                        )}
+                        <span className="leading-tight">{s.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {activeTab === "Docs" && (
           <div className="p-4 h-full flex flex-col">
             <div className="text-xs text-[var(--muted)] mb-2 uppercase font-semibold">Documentation</div>

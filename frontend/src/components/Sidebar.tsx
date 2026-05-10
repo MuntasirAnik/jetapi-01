@@ -1,7 +1,7 @@
 "use client";
 import { apiFetch, copyToClipboard } from '@/lib/api';
 import { useState, useEffect, useRef } from "react";
-import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity } from "lucide-react";
+import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import ActivityFeed from "./ActivityFeed";
 import { toast } from "react-toastify";
@@ -10,14 +10,33 @@ import ShareCollectionModal from "./ShareCollectionModal";
 import { useDialog } from "./DialogProvider";
 import { useAppContext } from "@/lib/AppContext";
 import ImportCollectionModal from "./ImportCollectionModal";
+import BulkRunnerModal from "./BulkRunnerModal";
 
 export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollections = [], onSelectRequest, activeRequestId }: any) {
   const { confirmDialog, promptDialog } = useDialog();
   const { envVariables, globalVariables } = useAppContext();
+  const [bulkRunnerData, setBulkRunnerData] = useState<{ name: string; requests: any[] } | null>(null);
   const [expandedCollections, setExpandedCollections] = useState<Record<string, boolean>>({});
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const loadedStateRef = useRef(false);
+
+  // Load favorites from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jetapi_favorites');
+      if (saved) setFavorites(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const toggleFavorite = (requestId: string) => {
+    setFavorites(prev => {
+      const updated = prev.includes(requestId) ? prev.filter(id => id !== requestId) : [...prev, requestId];
+      localStorage.setItem('jetapi_favorites', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => {
     try {
@@ -668,6 +687,20 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
             </button>
 
             {contextMenu.type === 'collection' && (
+              <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={() => {
+                const col = workspaces.flatMap((w:any) => w.collections || []).find((c:any) => c.id === contextMenu.id);
+                if (col?.requests?.length) {
+                  setBulkRunnerData({ name: col.name, requests: col.requests });
+                } else {
+                  toast.info('No requests in this collection to run');
+                }
+                setContextMenu(null);
+              }}>
+                <div className="flex items-center gap-2"><Play className="w-3.5 h-3.5 opacity-70" /> Run All</div>
+              </button>
+            )}
+
+            {contextMenu.type === 'collection' && (
               <>
                 <div className="border-t border-[var(--border)] my-1"></div>
                 <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={(e) => { handleShare(e, contextMenu.id, contextMenu.name); setContextMenu(null); }}>
@@ -716,6 +749,12 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
             <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={(e) => { handleCopyRequestLink(e, contextMenu.id); setContextMenu(null); }}>
               <div className="flex items-center gap-2"><Link className="w-3.5 h-3.5 opacity-70" /> Copy link</div>
             </button>
+            <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={() => { toggleFavorite(contextMenu.id); setContextMenu(null); }}>
+              <div className="flex items-center gap-2">
+                <Star className={`w-3.5 h-3.5 ${favorites.includes(contextMenu.id) ? 'text-amber-500 fill-amber-500' : 'opacity-70'}`} />
+                {favorites.includes(contextMenu.id) ? 'Unpin from Favorites' : 'Pin to Favorites'}
+              </div>
+            </button>
             <div className="border-t border-[var(--border)] my-1"></div>
             
             <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={() => { toast.info("Ask AI is not yet implemented"); setContextMenu(null); }}>
@@ -754,7 +793,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
       <div className="w-[54px] flex-shrink-0 border-r border-[var(--border)] bg-[var(--background)] flex flex-col items-center py-4 gap-2 text-[var(--muted)] z-10 selection:bg-transparent justify-start">
          <button 
            onClick={() => setActiveTab('collections')} 
-           className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='collections'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
+           className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='collections'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='collections'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <Folder className="w-5 h-5" />
@@ -763,7 +802,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
          
          <button 
            onClick={() => toast.info('APIs functionality is coming soon!')} 
-           className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='apis'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
+           className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='apis'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='apis'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <Globe className="w-5 h-5" />
@@ -772,7 +811,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
          
          <button 
            onClick={() => setActiveTab('environments')} 
-           className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='environments'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
+           className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='environments'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='environments'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <Server className="w-5 h-5" />
@@ -781,7 +820,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
 
          <button 
            onClick={() => setActiveTab('history')} 
-           className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='history'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
+           className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='history'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='history'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <Clock className="w-5 h-5" />
@@ -793,7 +832,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
 
          <button 
            onClick={() => setActiveTab('analytics')} 
-           className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='analytics'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
+           className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='analytics'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='analytics'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <BarChart3 className="w-5 h-5" />
@@ -802,7 +841,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
 
          <button 
            onClick={() => setActiveTab('activity')} 
-           className={`flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='activity'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
+           className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='activity'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='activity'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <Activity className="w-5 h-5" />
@@ -816,6 +855,46 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         
         {/* Collections Header (Postman UX) */}
+
+        {/* Favorites Section */}
+        {(() => {
+          const allRequests = workspaces.flatMap((w: any) => (w.collections || []).flatMap((c: any) => (c.requests || []).map((r: any) => ({ ...r, _colName: c.name }))));
+          const favRequests = favorites.map(id => allRequests.find((r: any) => r.id === id)).filter(Boolean);
+          if (!favRequests.length) return null;
+          return (
+            <div className="px-2 pt-2 pb-1">
+              <div className="flex items-center gap-1.5 px-1 mb-1.5">
+                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Favorites</span>
+              </div>
+              {favRequests.map((req: any) => (
+                <button
+                  key={req.id}
+                  onClick={() => onSelectRequest(req)}
+                  className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left transition-colors hover:bg-[var(--card)] group ${activeRequestId === req.id ? 'bg-[var(--card)]' : ''}`}
+                >
+                  <span className={`text-[10px] font-bold shrink-0 ${
+                    req.method === 'GET' ? 'text-green-500' :
+                    req.method === 'POST' ? 'text-orange-500' :
+                    req.method === 'PUT' ? 'text-blue-500' :
+                    req.method === 'DELETE' ? 'text-red-500' :
+                    'text-[var(--muted)]'
+                  }`}>{req.method?.substring(0, 3) || 'GET'}</span>
+                  <span className="text-[11px] truncate flex-1">{req.name || 'Untitled'}</span>
+                  <span className="text-[9px] text-[var(--muted)] opacity-0 group-hover:opacity-60 truncate max-w-[60px]">{req._colName}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleFavorite(req.id); }}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-amber-500 hover:text-amber-400 transition-all"
+                  >
+                    <Star className="w-3 h-3 fill-amber-500" />
+                  </button>
+                </button>
+              ))}
+              <div className="border-b border-[var(--border)] mt-2" />
+            </div>
+          );
+        })()}
+
         <div className="p-3 pb-2 flex items-center justify-between">
           <span className="font-semibold text-xs tracking-wide">Collections</span>
           <div className="flex items-center gap-1">
@@ -1063,13 +1142,13 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                 </div>
               ) : (
                 (() => {
-                  const filtered = historySearch 
+                  const filtered = (historySearch 
                     ? history.filter(h => 
                         h.url?.toLowerCase().includes(historySearch.toLowerCase()) || 
                         h.name?.toLowerCase().includes(historySearch.toLowerCase()) ||
                         h.method?.toLowerCase().includes(historySearch.toLowerCase())
                       )
-                    : history;
+                    : history).slice(0, 20);
 
                   // Group by date
                   const groups: Record<string, any[]> = {};
@@ -1167,6 +1246,15 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
         onClose={() => setIsImportModalOpen(false)} 
         onSuccess={() => window.dispatchEvent(new Event('postclone-refresh-sidebar'))} 
       />
+
+      {bulkRunnerData && (
+        <BulkRunnerModal
+          collectionName={bulkRunnerData.name}
+          requests={bulkRunnerData.requests}
+          envVariables={[...envVariables, ...globalVariables]}
+          onClose={() => setBulkRunnerData(null)}
+        />
+      )}
     </div>
     </>
   );
