@@ -42,6 +42,7 @@ export class LimitsService {
         ...(override.maxEnvironments !== null && { maxEnvironments: override.maxEnvironments }),
         ...(override.historyDays !== null && { historyDays: override.historyDays }),
         ...(override.maxUploadMb !== null && { maxUploadMb: override.maxUploadMb }),
+        ...(override.analyticsAccess !== null && { analyticsAccess: override.analyticsAccess }),
       };
     } catch {
       return defaults;

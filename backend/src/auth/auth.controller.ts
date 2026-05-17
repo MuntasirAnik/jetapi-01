@@ -4,6 +4,7 @@ import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { UsersService } from '../users/users.service';
+import { FeatureFlagGuard, RequireFeature } from '../admin/feature-flag.guard';
 
 @Controller('api/auth')
 export class AuthController {
@@ -14,15 +15,23 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('login')
-  async login(@Body() signInDto: Record<string, any>) {
-    const user = await this.authService.validateUser(signInDto.email, signInDto.password);
+  async login(@Body() signInDto: Record<string, any>, @Request() req: any) {
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const user = await this.authService.validateUser(signInDto.email, signInDto.password, ip);
     if (!user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('Invalid email or password');
     }
     return this.authService.login(user);
   }
 
+  @Get('password-policy')
+  async getPasswordPolicy() {
+    return this.authService.getPublicPasswordPolicy();
+  }
+
   @Post('register')
+  @UseGuards(FeatureFlagGuard)
+  @RequireFeature('allow_signups')
   async register(@Body() signUpDto: Record<string, any>) {
     if (!signUpDto.email || !signUpDto.password || !signUpDto.name) {
        throw new UnauthorizedException('Name, Email and password required');

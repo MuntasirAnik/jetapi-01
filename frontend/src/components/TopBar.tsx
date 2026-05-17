@@ -145,6 +145,29 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
 
   return (
     <>
+      {/* Impersonation Banner */}
+      {typeof window !== 'undefined' && localStorage.getItem('impersonating') === 'true' && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-center py-1.5 px-4 text-xs font-bold flex items-center justify-center gap-3 z-50">
+          <span>⚠️ You are impersonating <strong>{localUser?.email || 'a user'}</strong></span>
+          <button
+            onClick={() => {
+              const adminToken = localStorage.getItem('admin_token');
+              const adminUser = localStorage.getItem('admin_user');
+              if (adminToken && adminUser) {
+                localStorage.setItem('token', adminToken);
+                localStorage.setItem('user', adminUser);
+              }
+              localStorage.removeItem('admin_token');
+              localStorage.removeItem('admin_user');
+              localStorage.removeItem('impersonating');
+              window.location.href = '/admin';
+            }}
+            className="bg-white/20 hover:bg-white/30 px-3 py-0.5 rounded text-xs font-bold transition-colors"
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      )}
       <div className="h-12 border-b border-[var(--border)] bg-[var(--background)] flex items-center justify-between px-4 gap-3">
         {/* Left Nav (Branding & Workspace) */}
         <div className="flex items-center gap-4">

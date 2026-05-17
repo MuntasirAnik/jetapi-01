@@ -1,12 +1,32 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Megaphone } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
+
+const FLAG_LABELS: Record<string, string> = {
+  allow_signups: "User Registration",
+  allow_api_execution: "API Execution",
+  show_pricing: "Pricing Page",
+  allow_subscriptions: "Subscriptions",
+};
 
 export default function AnnouncementTicker() {
   const [visible, setVisible] = useState(true);
   const [hovered, setHovered] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
+  const flags = useFeatureFlags();
+
+  // Build messages for disabled features
+  const disabledMessages = useMemo(() => {
+    const msgs: string[] = [];
+    for (const [key, label] of Object.entries(FLAG_LABELS)) {
+      if (flags[key] === false) {
+        msgs.push(`⚠ ${label} is currently disabled by the administrator`);
+      }
+    }
+    return msgs;
+  }, [flags]);
 
   useEffect(() => {
     const check = () => {
@@ -42,9 +62,11 @@ export default function AnnouncementTicker() {
     };
   }, []);
 
-  if (!visible || announcements.length === 0) return null;
+  const allMessages = [...disabledMessages, ...announcements];
 
-  const tickerText = announcements.join("     •     ");
+  if (!visible || allMessages.length === 0) return null;
+
+  const tickerText = allMessages.join("     •     ");
 
   return (
     <>
@@ -54,8 +76,10 @@ export default function AnnouncementTicker() {
       <div className="relative h-7 bg-[var(--sidebar)] border-b border-[var(--border)] text-[var(--muted)] overflow-hidden flex items-center shrink-0 z-20">
         {/* Left label */}
         <div className="flex items-center gap-1.5 px-3 shrink-0 z-10 bg-[var(--sidebar)] pr-4">
-          <Megaphone className="w-3 h-3 text-[var(--color-brand-500)]" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-brand-500)] opacity-80">What&apos;s New</span>
+          <Megaphone className={`w-3 h-3 ${disabledMessages.length > 0 ? 'text-amber-400' : 'text-[var(--color-brand-500)]'}`} />
+          <span className={`text-[10px] font-bold uppercase tracking-wider opacity-80 ${disabledMessages.length > 0 ? 'text-amber-400' : 'text-[var(--color-brand-500)]'}`}>
+            {disabledMessages.length > 0 ? 'Notice' : "What\u0027s New"}
+          </span>
         </div>
 
         {/* Scrolling text */}

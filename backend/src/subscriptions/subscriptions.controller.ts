@@ -3,6 +3,7 @@ import type { RawBodyRequest } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { LimitsService } from './limits.service';
+import { FeatureFlagGuard, RequireFeature } from '../admin/feature-flag.guard';
 import type { Request, Response } from 'express';
 
 @Controller('subscriptions')
@@ -44,7 +45,8 @@ export class SubscriptionsController {
   }
 
   @Post('create-checkout')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, FeatureFlagGuard)
+  @RequireFeature('allow_subscriptions')
   async createCheckout(
     @Req() req: any,
     @Body() body: { planId: string; interval?: 'monthly' | 'yearly' },
@@ -57,7 +59,8 @@ export class SubscriptionsController {
   }
 
   @Post('confirm-payment')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, FeatureFlagGuard)
+  @RequireFeature('allow_subscriptions')
   async confirmPayment(
     @Req() req: any,
     @Body() body: { method: string; cardLast4?: string; cardName?: string; provider?: string; mfsNumber?: string; transactionId?: string },
@@ -66,7 +69,8 @@ export class SubscriptionsController {
   }
 
   @Post('renew')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, FeatureFlagGuard)
+  @RequireFeature('allow_subscriptions')
   async renewSubscription(@Req() req: any) {
     return this.subscriptionsService.renewSubscription(req.user.sub);
   }

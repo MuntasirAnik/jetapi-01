@@ -2,31 +2,111 @@ import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/
 import { UsersService } from '../users/users.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SystemSetting } from '../admin/system-setting.entity';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+
+export interface PasswordPolicy {
+  minLength: number;
+  requireUppercase: boolean;
+  requireLowercase: boolean;
+  requireNumber: boolean;
+  requireSpecial: boolean;
+}
+
+const DEFAULT_POLICY: PasswordPolicy = {
+  minLength: 6,
+  requireUppercase: false,
+  requireLowercase: false,
+  requireNumber: false,
+  requireSpecial: false,
+};
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private organizationsService: OrganizationsService,
-    private jwtService: JwtService
+    private jwtService: JwtService,
+    @InjectRepository(SystemSetting)
+    private settingRepo: Repository<SystemSetting>,
   ) {}
 
-  async validateUser(email: string, pass: string): Promise<any> {
+  private async getPasswordPolicy(): Promise<PasswordPolicy> {
+    try {
+      const setting = await this.settingRepo.findOne({ where: { key: 'password_policy' } });
+      if (setting) return { ...DEFAULT_POLICY, ...JSON.parse(setting.value) };
+    } catch {}
+    return DEFAULT_POLICY;
+  }
+
+  async getPublicPasswordPolicy() {
+    return this.getPasswordPolicy();
+  }
+
+  private validatePasswordPolicy(password: string, policy: PasswordPolicy): string | null {
+    if (password.length < policy.minLength) return `Password must be at least ${policy.minLength} characters`;
+    if (policy.requireUppercase && !/[A-Z]/.test(password)) return 'Password must contain an uppercase letter';
+    if (policy.requireLowercase && !/[a-z]/.test(password)) return 'Password must contain a lowercase letter';
+    if (policy.requireNumber && !/[0-9]/.test(password)) return 'Password must contain a number';
+    if (policy.requireSpecial && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) return 'Password must contain a special character';
+    return null;
+  }
+
+  async validateUser(email: string, pass: string, ip?: string): Promise<any> {
     const user = await this.usersService.findOneByEmail(email);
-    if (user && await bcrypt.compare(pass, user.passwordHash)) {
-      if (!user.isActive) {
-        throw new UnauthorizedException('Your account has been deactivated. Please contact the administrator.');
-      }
+    if (!user) return null;
+
+    // Check if account is locked
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Account is locked. Try again in ${mins} minute(s).`);
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Your account has been deactivated. Please contact the administrator.');
+    }
+
+    if (await bcrypt.compare(pass, user.passwordHash)) {
+      // Successful login — reset failed attempts and record login info
+      await this.usersService.updateUser(user.id, {
+        failedLoginAttempts: 0,
+        lockedUntil: null as any,
+        lastLoginAt: new Date(),
+        lastLoginIp: ip || undefined,
+      });
+
       const { passwordHash, ...result } = user;
       return result;
     }
+
+    // Failed login — increment attempts
+    const attempts = (user.failedLoginAttempts || 0) + 1;
+    const updateData: any = { failedLoginAttempts: attempts };
+
+    if (attempts >= 5) {
+      updateData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min lockout
+    }
+
+    await this.usersService.updateUser(user.id, updateData);
+
+    if (attempts >= 5) {
+      throw new UnauthorizedException('Too many failed attempts. Account locked for 15 minutes.');
+    }
+
     return null;
   }
 
   async login(user: any) {
-    const payload = { email: user.email, sub: user.id, name: user.name, role: user.role || 'USER' };
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      name: user.name,
+      role: user.role || 'USER',
+      tokenVersion: user.tokenVersion || 0,
+    };
     return {
       access_token: await this.jwtService.signAsync(payload),
       user: { id: user.id, email: user.email, name: user.name, role: user.role || 'USER' }
@@ -36,6 +116,12 @@ export class AuthService {
   async register(name: string, email: string, pass: string) {
     const existing = await this.usersService.findOneByEmail(email);
     if (existing) throw new BadRequestException('User already exists');
+
+    // Enforce password policy
+    const policy = await this.getPasswordPolicy();
+    const policyError = this.validatePasswordPolicy(pass, policy);
+    if (policyError) throw new BadRequestException(policyError);
+
     const passwordHash = await bcrypt.hash(pass, 10);
     const user = await this.usersService.create({ name, email, passwordHash });
     
@@ -70,6 +156,11 @@ export class AuthService {
        throw new BadRequestException('Invalid or expired reset token');
     }
 
+    // Enforce password policy
+    const policy = await this.getPasswordPolicy();
+    const policyError = this.validatePasswordPolicy(newPassword, policy);
+    if (policyError) throw new BadRequestException(policyError);
+
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.usersService.updateUser(user.id, { passwordHash, resetToken: null as any, resetTokenExpiry: null as any });
     
@@ -82,6 +173,11 @@ export class AuthService {
 
     const isValid = await bcrypt.compare(currentPass, user.passwordHash);
     if (!isValid) throw new UnauthorizedException('Current password is incorrect');
+
+    // Enforce password policy
+    const policy = await this.getPasswordPolicy();
+    const policyError = this.validatePasswordPolicy(newPass, policy);
+    if (policyError) throw new BadRequestException(policyError);
 
     const passwordHash = await bcrypt.hash(newPass, 10);
     await this.usersService.updateUser(user.id, { passwordHash });

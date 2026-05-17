@@ -28,6 +28,8 @@ import { Comment } from './comments/comment.entity';
 import { AdminModule } from './admin/admin.module';
 import { PlanOverride } from './admin/plan-override.entity';
 import { Banner } from './admin/banner.entity';
+import { AuditLog } from './admin/audit-log.entity';
+import { SystemSetting } from './admin/system-setting.entity';
 import { Subscription } from './subscriptions/subscription.entity';
 import { Payment } from './subscriptions/payment.entity';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -55,7 +57,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner],
+          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting],
           synchronize: true, // Use carefully in production
         };
       },

@@ -1,6 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { X, Rocket, ArrowRight } from "lucide-react";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
+import { toast } from "react-toastify";
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -12,8 +14,18 @@ interface UpgradeModalProps {
 
 export default function UpgradeModal({ isOpen, onClose, feature, currentPlan = "Free", requiredPlan = "Pro" }: UpgradeModalProps) {
   const router = useRouter();
+  const flags = useFeatureFlags();
 
   if (!isOpen) return null;
+
+  const handleUpgrade = () => {
+    onClose();
+    if (!flags.allow_subscriptions) {
+      toast.error("Subscriptions are currently disabled by the administrator.");
+      return;
+    }
+    router.push("/pricing");
+  };
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
@@ -69,7 +81,7 @@ export default function UpgradeModal({ isOpen, onClose, feature, currentPlan = "
               Maybe Later
             </button>
             <button
-              onClick={() => { onClose(); router.push("/pricing"); }}
+              onClick={handleUpgrade}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-400 transition-colors shadow-lg shadow-violet-500/25 flex items-center justify-center gap-1.5"
             >
               Upgrade <ArrowRight className="w-3.5 h-3.5" />

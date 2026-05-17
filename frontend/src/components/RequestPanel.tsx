@@ -3,9 +3,12 @@ import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, L
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, onCancel, isSaving, envVariables = [] }: any) {
+  const flags = useFeatureFlags();
   const [activeTab, setActiveTab] = useState("Params");
+  const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
   const [isUrlFocused, setIsUrlFocused] = useState(false);
   const [isMethodDropdownOpen, setIsMethodDropdownOpen] = useState(false);
   const [showToken, setShowToken] = useState(false);
@@ -464,13 +467,14 @@ const getMethodColor = (method: string) => {
                   />
                   {renderVarSuggest(`${title || 'kvp'}-${i}-key`, item.key, (val) => handleChange(i, 'key', val))}
                 </td>
-                <td className="p-0 border-l border-[var(--border)] relative">
+                <td className={`p-0 border-l border-[var(--border)] relative ${highlightedFields.has(item.key) ? 'kvp-highlight-missing' : ''}`}>
                   <textarea 
+                    data-pathvar-key={disableKey ? item.key : undefined}
                     value={item.value} 
-                    onChange={e => handleChange(i, 'value', e.target.value)} 
+                    onChange={e => { handleChange(i, 'value', e.target.value); if (highlightedFields.has(item.key)) { setHighlightedFields(prev => { const next = new Set(prev); next.delete(item.key); return next; }); } }} 
                     onBlur={() => setTimeout(() => setVarSuggest(prev => prev.id === `${title || 'kvp'}-${i}-value` ? { ...prev, show: false } : prev), 150)}
-                    className="w-full bg-transparent px-2 py-1.5 outline-none font-mono min-h-[30px] resize-y" 
-                    placeholder="Value" 
+                    className={`w-full bg-transparent px-2 py-1.5 outline-none font-mono min-h-[30px] resize-y ${highlightedFields.has(item.key) ? 'placeholder:text-red-400' : ''}`}
+                    placeholder={highlightedFields.has(item.key) ? `← Enter ${item.key}` : "Value"}
                     rows={1}
                   />
                   {renderVarSuggest(`${title || 'kvp'}-${i}-value`, item.value, (val) => handleChange(i, 'value', val))}
@@ -1162,6 +1166,10 @@ const getMethodColor = (method: string) => {
           
           <button 
             onClick={() => {
+              if (!flags.allow_api_execution && !loading) {
+                toast.error("API execution is currently disabled by the administrator.");
+                return;
+              }
               if (loading && onCancel) {
                 onCancel();
                 return;
@@ -1169,6 +1177,23 @@ const getMethodColor = (method: string) => {
               const missingVars = (request.pathVariables || []).filter((pv: any) => pv.key && !pv.value && request.url.includes(`:${pv.key}`));
               if (missingVars.length > 0) {
                  toast.error("Please provide values for path variables: " + missingVars.map((v:any) => v.key).join(", "));
+                 // Switch to Params tab and highlight the missing fields
+                 setActiveTab("Params");
+                 const missingKeys = new Set(missingVars.map((v: any) => v.key));
+                 setHighlightedFields(missingKeys);
+                 // Focus the first missing path variable value input after a short delay for tab switch
+                 setTimeout(() => {
+                   const firstMissingKey = missingVars[0]?.key;
+                   if (firstMissingKey) {
+                     const el = document.querySelector(`textarea[data-pathvar-key="${firstMissingKey}"]`) as HTMLTextAreaElement;
+                     if (el) {
+                       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                       el.focus();
+                     }
+                   }
+                 }, 100);
+                 // Auto-clear highlights after 2 seconds
+                 setTimeout(() => setHighlightedFields(new Set()), 2500);
                  return;
               }
               onSend(formatRequestForAxios());

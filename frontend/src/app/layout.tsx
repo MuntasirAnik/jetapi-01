@@ -15,6 +15,8 @@ import { AppProvider } from '@/lib/AppContext';
 import GlobalTopBar from '@/components/GlobalTopBar';
 import AnnouncementTicker from '@/components/AnnouncementTicker';
 import FooterTerminal from '@/components/FooterTerminal';
+import MaintenanceGuard from '@/components/MaintenanceGuard';
+import { FeatureFlagProvider } from '@/lib/FeatureFlagContext';
 
 export default function RootLayout({
   children,
@@ -25,15 +27,19 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} antialiased bg-[var(--background)] text-[var(--foreground)] h-screen flex flex-col overflow-hidden`}>
         <AppProvider>
+          <FeatureFlagProvider>
           <DialogProvider>
             <ToastProvider />
-            <GlobalTopBar />
-            <AnnouncementTicker />
-            <main className="flex-1 flex overflow-hidden">
-              {children}
-            </main>
-            <FooterTerminal />
+            <MaintenanceGuard>
+              <GlobalTopBar />
+              <AnnouncementTicker />
+              <main className="flex-1 flex overflow-hidden">
+                {children}
+              </main>
+              <FooterTerminal />
+            </MaintenanceGuard>
           </DialogProvider>
+          </FeatureFlagProvider>
         </AppProvider>
       </body>
     </html>

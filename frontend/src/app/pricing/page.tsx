@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
-import { Check, Zap, Crown, Rocket, ChevronLeft, CreditCard, User, Tag, LogOut } from "lucide-react";
+import { Check, Zap, Crown, Rocket, ChevronLeft, CreditCard, User, Tag, LogOut, Ban } from "lucide-react";
 import { toast } from "react-toastify";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 interface Plan {
   id: string;
@@ -23,11 +24,18 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string>("FREE");
+  const flags = useFeatureFlags();
 
   useEffect(() => {
     loadPlans();
     loadCurrentPlan();
   }, []);
+
+  useEffect(() => {
+    if (!flags.show_pricing) {
+      toast.error("Pricing page is currently disabled by the administrator.");
+    }
+  }, [flags.show_pricing]);
 
   const defaultPlans: Plan[] = [
     {
@@ -78,6 +86,10 @@ export default function PricingPage() {
 
   const handleUpgrade = async (planId: string) => {
     if (planId === "FREE") return;
+    if (!flags.allow_subscriptions) {
+      toast.error("Subscriptions are currently disabled by the administrator.");
+      return;
+    }
     const token = localStorage.getItem("token");
     if (!token) {
       router.push("/login?redirect=/pricing");
@@ -168,6 +180,16 @@ export default function PricingPage() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto bg-[var(--background)] text-[var(--foreground)]">
+        {!flags.show_pricing ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center mb-4">
+              <Ban className="w-8 h-8 text-red-400" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">Pricing Unavailable</h2>
+            <p className="text-[var(--muted)] text-sm max-w-md">Pricing and plan upgrades are currently disabled by the administrator. Please check back later.</p>
+            <button onClick={() => router.push('/')} className="mt-6 px-5 py-2.5 bg-[var(--color-brand-500)] text-white rounded-xl text-sm font-semibold hover:bg-[var(--color-brand-600)] transition-colors">Back to App</button>
+          </div>
+        ) : (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
 
           {/* Header */}
@@ -253,7 +275,9 @@ export default function PricingPage() {
                   onClick={() => handleUpgrade(plan.id)}
                   disabled={isCurrentPlan || checkoutLoading === plan.id}
                   className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                    isCurrentPlan
+                    !flags.allow_subscriptions && plan.id !== "FREE" && !isCurrentPlan
+                      ? "bg-[var(--sidebar)] text-[var(--muted)] cursor-not-allowed border border-[var(--border)] opacity-60"
+                      : isCurrentPlan
                       ? "bg-[var(--sidebar)] text-[var(--muted)] cursor-default border border-[var(--border)]"
                       : plan.popular
                       ? "bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white"
@@ -271,6 +295,8 @@ export default function PricingPage() {
                     "Current Plan"
                   ) : plan.id === "FREE" ? (
                     "Get Started"
+                  ) : !flags.allow_subscriptions ? (
+                    "Subscriptions Disabled"
                   ) : (
                     `Upgrade to ${plan.name}`
                   )}
@@ -286,6 +312,7 @@ export default function PricingPage() {
           <p className="mt-1">Prices in USD. Cancel anytime.</p>
         </div>
       </div>
+      )}
       </div>
     </div>
   );

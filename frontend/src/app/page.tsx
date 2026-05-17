@@ -27,13 +27,15 @@ export default function Home() {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Redirect SUPER_ADMIN to admin panel
+  // Redirect ADMIN/SUPER_ADMIN to admin panel (skip if impersonating)
   useEffect(() => {
+    const isImpersonating = localStorage.getItem("impersonating") === "true";
+    if (isImpersonating) return;
     const userStr = localStorage.getItem("user");
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        if (user.role === "SUPER_ADMIN") {
+        if (user.role === "SUPER_ADMIN" || user.role === "ADMIN") {
           router.replace("/admin");
         }
       } catch {}

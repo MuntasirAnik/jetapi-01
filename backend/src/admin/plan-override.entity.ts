@@ -26,6 +26,9 @@ export class PlanOverride {
   @Column({ type: 'int', nullable: true })
   maxUploadMb: number | null;
 
+  @Column({ type: 'boolean', nullable: true })
+  analyticsAccess: boolean | null;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

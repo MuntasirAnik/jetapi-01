@@ -12,6 +12,7 @@ import { OrganizationUser } from '../organizations/organization-user.entity';
 import { Environment } from '../environments/environment.entity';
 import { PlanOverride } from '../admin/plan-override.entity';
 import { Payment } from './payment.entity';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { Payment } from './payment.entity';
       secret: 'YOUR_SECRET_KEY',
       signOptions: { expiresIn: '7d' },
     }),
+    AdminModule,
   ],
   controllers: [SubscriptionsController],
   providers: [SubscriptionsService, LimitsService],

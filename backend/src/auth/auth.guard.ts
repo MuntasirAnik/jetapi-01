@@ -29,10 +29,17 @@ export class AuthGuard implements CanActivate {
         }
       );
 
-      // Check if user is still active
+      // Check if user is still active and token is not revoked
       const user = await this.usersService.findOneById(payload.sub);
       if (!user || !user.isActive) {
         throw new UnauthorizedException('Your account has been deactivated. Please contact the administrator.');
+      }
+
+      // Check token version — force logout invalidates old tokens
+      if (payload.tokenVersion !== undefined && user.tokenVersion !== undefined) {
+        if (payload.tokenVersion !== user.tokenVersion) {
+          throw new UnauthorizedException('Session expired. Please log in again.');
+        }
       }
 
       request['user'] = payload;

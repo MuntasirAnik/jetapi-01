@@ -8,6 +8,7 @@ import {
   Calendar, Receipt,
 } from "lucide-react";
 import { toast } from "react-toastify";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function BillingPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function BillingPage() {
   const [usage, setUsage] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
+  const flags = useFeatureFlags();
 
   useEffect(() => {
     loadData();
@@ -287,7 +289,13 @@ export default function BillingPage() {
           {/* Action buttons */}
           <div className="flex gap-3 mt-4">
             <button
-              onClick={() => router.push("/pricing")}
+              onClick={() => {
+                if (!flags.allow_subscriptions) {
+                  toast.error("Subscriptions are currently disabled by the administrator.");
+                  return;
+                }
+                router.push("/pricing");
+              }}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white transition-colors"
             >
               {plan.id === "FREE" ? "Upgrade Plan" : "Change Plan"}

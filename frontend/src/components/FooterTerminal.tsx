@@ -80,9 +80,9 @@ export default function FooterTerminal() {
     document.addEventListener("mouseup", handleMouseUp);
   }, [panelHeight]);
 
-  // Hide on admin, auth, and pricing pages
+  // Hide on auth and pricing pages
   const hiddenPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/pricing'];
-  if (hiddenPaths.includes(pathname) || pathname.startsWith('/admin')) {
+  if (hiddenPaths.includes(pathname)) {
     return null;
   }
 

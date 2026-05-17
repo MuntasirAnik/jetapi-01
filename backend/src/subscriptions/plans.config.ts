@@ -10,6 +10,7 @@ export interface PlanLimits {
   apiDocExport: boolean;
   historyDays: number;
   maxUploadMb: number;
+  analyticsAccess: boolean;
 }
 
 export interface PlanDefinition {
@@ -44,6 +45,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       apiDocExport: false,
       historyDays: 7,
       maxUploadMb: 1,
+      analyticsAccess: false,
     },
     features: [
       '3 Collections',
@@ -72,6 +74,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       apiDocExport: true,
       historyDays: 30,
       maxUploadMb: 5,
+      analyticsAccess: true,
     },
     features: [
       'Unlimited Collections',
@@ -104,6 +107,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       apiDocExport: true,
       historyDays: 90,
       maxUploadMb: 10,
+      analyticsAccess: true,
     },
     features: [
       'Everything in Pro',
