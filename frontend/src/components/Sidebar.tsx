@@ -1,7 +1,7 @@
 "use client";
 import { apiFetch, copyToClipboard, getApiError } from '@/lib/api';
 import { useState, useEffect, useRef } from "react";
-import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star } from "lucide-react";
+import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star, Lock, Crown } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import ActivityFeed from "./ActivityFeed";
 import { toast } from "react-toastify";
@@ -63,6 +63,35 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'collections' | 'apis' | 'environments' | 'history'>('collections');
+
+  // Read cached value synchronously to prevent render flash
+  const [analyticsAccess, setAnalyticsAccess] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('jetapi_analytics_access');
+      if (cached !== null) return cached === 'true';
+    } catch {}
+    return false; // default to hidden until confirmed
+  });
+
+  // Fetch user plan limits to check analytics access
+  useEffect(() => {
+    const fetchPlanLimits = async () => {
+      try {
+        const res = await apiFetch('/subscriptions/usage');
+        if (res.ok) {
+          const data = await res.json();
+          const hasAccess = data.limits?.analyticsAccess ?? false;
+          setAnalyticsAccess(hasAccess);
+          localStorage.setItem('jetapi_analytics_access', String(hasAccess));
+          // If user was on analytics tab but lost access, redirect to collections
+          if (!hasAccess && activeTab === ('analytics' as any)) {
+            setActiveTab('collections');
+          }
+        }
+      } catch {}
+    };
+    fetchPlanLimits();
+  }, []);
 
   useEffect(() => {
     if (loadedStateRef.current) localStorage.setItem("sidebar_active_tab", activeTab);
@@ -830,14 +859,16 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
             <span className="absolute left-[60px] bg-[var(--foreground)] text-[var(--background)] px-2.5 py-1 rounded text-[10px] font-bold opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity whitespace-nowrap shadow-xl">History</span>
          </button>
 
+         {analyticsAccess && (
          <button 
-           onClick={() => setActiveTab('analytics')} 
+           onClick={() => setActiveTab('analytics' as any)}
            className={`rail-icon flex flex-col items-center justify-center w-full py-3 group cursor-pointer relative ${activeTab==='analytics'?'text-[var(--foreground)]':'hover:text-[var(--foreground)]'}`}
          >
             <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r transition-colors ${activeTab==='analytics'?'bg-[var(--color-brand-500)]':'bg-transparent'}`}></div>
             <BarChart3 className="w-5 h-5" />
             <span className="absolute left-[60px] bg-[var(--foreground)] text-[var(--background)] px-2.5 py-1 rounded text-[10px] font-bold opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity whitespace-nowrap shadow-xl">Analytics</span>
          </button>
+         )}
 
          <button 
            onClick={() => setActiveTab('activity')} 

@@ -145,6 +145,29 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
 
   return (
     <>
+      {/* Impersonation Banner */}
+      {typeof window !== 'undefined' && localStorage.getItem('impersonating') === 'true' && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-center py-1.5 px-4 text-xs font-bold flex items-center justify-center gap-3 z-50">
+          <span>⚠️ You are impersonating <strong>{localUser?.email || 'a user'}</strong></span>
+          <button
+            onClick={() => {
+              const adminToken = localStorage.getItem('admin_token');
+              const adminUser = localStorage.getItem('admin_user');
+              if (adminToken && adminUser) {
+                localStorage.setItem('token', adminToken);
+                localStorage.setItem('user', adminUser);
+              }
+              localStorage.removeItem('admin_token');
+              localStorage.removeItem('admin_user');
+              localStorage.removeItem('impersonating');
+              window.location.href = '/admin';
+            }}
+            className="bg-white/20 hover:bg-white/30 px-3 py-0.5 rounded text-xs font-bold transition-colors"
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      )}
       <div className="h-12 border-b border-[var(--border)] bg-[var(--background)] flex items-center justify-between px-4 gap-3">
         {/* Left Nav (Branding & Workspace) */}
         <div className="flex items-center gap-4">
@@ -153,7 +176,8 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
               <span>JetAPI</span>
             </a>
 
-           {/* Team Dropdown */}
+           {/* Team & Workspace Dropdowns - hidden for admins */}
+           {organizations.length > 0 && localUser?.role !== 'SUPER_ADMIN' && localUser?.role !== 'ADMIN' ? (<>
            <div className="relative" ref={orgDropdownRef}>
               <div 
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer transition-colors ${isOrgDropdownOpen ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
@@ -203,7 +227,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                 </div>
               )}
            </div>
-           
+
            <div className="relative" ref={dropdownRef}>
               <div 
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer transition-colors ${isWsDropdownOpen ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
@@ -218,7 +242,6 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
 
               {isWsDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 w-72 bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl z-[9999] overflow-hidden flex flex-col">
-                  {/* Search Map */}
                   <div className="p-2 border-b border-[var(--border)] relative bg-[var(--background)]">
                      <Search className="w-3.5 h-3.5 absolute left-4 top-4 text-[var(--muted)]" />
                      <input 
@@ -229,7 +252,6 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                        autoFocus
                      />
                   </div>
-                  {/* Dynamic Populated List */}
                   <div className="max-h-64 overflow-y-auto p-1 flex flex-col gap-0.5">
                      <div className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Workspaces</div>
                      {workspaces.filter((w: any) => (w.name || "").toLowerCase().includes(wsSearch.toLowerCase())).map((ws: any) => (
@@ -248,7 +270,6 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                        </button>
                      ))}
                   </div>
-                  {/* Creation Action */}
                   <div className="border-t border-[var(--border)] p-1 bg-[var(--background)]">
                     <button 
                       onClick={() => { setIsWsDropdownOpen(false); setIsWsSettingsOpen(true); }}
@@ -268,6 +289,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                 </div>
               )}
            </div>
+           </>) : null}
         </div>
 
         {/* Right Nav (Environments & Profile) */}
@@ -332,11 +354,14 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
               )}
             </div>
             
-            <a href="/profile" className="text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors" title="User Profile">
+            
+            <a href={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? '/admin' : '/profile'} className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all" title={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? 'Admin Panel' : 'User Profile'}>
               {localUser?.avatarMimeType ? (
-                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-5 h-5 rounded-full object-cover border border-[var(--border)]" />
+                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" />
               ) : (
-                <UserIcon className="w-4 h-4" />
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white uppercase" style={{ background: 'var(--color-brand-500)' }}>
+                  {(localUser?.name || localUser?.email || 'U').charAt(0)}
+                </div>
               )}
             </a>
             <ThemeToggle />

@@ -26,6 +26,30 @@ export class User {
   @Column({ nullable: true })
   resetTokenExpiry: Date;
 
+  @Column({ nullable: true })
+  stripeCustomerId: string;
+
+  @Column({ default: 'USER' })
+  role: string; // 'USER' | 'SUPER_ADMIN'
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @Column({ default: 0 })
+  tokenVersion: number;
+
+  @Column({ default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedUntil: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastLoginAt: Date;
+
+  @Column({ nullable: true })
+  lastLoginIp: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

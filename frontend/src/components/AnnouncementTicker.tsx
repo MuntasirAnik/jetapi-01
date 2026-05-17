@@ -1,20 +1,32 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Megaphone } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
-const ANNOUNCEMENTS = [
-  "🚀 JetAPI v2.0 — History panel is now live! Track all your requests automatically.",
-  "💡 Tip: Use {{variables}} in your URLs and headers for dynamic environments.",
-  "⌨️ Shortcut: Press Ctrl+S (⌘+S) to save your request instantly.",
-  "🔗 Share collections with your team — right-click any collection → Share.",
-  "🌙 Toggle between dark and light themes from the top bar.",
-  "📦 Import your Postman collections directly into JetAPI with one click.",
-  "⚡ Pro tip: Use the Console panel to monitor all request/response traffic in real-time.",
-];
+const FLAG_LABELS: Record<string, string> = {
+  allow_signups: "User Registration",
+  allow_api_execution: "API Execution",
+  show_pricing: "Pricing Page",
+  allow_subscriptions: "Subscriptions",
+};
 
 export default function AnnouncementTicker() {
   const [visible, setVisible] = useState(true);
   const [hovered, setHovered] = useState(false);
+  const [announcements, setAnnouncements] = useState<string[]>([]);
+  const flags = useFeatureFlags();
+
+  // Build messages for disabled features
+  const disabledMessages = useMemo(() => {
+    const msgs: string[] = [];
+    for (const [key, label] of Object.entries(FLAG_LABELS)) {
+      if (flags[key] === false) {
+        msgs.push(`⚠ ${label} is currently disabled by the administrator`);
+      }
+    }
+    return msgs;
+  }, [flags]);
 
   useEffect(() => {
     const check = () => {
@@ -26,9 +38,35 @@ export default function AnnouncementTicker() {
     return () => window.removeEventListener("jetapi-announcements-toggle", check);
   }, []);
 
-  if (!visible) return null;
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
 
-  const tickerText = ANNOUNCEMENTS.join("     •     ");
+    const fetchBanners = () => {
+      apiFetch("/banners/active")
+        .then(res => res.ok ? res.json() : [])
+        .then((data: any[]) => {
+          if (Array.isArray(data)) {
+            setAnnouncements(data.map(b => b.text));
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchBanners();
+    const interval = setInterval(fetchBanners, 30000);
+    window.addEventListener("banners-updated", fetchBanners);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("banners-updated", fetchBanners);
+    };
+  }, []);
+
+  const allMessages = [...disabledMessages, ...announcements];
+
+  if (!visible || allMessages.length === 0) return null;
+
+  const tickerText = allMessages.join("     •     ");
 
   return (
     <>
@@ -38,8 +76,10 @@ export default function AnnouncementTicker() {
       <div className="relative h-7 bg-[var(--sidebar)] border-b border-[var(--border)] text-[var(--muted)] overflow-hidden flex items-center shrink-0 z-20">
         {/* Left label */}
         <div className="flex items-center gap-1.5 px-3 shrink-0 z-10 bg-[var(--sidebar)] pr-4">
-          <Megaphone className="w-3 h-3 text-[var(--color-brand-500)]" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-brand-500)] opacity-80">What&apos;s New</span>
+          <Megaphone className={`w-3 h-3 ${disabledMessages.length > 0 ? 'text-amber-400' : 'text-[var(--color-brand-500)]'}`} />
+          <span className={`text-[10px] font-bold uppercase tracking-wider opacity-80 ${disabledMessages.length > 0 ? 'text-amber-400' : 'text-[var(--color-brand-500)]'}`}>
+            {disabledMessages.length > 0 ? 'Notice' : "What\u0027s New"}
+          </span>
         </div>
 
         {/* Scrolling text */}

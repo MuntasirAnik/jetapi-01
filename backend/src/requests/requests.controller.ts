@@ -6,10 +6,12 @@ import { AuthGuard } from '../auth/auth.guard';
 @UseGuards(AuthGuard)
 @Controller('requests')
 export class RequestsController {
-  constructor(private readonly requestsService: RequestsService) {}
+  constructor(
+    private readonly requestsService: RequestsService,
+  ) {}
 
   @Post()
-  create(@Body() data: Partial<RequestItem>, @Request() req: any) {
+  async create(@Body() data: Partial<RequestItem>, @Request() req: any) {
     return this.requestsService.create(data, req.user.sub);
   }
 
