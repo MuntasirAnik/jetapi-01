@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getApiError } from "@/lib/api";
 import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import RequestPanel from "@/components/RequestPanel";
