@@ -15,7 +15,7 @@ import {
   Lock, Unlock, KeyRound, Globe, ShieldCheck, LogOut, RefreshCw, ChevronDown, Check,
 } from "lucide-react";
 
-type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "settings" | "security";
+type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -253,6 +253,7 @@ export default function AdminPage() {
     { id: "payments", label: "Payments", icon: <DollarSign className="w-4 h-4" /> },
     { id: "banners", label: "Announcements", icon: <Megaphone className="w-4 h-4" /> },
     { id: "audit-log", label: "Audit Log", icon: <Activity className="w-4 h-4" /> },
+    { id: "reports", label: "Reports", icon: <BarChart3 className="w-4 h-4" /> },
     { id: "security", label: "Security", icon: <ShieldCheck className="w-4 h-4" /> },
     { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
   ];
@@ -320,6 +321,7 @@ export default function AdminPage() {
           {tab === "payments" && <PaymentsTab data={payments} onReload={loadTabData} />}
           {tab === "banners" && <BannersTab banners={banners} onReload={loadTabData} />}
           {tab === "audit-log" && <AuditLogTab />}
+          {tab === "reports" && <ReportsTab />}
           {tab === "settings" && <SettingsTab flags={featureFlags} onReload={loadTabData} />}
           {tab === "security" && <SecurityTab />}
         </div>
@@ -1770,6 +1772,213 @@ function AuditLogTab() {
   );
 }
 
+
+// ─── Reports Tab ─────────────────────────────────────
+function ReportsTab() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeChart, setActiveChart] = useState<'users' | 'revenue' | 'collections' | 'orgs' | 'audit'>('users');
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await apiFetch('/admin/reports');
+        if (res.ok) setData(await res.json());
+      } catch {}
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 border-2 border-[var(--color-brand-500)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="text-center py-12 text-[var(--muted)]">
+        <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <p className="text-sm">Failed to load report data</p>
+      </div>
+    );
+  }
+
+  const s = data.summary;
+  const chartConfigs: Record<string, { label: string; data: number[]; color: string; prefix?: string }> = {
+    users: { label: 'User Signups', data: data.userGrowth, color: 'var(--color-brand-500)' },
+    revenue: { label: 'Revenue', data: data.revenueGrowth, color: '#10b981', prefix: '$' },
+    collections: { label: 'Collections Created', data: data.collectionGrowth, color: '#8b5cf6' },
+    orgs: { label: 'Organizations Created', data: data.orgGrowth, color: '#f59e0b' },
+    audit: { label: 'Admin Actions', data: data.auditActivity, color: '#ef4444' },
+  };
+
+  const chart = chartConfigs[activeChart];
+  const chartMax = Math.max(...chart.data, 1);
+  const chartTotal = chart.data.reduce((a: number, b: number) => a + b, 0);
+
+  const planColors: Record<string, string> = { FREE: '#6b7280', PRO: 'var(--color-brand-500)', TEAM: '#f59e0b' };
+  const totalPlanUsers = data.planDistribution.reduce((a: number, p: any) => a + p.count, 0) || 1;
+
+  const kpiCards = [
+    { label: 'Total Users', value: s.totalUsers, sub: `${s.signupsLast7d} this week`, icon: <Users className="w-5 h-5" />, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    { label: 'Active Users', value: s.activeUsers, sub: `${s.inactiveUsers} inactive`, icon: <CheckCircle className="w-5 h-5" />, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'Total Revenue', value: `$${s.totalRevenue.toFixed(0)}`, sub: `MRR: $${s.mrr.toFixed(0)}`, icon: <DollarSign className="w-5 h-5" />, color: 'text-green-400', bg: 'bg-green-500/10' },
+    { label: 'Collections', value: s.totalCollections, sub: `${s.totalOrgs} organizations`, icon: <Building2 className="w-5 h-5" />, color: 'text-violet-400', bg: 'bg-violet-500/10' },
+    { label: 'Signups (30d)', value: s.signupsLast30d, sub: `${s.signupsLast7d} last 7 days`, icon: <TrendingUp className="w-5 h-5" />, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+    { label: 'Payments', value: s.totalPayments, sub: 'completed', icon: <CreditCard className="w-5 h-5" />, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Reports</h1>
+          <p className="text-[var(--muted)] text-sm">Platform analytics and trends — last 12 months</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-[var(--sidebar)] hover:bg-[var(--border)] transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        {kpiCards.map((k, i) => (
+          <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 flex flex-col gap-2">
+            <div className={`w-9 h-9 rounded-lg ${k.bg} ${k.color} flex items-center justify-center`}>
+              {k.icon}
+            </div>
+            <div>
+              <p className="text-xl font-black">{k.value}</p>
+              <p className="text-[10px] text-[var(--muted)] font-medium uppercase tracking-wider">{k.label}</p>
+              <p className="text-[10px] text-[var(--muted)] mt-0.5">{k.sub}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Chart Section */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 mb-6">
+        {/* Chart Tabs */}
+        <div className="flex items-center gap-1 mb-5 flex-wrap">
+          {Object.entries(chartConfigs).map(([key, cfg]) => (
+            <button
+              key={key}
+              onClick={() => setActiveChart(key as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeChart === key
+                  ? 'bg-[var(--color-brand-500)]/15 text-[var(--color-brand-500)] shadow-sm'
+                  : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)]'
+              }`}
+            >
+              {cfg.label}
+            </button>
+          ))}
+          <div className="flex-1" />
+          <span className="text-xs text-[var(--muted)] font-mono">
+            Total: {chart.prefix || ''}{chartTotal.toLocaleString()}
+          </span>
+        </div>
+
+        {/* Bar Chart */}
+        <div className="flex items-end gap-1.5 h-[180px]">
+          {chart.data.map((val: number, i: number) => {
+            const pct = (val / chartMax) * 100;
+            const monthLabel = data.months[i]?.slice(5) || '';
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                <span className="text-[10px] text-[var(--muted)] font-mono opacity-0 group-hover:opacity-100 transition-opacity">
+                  {chart.prefix || ''}{val}
+                </span>
+                <div className="w-full flex-1 flex items-end">
+                  <div
+                    className="w-full rounded-t-md transition-all duration-500 hover:opacity-80 min-h-[2px]"
+                    style={{ height: `${Math.max(pct, 2)}%`, backgroundColor: chart.color }}
+                  />
+                </div>
+                <span className="text-[9px] text-[var(--muted)] font-mono">{monthLabel}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Bottom Row: Plan Distribution + Trend Summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Plan Distribution */}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--muted)] mb-4">Plan Distribution</h3>
+          {/* Stacked bar */}
+          <div className="h-4 rounded-full overflow-hidden flex mb-4 bg-[var(--sidebar)]">
+            {data.planDistribution.map((p: any) => (
+              <div
+                key={p.plan}
+                style={{ width: `${(p.count / totalPlanUsers) * 100}%`, backgroundColor: planColors[p.plan] || '#6b7280' }}
+                className="transition-all duration-500"
+                title={`${p.plan}: ${p.count}`}
+              />
+            ))}
+          </div>
+          <div className="space-y-3">
+            {data.planDistribution.map((p: any) => (
+              <div key={p.plan} className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: planColors[p.plan] || '#6b7280' }} />
+                  <span className="text-sm font-semibold">{p.plan}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-mono text-[var(--muted)]">{p.count} users</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[var(--sidebar)]">
+                    {((p.count / totalPlanUsers) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Monthly Trends Summary Table */}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--muted)] mb-4">Monthly Trends</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[var(--muted)] uppercase tracking-wider">
+                  <th className="text-left py-2 font-semibold">Month</th>
+                  <th className="text-right py-2 font-semibold">Users</th>
+                  <th className="text-right py-2 font-semibold">Revenue</th>
+                  <th className="text-right py-2 font-semibold">Collections</th>
+                  <th className="text-right py-2 font-semibold">Orgs</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {data.months.slice().reverse().slice(0, 6).map((m: string, i: number) => {
+                  const idx = data.months.indexOf(m);
+                  return (
+                    <tr key={m} className="hover:bg-[var(--sidebar)] transition-colors">
+                      <td className="py-2 font-mono font-semibold text-[var(--foreground)]">{m}</td>
+                      <td className="text-right py-2 font-mono">{data.userGrowth[idx]}</td>
+                      <td className="text-right py-2 font-mono text-emerald-400">${data.revenueGrowth[idx].toFixed(0)}</td>
+                      <td className="text-right py-2 font-mono">{data.collectionGrowth[idx]}</td>
+                      <td className="text-right py-2 font-mono">{data.orgGrowth[idx]}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Settings Tab (Feature Flags) ────────────────────
 function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }) {

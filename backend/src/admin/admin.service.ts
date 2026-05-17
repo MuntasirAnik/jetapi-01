@@ -627,6 +627,131 @@ export class AdminService {
     };
   }
 
+  // ── Reports ──
+
+  async getReportData() {
+    const now = new Date();
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
+    twelveMonthsAgo.setDate(1);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
+
+    // User growth — last 12 months
+    const userGrowth = await this.userRepo
+      .createQueryBuilder('user')
+      .select("TO_CHAR(user.createdAt, 'YYYY-MM')", 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('user.createdAt >= :since', { since: twelveMonthsAgo })
+      .groupBy("TO_CHAR(user.createdAt, 'YYYY-MM')")
+      .orderBy("TO_CHAR(user.createdAt, 'YYYY-MM')", 'ASC')
+      .getRawMany();
+
+    // Revenue per month — last 12 months
+    const revenueGrowth = await this.paymentRepo
+      .createQueryBuilder('p')
+      .select("TO_CHAR(p.createdAt, 'YYYY-MM')", 'month')
+      .addSelect('COUNT(*)', 'txCount')
+      .addSelect("SUM(CAST(REPLACE(p.amount, '$', '') AS DECIMAL))", 'revenue')
+      .where('p.status = :status', { status: 'completed' })
+      .andWhere('p.createdAt >= :since', { since: twelveMonthsAgo })
+      .groupBy("TO_CHAR(p.createdAt, 'YYYY-MM')")
+      .orderBy("TO_CHAR(p.createdAt, 'YYYY-MM')", 'ASC')
+      .getRawMany();
+
+    // Fill 12 months
+    const months: string[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const ugMap = Object.fromEntries(userGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+    const rgMap = Object.fromEntries(revenueGrowth.map((r: any) => [r.month, { revenue: parseFloat(r.revenue || '0'), txCount: parseInt(r.txCount || '0') }]));
+
+    // Plan distribution
+    const planDist = await this.subRepo
+      .createQueryBuilder('sub')
+      .select('sub.plan', 'plan')
+      .addSelect('COUNT(*)', 'count')
+      .where('sub.status = :status', { status: 'active' })
+      .groupBy('sub.plan')
+      .getRawMany();
+    const totalSubbed = planDist.reduce((s: number, r: any) => s + parseInt(r.count), 0);
+    const totalUsers = await this.userRepo.count();
+    const freeCount = totalUsers - totalSubbed;
+
+    // Active vs inactive
+    const activeUsers = await this.userRepo.count({ where: { isActive: true } });
+
+    // Collections per month
+    const collectionGrowth = await this.collectionRepo
+      .createQueryBuilder('c')
+      .select("TO_CHAR(c.createdAt, 'YYYY-MM')", 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('c.createdAt >= :since', { since: twelveMonthsAgo })
+      .groupBy("TO_CHAR(c.createdAt, 'YYYY-MM')")
+      .orderBy("TO_CHAR(c.createdAt, 'YYYY-MM')", 'ASC')
+      .getRawMany();
+    const cgMap = Object.fromEntries(collectionGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+
+    // Org growth
+    const orgGrowth = await this.orgRepo
+      .createQueryBuilder('o')
+      .select("TO_CHAR(o.createdAt, 'YYYY-MM')", 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('o.createdAt >= :since', { since: twelveMonthsAgo })
+      .groupBy("TO_CHAR(o.createdAt, 'YYYY-MM')")
+      .orderBy("TO_CHAR(o.createdAt, 'YYYY-MM')", 'ASC')
+      .getRawMany();
+    const ogMap = Object.fromEntries(orgGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+
+    // Audit activity per month
+    const auditGrowth = await this.auditRepo
+      .createQueryBuilder('a')
+      .select("TO_CHAR(a.createdAt, 'YYYY-MM')", 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('a.createdAt >= :since', { since: twelveMonthsAgo })
+      .groupBy("TO_CHAR(a.createdAt, 'YYYY-MM')")
+      .orderBy("TO_CHAR(a.createdAt, 'YYYY-MM')", 'ASC')
+      .getRawMany();
+    const agMap = Object.fromEntries(auditGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+
+    // Signups recent
+    const signupsLast7d = await this.userRepo.createQueryBuilder('u').where('u.createdAt >= :since', { since: new Date(now.getTime() - 7 * 86400000) }).getCount();
+    const signupsLast30d = await this.userRepo.createQueryBuilder('u').where('u.createdAt >= :since', { since: new Date(now.getTime() - 30 * 86400000) }).getCount();
+
+    // Revenue summary
+    const allPayments = await this.paymentRepo.find({ where: { status: 'completed' } });
+    const totalRevenue = allPayments.reduce((s, p) => s + (parseFloat(p.amount.replace('$', '')) || 0), 0);
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    return {
+      months,
+      userGrowth: months.map(m => ugMap[m] || 0),
+      revenueGrowth: months.map(m => rgMap[m]?.revenue || 0),
+      transactionCount: months.map(m => rgMap[m]?.txCount || 0),
+      collectionGrowth: months.map(m => cgMap[m] || 0),
+      orgGrowth: months.map(m => ogMap[m] || 0),
+      auditActivity: months.map(m => agMap[m] || 0),
+      planDistribution: [
+        { plan: 'FREE', count: freeCount },
+        ...planDist.map((r: any) => ({ plan: r.plan, count: parseInt(r.count) })),
+      ],
+      summary: {
+        totalUsers,
+        activeUsers,
+        inactiveUsers: totalUsers - activeUsers,
+        signupsLast7d,
+        signupsLast30d,
+        totalRevenue,
+        mrr: rgMap[thisMonthKey]?.revenue || 0,
+        totalCollections: await this.collectionRepo.count(),
+        totalOrgs: await this.orgRepo.count(),
+        totalPayments: allPayments.length,
+      },
+    };
+  }
+
   // ── Bulk User Actions ──
 
   async bulkUpdateUsers(ids: string[], action: string, performedBy: string, value?: string) {

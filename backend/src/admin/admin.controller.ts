@@ -20,6 +20,11 @@ export class AdminController {
     return this.adminService.getGrowthData();
   }
 
+  @Get('reports')
+  getReports() {
+    return this.adminService.getReportData();
+  }
+
   // ── Users ──
 
   @Get('users')

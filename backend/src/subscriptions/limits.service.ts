@@ -180,4 +180,62 @@ export class LimitsService {
       },
     };
   }
+
+  async getUserReport(userId: string) {
+    const plan = await this.getUserPlan(userId);
+    const limits = await this.getMergedLimits(plan);
+
+    // Collections with request counts
+    const collections = await this.collectionRepo.find({
+      where: { ownerId: userId },
+      order: { createdAt: 'DESC' },
+    });
+
+    const collectionStats = await Promise.all(
+      collections.map(async (c) => {
+        const requestCount = await this.requestRepo.count({ where: { collectionId: c.id } });
+        return { id: c.id, name: c.name, requestCount, createdAt: c.createdAt };
+      }),
+    );
+
+    // Sort by request count desc for "top collections"
+    const topCollections = [...collectionStats].sort((a, b) => b.requestCount - a.requestCount).slice(0, 10);
+
+    // Total requests across all collections
+    const totalRequests = collectionStats.reduce((s, c) => s + c.requestCount, 0);
+
+    // Environments count
+    let environments = 0;
+    try {
+      environments = await this.environmentRepo.count({ where: { ownerId: userId } });
+    } catch { environments = 0; }
+
+    // Collections per month (last 6 months)
+    const months: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const collectionsByMonth = months.map(m => {
+      const count = collections.filter(c => {
+        const cm = `${c.createdAt.getFullYear()}-${String(c.createdAt.getMonth() + 1).padStart(2, '0')}`;
+        return cm === m;
+      }).length;
+      return count;
+    });
+
+    return {
+      plan,
+      limits,
+      summary: {
+        totalCollections: collections.length,
+        totalRequests,
+        environments,
+      },
+      topCollections,
+      months,
+      collectionsByMonth,
+    };
+  }
 }

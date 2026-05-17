@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useFeatureFlags } from "@/lib/FeatureFlagContext";
+import UserSidebar from "@/components/UserSidebar";
 
 export default function BillingPage() {
   const router = useRouter();
@@ -99,36 +100,7 @@ export default function BillingPage() {
 
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-64 border-r border-[var(--border)] bg-[var(--sidebar)] flex flex-col p-4 flex-shrink-0">
-        <div className="mb-8 pl-2">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-[var(--color-brand-500)]" /> Billing
-          </h1>
-          <p className="text-xs text-[var(--muted)] ml-7 mt-0.5">Manage your subscription</p>
-        </div>
-
-        <nav className="flex flex-col gap-1">
-          <button onClick={() => router.push('/profile')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
-            <User className="w-4 h-4" /> Profile
-          </button>
-          <button onClick={() => router.push('/pricing')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
-            <Tag className="w-4 h-4" /> Pricing Plans
-          </button>
-          <button className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors bg-[var(--card)] text-[var(--color-brand-500)] shadow-sm">
-            <CreditCard className="w-4 h-4" /> Billing
-          </button>
-          <button onClick={() => router.push('/payment-history')} className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-sm transition-colors hover:bg-[var(--card)] text-[var(--muted)]">
-            <Receipt className="w-4 h-4" /> Payment History
-          </button>
-        </nav>
-
-        <div className="mt-auto flex flex-col gap-2">
-          <button onClick={() => router.push("/")} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] flex items-center gap-2 border-t border-[var(--border)] pt-4 px-2">
-            <ChevronLeft className="w-4 h-4" /> Back to App
-          </button>
-        </div>
-      </div>
+      <UserSidebar activePage="billing" />
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto bg-[var(--background)] text-[var(--foreground)]">

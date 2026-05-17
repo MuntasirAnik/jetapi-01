@@ -30,6 +30,12 @@ export class SubscriptionsController {
     return this.limitsService.getUsageSummary(req.user.sub);
   }
 
+  @Get('report')
+  @UseGuards(AuthGuard)
+  async getReport(@Req() req: any) {
+    return this.limitsService.getUserReport(req.user.sub);
+  }
+
   @Get('payments')
   @UseGuards(AuthGuard)
   async getMyPayments(
