@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UnauthorizedException, BadRequestException, HttpCode, HttpStatus, Get, UseGuards, Request, UseInterceptors, UploadedFile, Res, Param, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Patch, Body, UnauthorizedException, BadRequestException, HttpCode, HttpStatus, Get, UseGuards, Request, UseInterceptors, UploadedFile, Res, Param, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
@@ -68,6 +68,23 @@ export class AuthController {
     const { passwordHash, avatarData, ...cleanUser } = user as any;
     const stats = await this.usersService.getUserStats(user.id);
     return { user: cleanUser, stats };
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch('profile')
+  async updateProfile(@Body() body: { name?: string; company?: string; location?: string; bio?: string; website?: string; phone?: string }, @Request() req: any) {
+    const data: any = {};
+    if (body.name !== undefined) data.name = body.name.trim();
+    if (body.company !== undefined) data.company = body.company.trim() || null;
+    if (body.location !== undefined) data.location = body.location.trim() || null;
+    if (body.bio !== undefined) data.bio = body.bio.trim() || null;
+    if (body.website !== undefined) data.website = body.website.trim() || null;
+    if (body.phone !== undefined) data.phone = body.phone.trim() || null;
+    if (!Object.keys(data).length) throw new BadRequestException('Nothing to update');
+    const updated = await this.usersService.updateUser(req.user.sub, data);
+    if (!updated) throw new BadRequestException('User not found');
+    const { passwordHash, avatarData, ...cleanUser } = updated as any;
+    return { user: cleanUser };
   }
 
   @UseGuards(AuthGuard)

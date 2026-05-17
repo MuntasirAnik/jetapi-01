@@ -6,7 +6,7 @@ import {
   User, LogOut, Folder, Activity,
   ShieldCheck, Users, X, Server, Upload, Loader2, Download, Import, Trash2, UserPlus, Search,
   Eye, EyeOff, Megaphone, Calendar, Mail, Clock, Edit3, Check,
-  Zap, Rocket, Crown, Globe, Wifi,
+  Zap, Rocket, Crown, Globe, Wifi, Building2, MapPin, Phone, Link as LinkIcon,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
@@ -48,6 +48,17 @@ export default function UserDashboard() {
   // Preferences
   const [announcementsOff, setAnnouncementsOff] = useState(false);
 
+  // Profile Edit
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
   useEffect(() => {
     setAnnouncementsOff(localStorage.getItem('jetapi_announcements_off') === 'true');
   }, []);
@@ -83,6 +94,12 @@ export default function UserDashboard() {
       if (!profileRes.ok) throw new Error("Failed to load profile");
       const profileData = await profileRes.json();
       setProfile(profileData);
+
+      // Sync user data (including avatarMimeType) to localStorage for TopBar/UserSidebar
+      if (profileData.user) {
+        localStorage.setItem("user", JSON.stringify(profileData.user));
+        window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+      }
 
       if (colRes.ok) setCollections(await colRes.json());
       if (usageRes?.ok) setUsage(await usageRes.json());
@@ -212,6 +229,38 @@ export default function UserDashboard() {
     }
   };
 
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editName.trim()) return;
+    setIsSavingProfile(true);
+    try {
+      const body: any = {
+        name: editName.trim(),
+        company: editCompany,
+        location: editLocation,
+        bio: editBio,
+        website: editWebsite,
+        phone: editPhone,
+      };
+      const res = await apiFetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Update failed");
+      setProfile({ ...profile, user: data.user });
+      localStorage.setItem("user", JSON.stringify(data.user));
+      window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+      setIsEditingProfile(false);
+      toast.success("Profile updated!");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   if (loading && !profile) {
     return (
       <div className="flex items-center justify-center h-screen w-full bg-[var(--background)]">
@@ -310,16 +359,64 @@ export default function UserDashboard() {
 
         <div className="max-w-4xl mx-auto px-8 pt-14 pb-10">
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-bold">{user.name || user.email.split('@')[0]}</h1>
-              <span className="px-2 py-0.5 rounded-full bg-[var(--color-brand-500)]/15 text-[var(--color-brand-500)] text-[10px] font-bold uppercase">{userRole}</span>
-              {user.isActive !== false && <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Online</span>}
-            </div>
-            <p className="text-sm text-[var(--muted)] mb-2">{user.email}</p>
-            <div className="flex items-center gap-5 text-xs text-[var(--muted)]">
-              <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" />Joined {joinedDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
-              <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{daysSinceJoined} days</span>
-            </div>
+            {!isEditingProfile ? (
+              <>
+                <div className="flex items-center gap-3 mb-1">
+                  <h1 className="text-2xl font-bold">{user.name || user.email.split('@')[0]}</h1>
+                  <span className="px-2 py-0.5 rounded-full bg-[var(--color-brand-500)]/15 text-[var(--color-brand-500)] text-[10px] font-bold uppercase">{userRole}</span>
+                  {user.isActive !== false && <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Online</span>}
+                </div>
+                {user.bio && <p className="text-xs text-[var(--muted)] max-w-md mb-1">{user.bio}</p>}
+                <p className="text-sm text-[var(--muted)] mb-1.5">{user.email}</p>
+                <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-[var(--muted)] mb-2">
+                  {user.company && <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" />{user.company}</span>}
+                  {user.location && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{user.location}</span>}
+                  {user.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{user.phone}</span>}
+                  {user.website && <a href={user.website.startsWith('http') ? user.website : `https://${user.website}`} target="_blank" rel="noopener" className="flex items-center gap-1 text-[var(--color-brand-500)] hover:underline"><LinkIcon className="w-3.5 h-3.5" />{user.website}</a>}
+                  <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Joined {joinedDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                </div>
+                <button onClick={() => { setEditName(user.name || ''); setEditCompany(user.company || ''); setEditLocation(user.location || ''); setEditBio(user.bio || ''); setEditWebsite(user.website || ''); setEditPhone(user.phone || ''); setIsEditingProfile(true); }} className="text-xs font-semibold text-[var(--color-brand-500)] hover:underline flex items-center gap-1">
+                  <Edit3 className="w-3 h-3" /> Edit Profile
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handleUpdateProfile} className="w-full max-w-lg space-y-3 text-left">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-[var(--muted)] font-bold uppercase mb-1 block">Name *</label>
+                    <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-[var(--sidebar)] border border-[var(--border)] p-2.5 rounded-lg outline-none focus:border-[var(--color-brand-500)] text-sm" placeholder="Your name" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[var(--muted)] font-bold uppercase mb-1 block">Company</label>
+                    <input type="text" value={editCompany} onChange={e => setEditCompany(e.target.value)} className="w-full bg-[var(--sidebar)] border border-[var(--border)] p-2.5 rounded-lg outline-none focus:border-[var(--color-brand-500)] text-sm" placeholder="Company name" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[var(--muted)] font-bold uppercase mb-1 block">Location</label>
+                    <input type="text" value={editLocation} onChange={e => setEditLocation(e.target.value)} className="w-full bg-[var(--sidebar)] border border-[var(--border)] p-2.5 rounded-lg outline-none focus:border-[var(--color-brand-500)] text-sm" placeholder="City, Country" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[var(--muted)] font-bold uppercase mb-1 block">Phone</label>
+                    <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} className="w-full bg-[var(--sidebar)] border border-[var(--border)] p-2.5 rounded-lg outline-none focus:border-[var(--color-brand-500)] text-sm" placeholder="+1 234 567 890" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--muted)] font-bold uppercase mb-1 block">Website</label>
+                  <input type="url" value={editWebsite} onChange={e => setEditWebsite(e.target.value)} className="w-full bg-[var(--sidebar)] border border-[var(--border)] p-2.5 rounded-lg outline-none focus:border-[var(--color-brand-500)] text-sm" placeholder="https://yourwebsite.com" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--muted)] font-bold uppercase mb-1 block">Bio</label>
+                  <textarea value={editBio} onChange={e => setEditBio(e.target.value)} rows={2} className="w-full bg-[var(--sidebar)] border border-[var(--border)] p-2.5 rounded-lg outline-none focus:border-[var(--color-brand-500)] text-sm resize-none" placeholder="A short bio about yourself" />
+                </div>
+                <p className="text-xs text-[var(--muted)]"><Mail className="w-3 h-3 inline mr-1" />{user.email}</p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button type="submit" disabled={isSavingProfile || !editName.trim()} className="bg-[var(--color-brand-500)] text-white text-xs font-semibold py-2 px-5 rounded-lg disabled:opacity-50 flex items-center gap-1.5 hover:brightness-110 transition-all">
+                    {isSavingProfile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    {isSavingProfile ? 'Saving...' : 'Save Changes'}
+                  </button>
+                  <button type="button" onClick={() => setIsEditingProfile(false)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] px-4 py-2 rounded-lg hover:bg-[var(--sidebar)] transition-colors">Cancel</button>
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Stat Pills */}

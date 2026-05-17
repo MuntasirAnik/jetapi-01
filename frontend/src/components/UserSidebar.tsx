@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   User, Activity, Folder, Users, CreditCard, BarChart3,
@@ -15,12 +16,25 @@ interface UserSidebarProps {
 
 export default function UserSidebar({ activePage, userName, activeTab, onTabChange }: UserSidebarProps) {
   const router = useRouter();
+  const [localUser, setLocalUser] = useState<any>(null);
+
+  useEffect(() => {
+    const loadUser = () => {
+      const u = localStorage.getItem("user");
+      if (u) setLocalUser(JSON.parse(u));
+    };
+    loadUser();
+    window.addEventListener("postclone-refresh-sidebar", loadUser);
+    return () => window.removeEventListener("postclone-refresh-sidebar", loadUser);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     router.push("/login");
   };
+
+  const displayName = userName || localUser?.name || localUser?.email?.split('@')[0] || "My Account";
 
   const navItems = [
     { id: "profile", label: "Profile", icon: User, href: "/profile" },
@@ -40,10 +54,20 @@ export default function UserSidebar({ activePage, userName, activeTab, onTabChan
     <div className="w-64 border-r border-[var(--border)] bg-[var(--sidebar)] flex flex-col p-4 flex-shrink-0">
       <div className="mb-8 pl-2">
         <h1 className="text-xl font-bold flex items-center gap-2">
-          <User className="w-5 h-5 text-[var(--color-brand-500)]" />
-          <span className="truncate">{userName || "My Account"}</span>
+          {localUser?.avatarMimeType ? (
+            <img
+              src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`}
+              alt=""
+              className="w-7 h-7 rounded-full object-cover border border-[var(--border)] flex-shrink-0"
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white uppercase flex-shrink-0" style={{ background: 'var(--color-brand-500)' }}>
+              {(displayName).charAt(0)}
+            </div>
+          )}
+          <span className="truncate">{displayName}</span>
         </h1>
-        <p className="text-xs text-[var(--muted)] ml-7 mt-0.5">Manage your account</p>
+        <p className="text-xs text-[var(--muted)] ml-9 mt-0.5">Manage your account</p>
       </div>
 
       <nav className="flex flex-col gap-1">

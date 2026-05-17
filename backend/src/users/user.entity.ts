@@ -50,6 +50,21 @@ export class User {
   @Column({ nullable: true })
   lastLoginIp: string;
 
+  @Column({ nullable: true })
+  company: string;
+
+  @Column({ nullable: true })
+  location: string;
+
+  @Column({ nullable: true })
+  bio: string;
+
+  @Column({ nullable: true })
+  website: string;
+
+  @Column({ nullable: true })
+  phone: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

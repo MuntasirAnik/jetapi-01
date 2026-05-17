@@ -109,7 +109,7 @@ export class AuthService {
     };
     return {
       access_token: await this.jwtService.signAsync(payload),
-      user: { id: user.id, email: user.email, name: user.name, role: user.role || 'USER' }
+      user: { id: user.id, email: user.email, name: user.name, role: user.role || 'USER', avatarMimeType: user.avatarMimeType || null }
     };
   }
 
