@@ -110,6 +110,22 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
     }
   };
 
+  const handleUpdateMaxMembers = async (newMax: number) => {
+    if (newMax < 1) return;
+    try {
+      const res = await apiFetch(`/organizations/${organizationId}`, {
+        method: 'PUT',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxMembers: newMax })
+      });
+      if (!res.ok) throw new Error("Failed to update max members");
+      toast.success(`Max team members updated to ${newMax}`);
+      loadData(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
   const currentUserMembership = users.find(u => u.email === currentUserEmail);
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
   const isOwner = currentUserMembership && currentUserMembership.role === 'OWNER';

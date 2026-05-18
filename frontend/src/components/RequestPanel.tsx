@@ -1179,7 +1179,7 @@ const getMethodColor = (method: string) => {
                  toast.error("Please provide values for path variables: " + missingVars.map((v:any) => v.key).join(", "));
                  // Switch to Params tab and highlight the missing fields
                  setActiveTab("Params");
-                 const missingKeys = new Set(missingVars.map((v: any) => v.key));
+                 const missingKeys = new Set<string>(missingVars.map((v: any) => v.key));
                  setHighlightedFields(missingKeys);
                  // Focus the first missing path variable value input after a short delay for tab switch
                  setTimeout(() => {

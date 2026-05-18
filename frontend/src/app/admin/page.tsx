@@ -597,7 +597,7 @@ function UsersTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  const loadUsersRef = useRef<(p?: number, s?: string, r?: string, st?: string) => Promise<void>>();
+  const loadUsersRef = useRef<((p?: number, s?: string, r?: string, st?: string) => Promise<void>) | undefined>(undefined);
   loadUsersRef.current = async (p = page, s = search, r = filterRole, st = filterStatus) => {
     setLoading(true);
     try {

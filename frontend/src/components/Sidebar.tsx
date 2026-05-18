@@ -62,7 +62,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
   const [searchQuery, setSearchQuery] = useState("");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'collections' | 'apis' | 'environments' | 'history'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'apis' | 'environments' | 'history' | 'analytics' | 'activity'>('collections');
 
   // Read cached value synchronously to prevent render flash
   const [analyticsAccess, setAnalyticsAccess] = useState<boolean>(() => {

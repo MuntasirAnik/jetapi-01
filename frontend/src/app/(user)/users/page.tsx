@@ -48,7 +48,7 @@ export default function UsersPage() {
 
   const mySharedUsers = useMemo(() => {
     const ownedCols = collections.filter(c => !c.ownerId || c.ownerId === currentUserId);
-    const userMap = new Map<string, { user: any; collections: string[] }>();
+    const userMap = new Map<string, { user: any; collections: string[]; role?: string }>();
     ownedCols.forEach(col => {
       (col.sharedUsers || []).forEach((su: any) => {
         if (!userMap.has(su.id)) userMap.set(su.id, { user: su, collections: [] });
