@@ -105,7 +105,8 @@ export class SubscriptionsService {
       throw new BadRequestException('Invalid plan selected');
     }
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    if (!frontendUrl) throw new BadRequestException('FRONTEND_URL is not configured in environment variables');
 
     // When Stripe is not configured, create a pending subscription (payment required within 10 days)
     if (!this.stripe) {
@@ -292,7 +293,8 @@ export class SubscriptionsService {
       throw new BadRequestException('No active subscription found');
     }
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    if (!frontendUrl) throw new BadRequestException('FRONTEND_URL is not configured in environment variables');
 
     const session = await this.stripe.billingPortal.sessions.create({
       customer: sub.stripeCustomerId,

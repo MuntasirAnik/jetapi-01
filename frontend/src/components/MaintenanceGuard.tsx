@@ -17,7 +17,7 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
 
     const checkMaintenance = async () => {
       try {
-        const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+        const API = process.env.NEXT_PUBLIC_API_URL ?? '';
         const res = await fetch(`${API}/api/maintenance`);
         if (res.ok) {
           const data = await res.json();

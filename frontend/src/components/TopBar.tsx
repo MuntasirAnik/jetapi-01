@@ -357,7 +357,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
             
             <a href={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? '/admin' : '/profile'} className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all" title={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? 'Admin Panel' : 'User Profile'}>
               {localUser?.avatarMimeType ? (
-                <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" />
+                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" />
               ) : (
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white uppercase" style={{ background: 'var(--color-brand-500)' }}>
                   {(localUser?.name || localUser?.email || 'U').charAt(0)}

@@ -106,7 +106,7 @@ export default function UsersPage() {
     setTabKey(prev => prev + 1);
   };
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   return (
     <div className="flex h-full w-full bg-[var(--background)] text-[var(--foreground)] font-sans">

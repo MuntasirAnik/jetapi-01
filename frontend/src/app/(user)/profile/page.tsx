@@ -350,7 +350,7 @@ export default function UserDashboard() {
         <div className="relative h-32 bg-gradient-to-r from-[var(--color-brand-500)]/20 via-purple-500/15 to-blue-500/10">
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
             <div className="w-20 h-20 rounded-full bg-[var(--card)] border-4 border-[var(--background)] flex items-center justify-center text-[var(--color-brand-500)] group cursor-pointer overflow-hidden shadow-lg hover:scale-105 transition-transform" onClick={() => avatarInputRef.current?.click()}>
-              {user.avatarMimeType ? (<img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-full h-full object-cover" />) : (<User className="w-8 h-8" />)}
+              {user.avatarMimeType ? (<img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-full h-full object-cover" />) : (<User className="w-8 h-8" />)}
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Upload className="w-4 h-4 text-white" /></div>
             </div>
           </div>

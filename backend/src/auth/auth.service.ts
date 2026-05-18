@@ -4,6 +4,7 @@ import { OrganizationsService } from '../organizations/organizations.service';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { SystemSetting } from '../admin/system-setting.entity';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
@@ -30,6 +31,7 @@ export class AuthService {
     private usersService: UsersService,
     private organizationsService: OrganizationsService,
     private jwtService: JwtService,
+    private configService: ConfigService,
     @InjectRepository(SystemSetting)
     private settingRepo: Repository<SystemSetting>,
   ) {}
@@ -144,7 +146,8 @@ export class AuthService {
     await this.usersService.updateUser(user.id, { resetToken, resetTokenExpiry });
 
     // In a real app, send an email here. We simulate for MVP:
-    console.log(`\n\n[DEV]: Password Reset Link for ${email}:\nhttp://localhost:3000/reset-password?token=${resetToken}\n\n`);
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
+    console.log(`\n\n[DEV]: Password Reset Link for ${email}:\n${frontendUrl}/reset-password?token=${resetToken}\n\n`);
 
     return { message: 'Reset link generated. (Check server logs)', dev_token: resetToken };
   }

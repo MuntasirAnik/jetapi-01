@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
         toast.info(
           <div className="flex flex-col gap-1">
             <span className="font-bold">DEV MODE MOCK EMAIL:</span>
-            <span className="text-xs break-all">localhost:3000/reset-password?token={data.dev_token}</span>
+            <span className="text-xs break-all">{typeof window !== 'undefined' ? window.location.origin : ''}/reset-password?token={data.dev_token}</span>
           </div>,
           { autoClose: false }
         );

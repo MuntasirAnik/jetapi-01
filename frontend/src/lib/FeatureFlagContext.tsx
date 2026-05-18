@@ -33,7 +33,7 @@ export function FeatureFlagProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const load = async () => {
       try {
-        const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+        const API = process.env.NEXT_PUBLIC_API_URL ?? '';
         const res = await fetch(`${API}/api/feature-flags`);
         if (res.ok) {
           const data = await res.json();

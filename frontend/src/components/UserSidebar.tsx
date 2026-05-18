@@ -56,7 +56,7 @@ export default function UserSidebar({ activePage, userName, activeTab, onTabChan
         <h1 className="text-xl font-bold flex items-center gap-2">
           {localUser?.avatarMimeType ? (
             <img
-              src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/users/${localUser.id}/avatar`}
+              src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`}
               alt=""
               className="w-7 h-7 rounded-full object-cover border border-[var(--border)] flex-shrink-0"
             />
