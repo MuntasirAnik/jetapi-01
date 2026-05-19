@@ -149,11 +149,12 @@ export default function UserDashboard() {
   const handleShare = async (colId: string) => {
     const email = shareEmails[colId];
     if (!email) return;
+    const role = shareEmails[`${colId}_role`] || 'viewer';
     setSharingColId(colId);
     try {
       const res = await apiFetch(`/collections/${colId}/share`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, role })
       });
       if (!res.ok) throw new Error((await res.json()).message || "Share failed");
       setShareEmails({ ...shareEmails, [colId]: "" });
@@ -293,6 +294,8 @@ export default function UserDashboard() {
   const { user, stats } = profile;
   const ownedCollections = collections.filter(c => !c.ownerId || c.ownerId === user.id);
   const sharedWithMe = collections.filter(c => c.ownerId && c.ownerId !== user.id);
+  const sharedAdminCollections = sharedWithMe.filter(c => c.sharedUsers?.some((su: any) => su.id === user.id && su.shareRole === 'admin'));
+  const manageableCollections = [...ownedCollections, ...sharedAdminCollections];
   const joinedDate = new Date(user.createdAt);
   const daysSinceJoined = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -613,26 +616,27 @@ export default function UserDashboard() {
           <div>
 
           {/* Access Control */}
-          {ownedCollections.length > 0 ? (
+          {manageableCollections.length > 0 ? (
             <div className="mb-6">
               <h3 className="text-sm font-bold text-[var(--muted)] uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Users className="w-4 h-4 text-[var(--color-brand-500)]" /> Access Control
               </h3>
               <div className="space-y-3">
-                {ownedCollections.map(col => (
+                {manageableCollections.map(col => (
                   <div key={col.id} className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
                     <div className="bg-[var(--sidebar)]/50 px-4 py-3 border-b border-[var(--border)] flex justify-between items-center">
                       <div className="font-semibold text-sm flex items-center gap-2">
                         <Folder className="w-4 h-4 text-[var(--color-brand-500)]" /> {col.name}
+                        {col.ownerId !== user.id && <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 ml-1">Admin</span>}
                       </div>
-                      <form onSubmit={e => { e.preventDefault(); handleShare(col.id); }} className="flex gap-2">
+                      <form onSubmit={e => { e.preventDefault(); handleShare(col.id); }} className="flex gap-2 items-center">
                         <div className="relative">
                           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
                           <input
                             type="email"
                             list={`sys-users-${col.id}`}
                             placeholder="Email to share..."
-                            className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] w-56 font-medium placeholder-[var(--muted)]"
+                            className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] w-48 font-medium placeholder-[var(--muted)]"
                             value={shareEmails[col.id] || ''}
                             onChange={(e) => setShareEmails({ ...shareEmails, [col.id]: e.target.value })}
                             required
@@ -643,6 +647,15 @@ export default function UserDashboard() {
                             ))}
                           </datalist>
                         </div>
+                        <select
+                          value={shareEmails[`${col.id}_role`] || 'viewer'}
+                          onChange={e => setShareEmails({ ...shareEmails, [`${col.id}_role`]: e.target.value })}
+                          className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md px-2 py-1.5 outline-none focus:border-[var(--color-brand-500)] font-medium text-[var(--foreground)] cursor-pointer"
+                        >
+                          <option value="viewer">Viewer</option>
+                          <option value="editor">Editor</option>
+                          <option value="admin">Admin</option>
+                        </select>
                         <button type="submit" disabled={!shareEmails[col.id] || sharingColId === col.id} className="bg-[var(--color-brand-500)] text-white px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1 disabled:opacity-50 min-w-[65px] justify-center">
                           {sharingColId === col.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><UserPlus className="w-3.5 h-3.5" /> Share</>}
                         </button>
@@ -652,16 +665,44 @@ export default function UserDashboard() {
                       {col.sharedUsers?.length > 0 ? (
                         <div className="flex flex-col gap-1.5">
                           {col.sharedUsers.map((u: any) => (
-                            <div key={u.id} className="flex items-center justify-between bg-[var(--sidebar)] px-3 py-2 border border-[var(--border)] rounded-md text-sm">
+                            <div key={u.id} className="flex items-center justify-between bg-[var(--sidebar)] px-3 py-2 border border-[var(--border)] rounded-md text-sm group">
                               <div className="flex items-center gap-2 text-[var(--muted)]">
                                 <div className="w-5 h-5 rounded-full bg-[var(--background)] flex items-center justify-center border border-[var(--border)] shrink-0">
                                   <User className="w-3 h-3" />
                                 </div>
                                 <span>{u.email}</span>
                               </div>
-                              <button onClick={() => handleUnshare(col.id, u.id)} disabled={revokingUserId === u.id} className="text-red-500 hover:bg-red-500 hover:text-white p-1 rounded transition-colors disabled:opacity-50">
-                                {revokingUserId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={u.shareRole || 'viewer'}
+                                  disabled={u.id === user.id}
+                                  onChange={async (e) => {
+                                    const newRole = e.target.value;
+                                    try {
+                                      const res = await apiFetch(`/collections/${col.id}/share/${u.id}`, {
+                                        method: "PUT",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ role: newRole })
+                                      });
+                                      if (!res.ok) throw new Error("Failed");
+                                      toast.success(`Role updated to ${newRole}`);
+                                      fetchData();
+                                    } catch { toast.error("Failed to update role"); }
+                                  }}
+                                  className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border-0 outline-none cursor-pointer ${
+                                    u.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' :
+                                    u.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' :
+                                    'bg-blue-500/10 text-blue-400'
+                                  } ${u.id === user.id ? 'opacity-60 cursor-default' : ''}`}
+                                >
+                                  <option value="viewer">Viewer</option>
+                                  <option value="editor">Editor</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                                <button onClick={() => handleUnshare(col.id, u.id)} disabled={revokingUserId === u.id} className="text-red-500 hover:bg-red-500 hover:text-white p-1 rounded transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100">
+                                  {revokingUserId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>

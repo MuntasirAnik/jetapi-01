@@ -4,13 +4,14 @@ import { UsersModule } from '../users/users.module';
 import { CollectionsService } from './collections.service';
 import { CollectionsController } from './collections.controller';
 import { Collection } from './collection.entity';
+import { CollectionShare } from './collection-share.entity';
 import { Workspace } from '../workspaces/workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Collection, Workspace, OrganizationUser]), UsersModule, NotificationsModule, SubscriptionsModule],
+  imports: [TypeOrmModule.forFeature([Collection, CollectionShare, Workspace, OrganizationUser]), UsersModule, NotificationsModule, SubscriptionsModule],
   controllers: [CollectionsController],
   providers: [CollectionsService],
 })

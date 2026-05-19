@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Collection } from './collection.entity';
+import { CollectionShare } from './collection-share.entity';
 import { UsersService } from '../users/users.service';
 import { Workspace } from '../workspaces/workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
@@ -12,6 +13,8 @@ export class CollectionsService {
   constructor(
     @InjectRepository(Collection)
     private readonly collectionRepository: Repository<Collection>,
+    @InjectRepository(CollectionShare)
+    private readonly shareRepository: Repository<CollectionShare>,
     private readonly usersService: UsersService,
     @InjectRepository(Workspace)
     private readonly workspaceRepository: Repository<Workspace>,
@@ -19,6 +22,17 @@ export class CollectionsService {
     private readonly orgUserRepo: Repository<OrganizationUser>,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  /** Hydrate sharedUsers from shares relation for backward compat */
+  private hydrateSharedUsers(collection: Collection): Collection {
+    if (collection.shares) {
+      collection.sharedUsers = collection.shares.map(s => ({
+        ...s.user,
+        shareRole: s.role,
+      })) as any;
+    }
+    return collection;
+  }
 
   async create(data: Partial<Collection>, userId: string): Promise<Collection> {
     const collection = this.collectionRepository.create({ ...data, ownerId: userId });
@@ -31,30 +45,29 @@ export class CollectionsService {
     const membership = await this.orgUserRepo.findOne({ where: { organizationId: workspace.organizationId, userId }});
     if (!membership) throw new ForbiddenException('Access denied');
 
-    return this.collectionRepository.createQueryBuilder('collection')
-      .leftJoinAndSelect('collection.sharedUsers', 'sharedUsers')
+    const collections = await this.collectionRepository.createQueryBuilder('collection')
+      .leftJoinAndSelect('collection.shares', 'shares')
+      .leftJoinAndSelect('shares.user', 'sharedUser')
       .leftJoinAndSelect('collection.owner', 'owner')
       .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
       .where('collection.workspaceId = :workspaceId', { workspaceId })
       .getMany();
+
+    return collections.map(c => this.hydrateSharedUsers(c));
   }
 
   async findAll(userId: string, includeRequests: boolean = false): Promise<Collection[]> {
-    // Phase 1: Rapid scalar extraction to avoid N:N parsing filter bugs in TypeORM find()
+    // Phase 1: Find IDs of owned + shared collections
     const ownedCols = await this.collectionRepository.find({ where: { ownerId: userId }, select: ['id'] });
-    const sharedCols = await this.collectionRepository.createQueryBuilder('collection')
-      .innerJoin('collection.sharedUsers', 'su')
-      .where('su.id = :userId', { userId })
-      .select('collection.id')
-      .getMany();
+    const sharedCols = await this.shareRepository.find({ where: { userId }, select: ['collectionId'] });
 
-    const allowedIds = [...new Set([...ownedCols.map(c => c.id), ...sharedCols.map(c => c.id)])];
+    const allowedIds = [...new Set([...ownedCols.map(c => c.id), ...sharedCols.map(c => c.collectionId)])];
     if (allowedIds.length === 0) return [];
 
-    // Phase 2: Safe bounded explicit Object mapping without relational conditionals
-    // Phase 2: Fetch Collections without cartesian joins
+    // Phase 2: Fetch collections with shares
     const collections = await this.collectionRepository.createQueryBuilder('collection')
-      .leftJoinAndSelect('collection.sharedUsers', 'sharedUsers')
+      .leftJoinAndSelect('collection.shares', 'shares')
+      .leftJoinAndSelect('shares.user', 'sharedUser')
       .leftJoinAndSelect('collection.owner', 'owner')
       .leftJoinAndSelect('collection.workspace', 'workspace')
       .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
@@ -73,17 +86,18 @@ export class CollectionsService {
       });
     }
 
-    return collections;
+    return collections.map(c => this.hydrateSharedUsers(c));
   }
 
   async findOne(id: string, userId: string): Promise<{ collection: Collection, membership: OrganizationUser }> {
     const collection = await this.collectionRepository.findOne({
       where: { id },
       relationLoadStrategy: 'query',
-      relations: ['requests', 'sharedUsers', 'workspace'],
+      relations: ['requests', 'shares', 'shares.user', 'workspace'],
     });
 
     if (!collection) throw new NotFoundException('Collection not found');
+    this.hydrateSharedUsers(collection);
     const workspace = await this.workspaceRepository.findOne({ where: { id: collection.workspace.id } });
     if (!workspace) throw new NotFoundException('Workspace not found');
     const membership = await this.orgUserRepo.findOne({ where: { organizationId: workspace.organizationId, userId }});
@@ -107,12 +121,22 @@ export class CollectionsService {
     await this.collectionRepository.remove(collection);
   }
 
-  async share(id: string, email: string, userId: string): Promise<Collection> {
-    const { collection, membership } = await this.findOne(id, userId);
+  /** Check if a user can manage sharing (is owner, org admin, or collection-level admin) */
+  private canManageSharing(collection: Collection, membership: OrganizationUser, userId: string): boolean {
     const isOwner = collection.ownerId === userId;
-    if (membership.role !== 'ADMIN' && membership.role !== 'OWNER' && !isOwner) {
-      throw new ForbiddenException('Only Admins or the Owner can share this collection');
+    const isOrgAdmin = membership.role === 'ADMIN' || membership.role === 'OWNER';
+    const shareRecord = collection.shares?.find(s => s.userId === userId);
+    const isCollectionAdmin = shareRecord?.role === 'admin';
+    return isOwner || isOrgAdmin || isCollectionAdmin;
+  }
+
+  async share(id: string, email: string, userId: string, role: 'viewer' | 'editor' | 'admin' = 'viewer'): Promise<Collection> {
+    const { collection, membership } = await this.findOne(id, userId);
+    
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException('You do not have permission to share this collection');
     }
+
     let userToShareWith = await this.usersService.findOneByEmail(email);
     if (!userToShareWith) {
       // Auto-create a stub user for external sharing
@@ -123,10 +147,24 @@ export class CollectionsService {
       });
     }
     
-    collection.sharedUsers = collection.sharedUsers || [];
-    if (!collection.sharedUsers.some(u => u.id === userToShareWith.id)) {
-      collection.sharedUsers.push(userToShareWith);
-      await this.collectionRepository.save(collection);
+    // Check if share already exists
+    const existing = await this.shareRepository.findOne({ 
+      where: { collectionId: id, userId: userToShareWith.id } 
+    });
+    
+    if (existing) {
+      // Update role if different
+      if (existing.role !== role) {
+        existing.role = role;
+        await this.shareRepository.save(existing);
+      }
+    } else {
+      const share = this.shareRepository.create({
+        collectionId: id,
+        userId: userToShareWith.id,
+        role,
+      });
+      await this.shareRepository.save(share);
       
       // Dispatch notification
       await this.notificationsService.create(
@@ -134,30 +172,67 @@ export class CollectionsService {
         `You have been given access to collection '${collection.name}'`
       );
     }
-    return collection;
+
+    // Re-fetch to return updated data
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
   }
 
   async unshare(id: string, userToUnshareId: string, userId: string): Promise<Collection> {
     const { collection, membership } = await this.findOne(id, userId);
-    const isOwner = collection.ownerId === userId;
-    if (membership.role !== 'ADMIN' && membership.role !== 'OWNER' && !isOwner) {
-      throw new ForbiddenException('Only Admins or the Owner can manage access to this collection');
+    
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException('You do not have permission to manage access to this collection');
     }
     
-    if (collection.sharedUsers) {
-      const userExists = collection.sharedUsers.some(u => u.id === userToUnshareId);
-      collection.sharedUsers = collection.sharedUsers.filter(u => u.id !== userToUnshareId);
-      await this.collectionRepository.save(collection);
+    const shareRecord = await this.shareRepository.findOne({
+      where: { collectionId: id, userId: userToUnshareId }
+    });
+
+    if (shareRecord) {
+      await this.shareRepository.remove(shareRecord);
       
-      if (userExists) {
-        // Dispatch notification
-        await this.notificationsService.create(
-          userToUnshareId,
-          `Your access to collection '${collection.name}' has been revoked`
-        );
-      }
+      // Dispatch notification
+      await this.notificationsService.create(
+        userToUnshareId,
+        `Your access to collection '${collection.name}' has been revoked`
+      );
     }
-    return collection;
+
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
+  }
+
+  async updateShareRole(id: string, targetUserId: string, newRole: 'viewer' | 'editor' | 'admin', userId: string): Promise<Collection> {
+    const { collection, membership } = await this.findOne(id, userId);
+    
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException('You do not have permission to change roles on this collection');
+    }
+
+    // Cannot change your own role
+    if (targetUserId === userId) {
+      throw new BadRequestException('You cannot change your own role');
+    }
+
+    // Cannot change owner's role
+    if (targetUserId === collection.ownerId) {
+      throw new BadRequestException('Cannot change the owner\'s role');
+    }
+
+    const shareRecord = await this.shareRepository.findOne({
+      where: { collectionId: id, userId: targetUserId }
+    });
+
+    if (!shareRecord) {
+      throw new NotFoundException('User is not shared on this collection');
+    }
+
+    shareRecord.role = newRole;
+    await this.shareRepository.save(shareRecord);
+
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
   }
 
   async export(id: string, userId: string): Promise<any> {

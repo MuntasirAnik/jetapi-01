@@ -1,7 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { Workspace } from '../workspaces/workspace.entity';
 import { RequestItem } from '../requests/request.entity';
 import { User } from '../users/user.entity';
+import { CollectionShare } from './collection-share.entity';
 
 @Entity()
 export class Collection {
@@ -31,9 +32,11 @@ export class Collection {
   @Column({ nullable: true })
   ownerId: string;
 
-  @ManyToMany(() => User)
-  @JoinTable({ name: 'collection_shared_users' })
-  sharedUsers: User[];
+  @OneToMany(() => CollectionShare, (share) => share.collection, { cascade: true })
+  shares: CollectionShare[];
+
+  // Virtual property for backward compatibility — populated in service layer
+  sharedUsers?: User[];
 
   @CreateDateColumn()
   createdAt: Date;

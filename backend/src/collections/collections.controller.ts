@@ -40,8 +40,23 @@ export class CollectionsController {
   }
 
   @Post(':id/share')
-  share(@Param('id') id: string, @Body('email') email: string, @Request() req: any) {
-    return this.collectionsService.share(id, email, req.user.sub);
+  share(
+    @Param('id') id: string, 
+    @Body('email') email: string, 
+    @Body('role') role: 'viewer' | 'editor' | 'admin',
+    @Request() req: any,
+  ) {
+    return this.collectionsService.share(id, email, req.user.sub, role || 'viewer');
+  }
+
+  @Put(':id/share/:userId')
+  updateShareRole(
+    @Param('id') id: string,
+    @Param('userId') targetUserId: string,
+    @Body('role') role: 'viewer' | 'editor' | 'admin',
+    @Request() req: any,
+  ) {
+    return this.collectionsService.updateShareRole(id, targetUserId, role, req.user.sub);
   }
 
   @Delete(':id/share/:userId')

@@ -42,9 +42,14 @@ export default function Home() {
     }
   }, []);
 
+  const getUserId = () => {
+    try { return JSON.parse(localStorage.getItem('user') || '{}').id || 'default'; } catch { return 'default'; }
+  };
+
   useEffect(() => {
-    const savedTabs = localStorage.getItem('jetapi_openTabs');
-    const savedActiveId = localStorage.getItem('jetapi_activeTabId');
+    const uid = getUserId();
+    const savedTabs = localStorage.getItem(`jetapi_openTabs_${uid}`);
+    const savedActiveId = localStorage.getItem(`jetapi_activeTabId_${uid}`);
     if (savedTabs) {
       try {
         setOpenRequests(JSON.parse(savedTabs));
@@ -58,11 +63,12 @@ export default function Home() {
 
   useEffect(() => {
     if (isInitialized) {
-      localStorage.setItem('jetapi_openTabs', JSON.stringify(openRequests));
+      const uid = getUserId();
+      localStorage.setItem(`jetapi_openTabs_${uid}`, JSON.stringify(openRequests));
       if (activeRequestId) {
-        localStorage.setItem('jetapi_activeTabId', activeRequestId);
+        localStorage.setItem(`jetapi_activeTabId_${uid}`, activeRequestId);
       } else {
-        localStorage.removeItem('jetapi_activeTabId');
+        localStorage.removeItem(`jetapi_activeTabId_${uid}`);
       }
     }
   }, [openRequests, activeRequestId, isInitialized]);

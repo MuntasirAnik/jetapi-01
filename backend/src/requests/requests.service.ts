@@ -12,7 +12,45 @@ export class RequestsService {
     private readonly activityService: ActivityService,
   ) {}
 
+  /** Get the user's effective role on a collection */
+  private async getShareRole(collectionId: string, userId: string): Promise<'owner' | 'admin' | 'editor' | 'viewer' | null> {
+    const collection = await this.requestRepository.manager.getRepository('Collection').findOne({
+      where: { id: collectionId },
+      relations: ['shares', 'workspace'],
+    });
+    if (!collection) return null;
+    if (collection.ownerId === userId) return 'owner';
+
+    // Check explicit share role first — it takes priority
+    const share = (collection as any).shares?.find((s: any) => s.userId === userId);
+    if (share) return share.role;
+
+    // Fall back to org membership
+    if (collection.workspace) {
+      const membership = await this.requestRepository.manager.getRepository('OrganizationUser').findOne({
+        where: { organizationId: collection.workspace.organizationId, userId }
+      });
+      if (membership && (membership.role === 'OWNER' || membership.role === 'ADMIN')) return 'owner';
+      if (membership) return 'editor'; // org members without explicit share default to editor
+    }
+
+    return null;
+  }
+
+  /** Check if a role can edit (create/update/delete) */
+  private canEdit(role: string | null): boolean {
+    return role === 'owner' || role === 'admin' || role === 'editor';
+  }
+
   async create(data: Partial<RequestItem>, userId: string): Promise<RequestItem> {
+    // Enforce role: viewers cannot create endpoints
+    if (data.collectionId) {
+      const role = await this.getShareRole(data.collectionId, userId);
+      if (role && !this.canEdit(role)) {
+        throw new ForbiddenException('You have view-only access to this collection. You cannot add endpoints.');
+      }
+    }
+
     if (data.name && data.collectionId) {
       const existing = await this.requestRepository.findOne({
         where: { name: data.name, collectionId: data.collectionId }
@@ -54,7 +92,7 @@ export class RequestsService {
   async findOne(id: string, userId: string): Promise<RequestItem> {
     const request = await this.requestRepository.findOne({ 
       where: { id },
-      relations: ['collection', 'collection.workspace', 'collection.sharedUsers']
+      relations: ['collection', 'collection.workspace', 'collection.shares']
     });
     
     if (!request) throw new NotFoundException('Request not found');
@@ -64,7 +102,7 @@ export class RequestsService {
     let hasAccess = false;
     if (request.collection) {
       if (request.collection.ownerId === userId) hasAccess = true;
-      if (request.collection.sharedUsers?.some(su => su.id === userId)) hasAccess = true;
+      if ((request.collection as any).shares?.some((s: any) => s.userId === userId)) hasAccess = true;
       
       if (!hasAccess && request.collection.workspace) {
          const membership = await this.requestRepository.manager.getRepository('OrganizationUser').findOne({
@@ -83,6 +121,14 @@ export class RequestsService {
 
   async update(id: string, data: Partial<RequestItem>, userId: string): Promise<RequestItem> {
     const request = await this.findOne(id, userId);
+
+    // Enforce role: viewers cannot edit endpoints
+    if (request.collectionId) {
+      const role = await this.getShareRole(request.collectionId, userId);
+      if (role && !this.canEdit(role)) {
+        throw new ForbiddenException('You have view-only access to this collection. You cannot edit endpoints.');
+      }
+    }
 
     if (data.name && data.name !== request.name) {
       const existing = await this.requestRepository.findOne({
@@ -117,6 +163,15 @@ export class RequestsService {
   // Soft-delete: sets deletedAt timestamp and records who deleted it
   async remove(id: string, userId: string): Promise<void> {
     const request = await this.findOne(id, userId);
+
+    // Enforce role: viewers cannot delete endpoints
+    if (request.collectionId) {
+      const role = await this.getShareRole(request.collectionId, userId);
+      if (role && !this.canEdit(role)) {
+        throw new ForbiddenException('You have view-only access to this collection. You cannot delete endpoints.');
+      }
+    }
+
     // Look up deleter name
     try {
       const user = await this.requestRepository.manager.getRepository('User').findOne({ where: { id: userId } });

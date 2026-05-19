@@ -160,10 +160,10 @@ export class LimitsService {
     try {
       const ownedCollections = await this.collectionRepo.find({
         where: { ownerId: userId },
-        relations: ['sharedUsers'],
+        relations: ['shares'],
       });
       for (const col of ownedCollections) {
-        collaborators += (col as any).sharedUsers?.length || 0;
+        collaborators += (col as any).shares?.length || 0;
       }
     } catch {
       collaborators = 0;

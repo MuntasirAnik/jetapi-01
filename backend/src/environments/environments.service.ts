@@ -31,11 +31,11 @@ export class EnvironmentsService {
     // Check shared collections
     const workspaceCollections = await this.environmentRepository.manager.getRepository('Collection').find({
       where: { workspaceId },
-      relations: ['sharedUsers']
+      relations: ['shares']
     });
 
     const hasSharedCollection = workspaceCollections.some((c: any) => 
-      c.sharedUsers?.some((su: any) => su.id === userId)
+      c.shares?.some((s: any) => s.userId === userId)
     );
 
     return hasSharedCollection;

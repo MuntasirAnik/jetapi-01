@@ -29,7 +29,7 @@ export class ActivityController {
     const owned = await this.collectionRepo.find({ where: { ownerId: userId }, select: ['id'] });
     const shared = await this.collectionRepo
       .createQueryBuilder('c')
-      .innerJoin('c.sharedUsers', 'u', 'u.id = :uid', { uid: userId })
+      .innerJoin('c.shares', 's', 's.userId = :uid', { uid: userId })
       .select('c.id')
       .getMany();
     

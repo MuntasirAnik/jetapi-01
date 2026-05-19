@@ -9,6 +9,7 @@ import { RequestsModule } from './requests/requests.module';
 import { ProxyModule } from './proxy/proxy.module';
 import { Workspace } from './workspaces/workspace.entity';
 import { Collection } from './collections/collection.entity';
+import { CollectionShare } from './collections/collection-share.entity';
 import { RequestItem } from './requests/request.entity';
 import { EnvironmentsModule } from './environments/environments.module';
 import { Environment } from './environments/environment.entity';
@@ -57,7 +58,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting],
+          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting],
           synchronize: true, // Use carefully in production
         };
       },

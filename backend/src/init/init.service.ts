@@ -34,10 +34,10 @@ export class InitService {
       // Single query: owned OR shared — replaces two separate queries
       this.collectionRepo
         .createQueryBuilder('col')
-        .leftJoin('col.sharedUsers', 'su')
+        .leftJoin('col.shares', 'share')
         .select('col.id')
         .where('col.ownerId = :userId', { userId })
-        .orWhere('su.id = :userId', { userId })
+        .orWhere('share.userId = :userId', { userId })
         .getMany(),
     ]);
 
@@ -67,11 +67,17 @@ export class InitService {
       colIds.length > 0
         ? this.collectionRepo
             .createQueryBuilder('col')
-            .leftJoinAndSelect('col.sharedUsers', 'su')
+            .leftJoinAndSelect('col.shares', 'share')
+            .leftJoinAndSelect('share.user', 'sharedUser')
             .leftJoinAndSelect('col.owner', 'owner')
             .leftJoinAndSelect('col.workspace', 'ws')
             .where('col.id IN (:...colIds)', { colIds })
             .getMany()
+            .then(cols => cols.map(c => {
+              // Hydrate virtual sharedUsers from shares for backward compat
+              c.sharedUsers = (c.shares || []).map(s => ({ ...s.user, shareRole: s.role })) as any;
+              return c;
+            }))
         : [],
 
       colIds.length > 0
@@ -139,9 +145,9 @@ export class InitService {
       ws.collections = (colsByWs.get(ws.id) || []) as any;
     }
 
-    // Shared collections: user is in sharedUsers but is NOT the owner
+    // Shared collections: user has a share record but is NOT the owner
     const sharedCollections = collections.filter(c =>
-      c.ownerId !== userId && c.sharedUsers?.some(su => su.id === userId)
+      c.ownerId !== userId && c.shares?.some(s => s.userId === userId)
     );
 
     return { organizations, workspaces: allWorkspaces, sharedCollections, environments };

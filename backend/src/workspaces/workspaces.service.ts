@@ -34,7 +34,8 @@ export class WorkspacesService {
 
     const workspaceIds = workspaces.map(w => w.id);
     const collections = await this.workspaceRepository.manager.getRepository('Collection').createQueryBuilder('col')
-      .leftJoinAndSelect('col.sharedUsers', 'sharedUsers')
+      .leftJoinAndSelect('col.shares', 'share')
+      .leftJoinAndSelect('share.user', 'sharedUser')
       .where('col.workspaceId IN (:...workspaceIds)', { workspaceIds })
       .getMany();
 
@@ -68,7 +69,8 @@ export class WorkspacesService {
     const membership = await this.orgUserRepo.findOne({ where: { organizationId: workspace.organizationId, userId }});
 
     const collections = await this.workspaceRepository.manager.getRepository('Collection').createQueryBuilder('col')
-      .leftJoinAndSelect('col.sharedUsers', 'sharedUsers')
+      .leftJoinAndSelect('col.shares', 'share')
+      .leftJoinAndSelect('share.user', 'sharedUser')
       .where('col.workspaceId = :id', { id })
       .getMany();
 
@@ -89,7 +91,7 @@ export class WorkspacesService {
     let hasAccess = !!membership;
     if (!hasAccess) {
       const hasSharedCollection = workspace.collections?.some((c: any) => 
-         c.sharedUsers?.some((su: any) => su.id === userId)
+         c.shares?.some((s: any) => s.userId === userId)
       );
       hasAccess = !!hasSharedCollection;
     }
@@ -97,7 +99,7 @@ export class WorkspacesService {
     if (!hasAccess) throw new ForbiddenException('Access denied');
 
     if (!membership && workspace.collections) {
-      workspace.collections = workspace.collections.filter((c: any) => c.sharedUsers?.some((su: any) => su.id === userId)) as any;
+      workspace.collections = workspace.collections.filter((c: any) => c.shares?.some((s: any) => s.userId === userId)) as any;
     }
 
     return workspace;
