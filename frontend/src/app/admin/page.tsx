@@ -189,10 +189,10 @@ export default function AdminPage() {
   };
 
   const handleDeleteOrg = async (id: string, name: string) => {
-    if (!(await confirmDialog(`Delete organization "${name}"? All members will be removed.`))) return;
+    if (!(await confirmDialog(`Delete team "${name}"? All members will be removed.`))) return;
     const res = await apiFetch(`/admin/organizations/${id}`, { method: "DELETE" });
     if (res.ok) { toast.success(`Deleted ${name}`); loadTabData(); }
-    else toast.error("Failed to delete organization");
+    else toast.error("Failed to delete team");
   };
 
   const handleOverridePlan = async (userId: string, planId: string) => {
@@ -247,7 +247,7 @@ export default function AdminPage() {
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: "users", label: "Users", icon: <Users className="w-4 h-4" /> },
-    { id: "organizations", label: "Organizations", icon: <Building2 className="w-4 h-4" /> },
+    { id: "organizations", label: "Teams", icon: <Building2 className="w-4 h-4" /> },
     { id: "subscriptions", label: "Subscriptions", icon: <CreditCard className="w-4 h-4" /> },
     { id: "plans", label: "Plan Config", icon: <Sliders className="w-4 h-4" /> },
     { id: "payments", label: "Payments", icon: <DollarSign className="w-4 h-4" /> },
@@ -340,7 +340,7 @@ function OverviewTab({ stats, growthData, maintenance, onMaintenanceChange }: { 
 
   const cards = [
     { label: "Total Users", value: stats.totalUsers, icon: <Users className="w-5 h-5" />, gradient: "from-blue-500/20 to-blue-600/5", iconBg: "bg-blue-500/20 text-blue-400", border: "border-blue-500/20" },
-    { label: "Organizations", value: stats.totalOrgs, icon: <Building2 className="w-5 h-5" />, gradient: "from-emerald-500/20 to-emerald-600/5", iconBg: "bg-emerald-500/20 text-emerald-400", border: "border-emerald-500/20" },
+    { label: "Teams", value: stats.totalOrgs, icon: <Building2 className="w-5 h-5" />, gradient: "from-emerald-500/20 to-emerald-600/5", iconBg: "bg-emerald-500/20 text-emerald-400", border: "border-emerald-500/20" },
     { label: "Collections", value: stats.totalCollections, icon: <Sliders className="w-5 h-5" />, gradient: "from-violet-500/20 to-violet-600/5", iconBg: "bg-violet-500/20 text-violet-400", border: "border-violet-500/20" },
     { label: "Subscriptions", value: stats.totalSubscriptions, icon: <CreditCard className="w-5 h-5" />, gradient: "from-amber-500/20 to-amber-600/5", iconBg: "bg-amber-500/20 text-amber-400", border: "border-amber-500/20" },
     { label: "Total Revenue", value: `$${stats.totalRevenue || 0}`, icon: <DollarSign className="w-5 h-5" />, gradient: "from-green-500/20 to-green-600/5", iconBg: "bg-green-500/20 text-green-400", border: "border-green-500/20" },
@@ -848,18 +848,18 @@ function UsersTab({
     </div>
   );
 }
-// ─── Organizations Tab ───────────────────────────────
+// ─── Teams Tab ───────────────────────────────
 function OrganizationsTab({ orgs, onDelete }: { orgs: any[]; onDelete: (id: string, name: string) => void }) {
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-1">Organizations</h1>
+      <h1 className="text-2xl font-bold mb-1">Teams</h1>
       <p className="text-[var(--muted)] text-sm mb-4">All teams on the platform</p>
 
       <div className="rounded-xl border border-[var(--border)] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[var(--sidebar)] text-[var(--muted)] text-xs uppercase tracking-wider">
-              <th className="text-left px-4 py-3 font-semibold">Organization</th>
+              <th className="text-left px-4 py-3 font-semibold">Team</th>
               <th className="text-left px-4 py-3 font-semibold">Owner</th>
               <th className="text-center px-4 py-3 font-semibold">Members</th>
               <th className="text-left px-4 py-3 font-semibold">Created</th>
@@ -893,7 +893,7 @@ function OrganizationsTab({ orgs, onDelete }: { orgs: any[]; onDelete: (id: stri
           </tbody>
         </table>
         {orgs.length === 0 && (
-          <div className="text-center py-8 text-[var(--muted)] text-sm">No organizations found</div>
+          <div className="text-center py-8 text-[var(--muted)] text-sm">No teams found</div>
         )}
       </div>
     </div>
@@ -1813,7 +1813,7 @@ function ReportsTab() {
     users: { label: 'User Signups', data: data.userGrowth, color: 'var(--color-brand-500)' },
     revenue: { label: 'Revenue', data: data.revenueGrowth, color: '#10b981', prefix: '$' },
     collections: { label: 'Collections Created', data: data.collectionGrowth, color: '#8b5cf6' },
-    orgs: { label: 'Organizations Created', data: data.orgGrowth, color: '#f59e0b' },
+    orgs: { label: 'Teams Created', data: data.orgGrowth, color: '#f59e0b' },
     audit: { label: 'Admin Actions', data: data.auditActivity, color: '#ef4444' },
   };
 
@@ -1828,7 +1828,7 @@ function ReportsTab() {
     { label: 'Total Users', value: s.totalUsers, sub: `${s.signupsLast7d} this week`, icon: <Users className="w-5 h-5" />, color: 'text-blue-400', bg: 'bg-blue-500/10' },
     { label: 'Active Users', value: s.activeUsers, sub: `${s.inactiveUsers} inactive`, icon: <CheckCircle className="w-5 h-5" />, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
     { label: 'Total Revenue', value: `$${s.totalRevenue.toFixed(0)}`, sub: `MRR: $${s.mrr.toFixed(0)}`, icon: <DollarSign className="w-5 h-5" />, color: 'text-green-400', bg: 'bg-green-500/10' },
-    { label: 'Collections', value: s.totalCollections, sub: `${s.totalOrgs} organizations`, icon: <Building2 className="w-5 h-5" />, color: 'text-violet-400', bg: 'bg-violet-500/10' },
+    { label: 'Collections', value: s.totalCollections, sub: `${s.totalOrgs} teams`, icon: <Building2 className="w-5 h-5" />, color: 'text-violet-400', bg: 'bg-violet-500/10' },
     { label: 'Signups (30d)', value: s.signupsLast30d, sub: `${s.signupsLast7d} last 7 days`, icon: <TrendingUp className="w-5 h-5" />, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
     { label: 'Payments', value: s.totalPayments, sub: 'completed', icon: <CreditCard className="w-5 h-5" />, color: 'text-amber-400', bg: 'bg-amber-500/10' },
   ];
