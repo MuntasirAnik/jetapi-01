@@ -11,8 +11,10 @@ import { useDialog } from "./DialogProvider";
 import { useAppContext } from "@/lib/AppContext";
 import ImportCollectionModal from "./ImportCollectionModal";
 import BulkRunnerModal from "./BulkRunnerModal";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollections = [], onSelectRequest, activeRequestId }: any) {
+  const featureFlags = useFeatureFlags();
   const { confirmDialog, promptDialog } = useDialog();
   const { envVariables, globalVariables } = useAppContext();
   const [bulkRunnerData, setBulkRunnerData] = useState<{ name: string; requests: any[] } | null>(null);
@@ -930,11 +932,17 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
           <span className="font-semibold text-xs tracking-wide">Collections</span>
           <div className="flex items-center gap-1">
             <button 
-              onClick={() => setIsImportModalOpen(true)}
-              className="hover:text-[var(--foreground)] text-[var(--muted)] hover:bg-[var(--card)] px-2 py-1 flex items-center gap-1.5 rounded transition-colors font-medium text-[11px]" 
-              title="Import Collection JSON"
+              onClick={() => {
+                if (!featureFlags.allow_collection_upload) {
+                  toast.warning("Collection upload is disabled by admin");
+                  return;
+                }
+                setIsImportModalOpen(true);
+              }}
+              className={`px-2 py-1 flex items-center gap-1.5 rounded transition-colors font-medium text-[11px] ${!featureFlags.allow_collection_upload ? 'opacity-40 cursor-not-allowed text-[var(--muted)]' : 'hover:text-[var(--foreground)] text-[var(--muted)] hover:bg-[var(--card)]'}`}
+              title={!featureFlags.allow_collection_upload ? "Collection upload is disabled by admin" : "Import Collection JSON"}
             >
-              <Import className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Import</span>
+              {!featureFlags.allow_collection_upload ? <Lock className="w-3.5 h-3.5" /> : <Import className="w-3.5 h-3.5" />} <span className="hidden sm:inline">Import</span>
             </button>
             <div className="w-px h-3 bg-[var(--border)] mx-1"></div>
             <button 

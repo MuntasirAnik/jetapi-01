@@ -814,6 +814,8 @@ export class AdminService {
     show_pricing: { enabled: true, label: 'Show Pricing Page', description: 'Display the pricing page to users' },
     allow_subscriptions: { enabled: true, label: 'Subscription Plans', description: 'Allow users to purchase or upgrade subscription plans' },
     require_email_verification: { enabled: false, label: 'Email Verification', description: 'Require email verification for new accounts' },
+    allow_collection_upload: { enabled: true, label: 'Collection Upload', description: 'Allow users to import/upload collection JSON files' },
+    allow_variable_upload: { enabled: true, label: 'Variable Upload', description: 'Allow users to import/upload environment variable files' },
   };
 
   async getFeatureFlags() {

@@ -1,10 +1,11 @@
 "use client";
 import { apiFetch, getApiError } from '@/lib/api';
 import { useState, useEffect } from "react";
-import { X, Plus, Trash2, Upload, Download, Eye, EyeOff, Search, Pencil } from "lucide-react";
+import { X, Plus, Trash2, Upload, Download, Eye, EyeOff, Search, Pencil, Lock } from "lucide-react";
 import { toast } from "react-toastify";
 import { useDialog } from "./DialogProvider";
 import StyledSelect from "./StyledSelect";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function EnvironmentManager({ 
   workspaceId, 
@@ -22,6 +23,8 @@ export default function EnvironmentManager({
   sharedCollections?: any[]
 }) {
   const { confirmDialog, promptDialog } = useDialog();
+  const featureFlags = useFeatureFlags();
+  const isVarUploadLocked = !featureFlags.allow_variable_upload;
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState(workspaceId);
   const [activeTab, setActiveTab] = useState<'environments' | 'globals'>(initialTab);
   const [environments, setEnvironments] = useState<any[]>([]);
@@ -251,6 +254,10 @@ export default function EnvironmentManager({
   };
 
   const handleImportGlobals = () => {
+    if (isVarUploadLocked) {
+      toast.warning("Variable upload is locked by admin");
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
@@ -557,10 +564,10 @@ export default function EnvironmentManager({
                   </div>
                   <button 
                     onClick={handleImportGlobals}
-                    className="p-1.5 rounded-md border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--color-brand-500)] transition-colors"
-                    title="Import Globals"
+                    className={`p-1.5 rounded-md border transition-colors ${isVarUploadLocked ? 'border-[var(--border)] opacity-40 cursor-not-allowed text-[var(--muted)]' : 'border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--color-brand-500)]'}`}
+                    title={isVarUploadLocked ? "Variable upload is locked by admin" : "Import Globals"}
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    {isVarUploadLocked ? <Lock className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
                   </button>
                   <button 
                     onClick={handleExportGlobals}

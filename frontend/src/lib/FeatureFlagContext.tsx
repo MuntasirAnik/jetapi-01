@@ -8,6 +8,8 @@ type FeatureFlags = {
   show_pricing: boolean;
   allow_subscriptions: boolean;
   require_email_verification: boolean;
+  allow_collection_upload: boolean;
+  allow_variable_upload: boolean;
   [key: string]: boolean;
 };
 
@@ -17,6 +19,8 @@ const DEFAULT_FLAGS: FeatureFlags = {
   show_pricing: true,
   allow_subscriptions: true,
   require_email_verification: false,
+  allow_collection_upload: true,
+  allow_variable_upload: true,
 };
 
 const FeatureFlagContext = createContext<FeatureFlags>(DEFAULT_FLAGS);

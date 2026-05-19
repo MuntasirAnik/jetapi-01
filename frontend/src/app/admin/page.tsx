@@ -2003,56 +2003,59 @@ function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }
   };
 
   const iconMap: Record<string, React.ReactNode> = {
-    allow_signups: <Users className="w-5 h-5" />,
-    allow_api_execution: <Activity className="w-5 h-5" />,
-    show_pricing: <DollarSign className="w-5 h-5" />,
-    allow_subscriptions: <CreditCard className="w-5 h-5" />,
-    require_email_verification: <Shield className="w-5 h-5" />,
+    allow_signups: <Users className="w-4 h-4" />,
+    allow_api_execution: <Activity className="w-4 h-4" />,
+    show_pricing: <DollarSign className="w-4 h-4" />,
+    allow_subscriptions: <CreditCard className="w-4 h-4" />,
+    require_email_verification: <Shield className="w-4 h-4" />,
+    allow_collection_upload: <Download className="w-4 h-4" />,
+    allow_variable_upload: <Download className="w-4 h-4" />,
   };
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">Settings</h1>
-        <p className="text-[var(--muted)] text-sm">Manage platform feature flags and configuration</p>
+      <div className="mb-4">
+        <h1 className="text-xl font-bold mb-0.5">Settings</h1>
+        <p className="text-[var(--muted)] text-xs">Manage platform feature flags and configuration</p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {flags.map(flag => (
-          <div key={flag.key} className={`flex items-center justify-between p-5 rounded-xl border transition-all ${
+          <div key={flag.key} className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all ${
             flag.enabled
               ? "border-emerald-500/20 bg-emerald-500/5"
               : "border-[var(--border)] bg-[var(--sidebar)]"
           }`}>
-            <div className="flex items-center gap-4">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-md flex items-center justify-center ${
                 flag.enabled ? "bg-emerald-500/20 text-emerald-400" : "bg-[var(--border)] text-[var(--muted)]"
               }`}>
-                {iconMap[flag.key] || <Settings className="w-5 h-5" />}
+                {iconMap[flag.key] || <Settings className="w-4 h-4" />}
               </div>
               <div>
-                <p className="font-semibold text-sm">{flag.label}</p>
-                <p className="text-xs text-[var(--muted)] mt-0.5">{flag.description}</p>
+                <p className="font-semibold text-xs">{flag.label}</p>
+                <p className="text-[10px] text-[var(--muted)] mt-0.5 leading-tight">{flag.description}</p>
               </div>
             </div>
             <button
               onClick={() => handleToggle(flag.key, flag.enabled)}
               disabled={toggling === flag.key}
-              className={`relative w-12 h-7 rounded-full transition-all duration-200 ${
+              className={`relative w-10 h-5.5 rounded-full transition-all duration-200 flex-shrink-0 ${
                 flag.enabled ? "bg-emerald-500" : "bg-[var(--border)]"
               } ${toggling === flag.key ? "opacity-50" : ""}`}
+              style={{ width: 40, height: 22 }}
             >
-              <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                flag.enabled ? "translate-x-6" : "translate-x-1"
+              <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                flag.enabled ? "translate-x-[21px]" : "translate-x-[3px]"
               }`} />
             </button>
           </div>
         ))}
 
         {flags.length === 0 && (
-          <div className="text-center py-12 text-[var(--muted)]">
-            <Settings className="w-8 h-8 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">No feature flags configured</p>
+          <div className="text-center py-8 text-[var(--muted)]">
+            <Settings className="w-6 h-6 mx-auto mb-2 opacity-40" />
+            <p className="text-xs">No feature flags configured</p>
           </div>
         )}
       </div>

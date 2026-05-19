@@ -4,12 +4,16 @@ import { apiFetch } from '@/lib/api';
 import { toast } from 'react-toastify';
 import { useAppContext } from '@/lib/AppContext';
 import StyledSelect from './StyledSelect';
+import { useFeatureFlags } from '@/lib/FeatureFlagContext';
+import { Lock } from 'lucide-react';
 
 export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) {
   const { workspaces, activeWorkspaceId } = useAppContext();
   const [file, setFile] = useState<File | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
+  const featureFlags = useFeatureFlags();
+  const isLocked = !featureFlags.allow_collection_upload;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -94,6 +98,15 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
           {/* File Upload Zone */}
           <div className="flex flex-col gap-2">
              <label className="text-sm font-semibold text-[var(--foreground)] uppercase">JSON File</label>
+             {isLocked ? (
+               <div className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center border-amber-500/30 bg-amber-500/5 cursor-not-allowed" onClick={() => toast.warning("Collection upload is disabled by admin")}>
+                 <div className="w-12 h-12 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mb-3">
+                   <Lock className="w-6 h-6" />
+                 </div>
+                 <h3 className="font-semibold text-[var(--foreground)] text-sm">Collection Upload Locked</h3>
+                 <p className="text-xs text-[var(--muted)] mt-1 max-w-[280px]">The administrator has disabled collection imports. Contact your admin to unlock this feature.</p>
+               </div>
+             ) : (
              <div 
                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${file ? 'border-[var(--color-brand-500)] bg-[var(--color-brand-500)]/5 hover:bg-[var(--color-brand-500)]/10' : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--sidebar)]'}`}
                onClick={() => fileInputRef.current?.click()}
@@ -119,6 +132,7 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
                  </>
                )}
              </div>
+             )}
           </div>
 
         </div>
@@ -129,7 +143,7 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
             Cancel
           </button>
           <button 
-            disabled={!file || !selectedWorkspaceId || isImporting}
+            disabled={isLocked || !file || !selectedWorkspaceId || isImporting}
             onClick={handleImport} 
             className="flex items-center gap-2 px-6 py-2 bg-[var(--color-brand-500)] text-white font-bold rounded-lg hover:bg-[var(--color-brand-600)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
