@@ -82,12 +82,18 @@ export default function AdminPage() {
     try {
       switch (tab) {
         case "overview": {
-          const [statsRes, growthRes, maintRes] = await Promise.all([
-            apiFetch("/admin/stats"),
+          const fetches: Promise<Response>[] = [
             apiFetch("/admin/stats/growth"),
             apiFetch("/admin/maintenance"),
-          ]);
-          if (statsRes.ok) setStats(await statsRes.json());
+          ];
+          // Only re-fetch stats if not already loaded (checkAccess loads it)
+          if (!stats) fetches.unshift(apiFetch("/admin/stats"));
+          const results = await Promise.all(fetches);
+          if (!stats) {
+            const statsRes = results.shift()!;
+            if (statsRes.ok) setStats(await statsRes.json());
+          }
+          const [growthRes, maintRes] = results;
           if (growthRes.ok) setGrowthData(await growthRes.json());
           if (maintRes.ok) setMaintenance(await maintRes.json());
           break;
@@ -99,8 +105,12 @@ export default function AdminPage() {
           break;
         }
         case "subscriptions": {
-          const res = await apiFetch("/admin/subscriptions");
-          if (res.ok) setSubs(await res.json());
+          const [subsRes, plansRes] = await Promise.all([
+            apiFetch("/admin/subscriptions"),
+            plans.length === 0 ? apiFetch("/admin/plans") : Promise.resolve(null),
+          ]);
+          if (subsRes.ok) setSubs(await subsRes.json());
+          if (plansRes?.ok) setPlans(await plansRes.json());
           break;
         }
         case "plans": {

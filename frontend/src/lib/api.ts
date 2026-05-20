@@ -54,6 +54,7 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login') && !fullUrl.includes('/api/init')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem('jetapi_init_cache');
         window.location.href = '/login';
       }
     }

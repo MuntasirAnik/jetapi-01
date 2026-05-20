@@ -65,6 +65,15 @@ export default function UserDashboard() {
 
   useEffect(() => {
     setAnnouncementsOff(localStorage.getItem('jetapi_announcements_off') === 'true');
+    // Show cached profile instantly to avoid blank loading screen
+    try {
+      const cachedUser = localStorage.getItem('user');
+      if (cachedUser) {
+        const u = JSON.parse(cachedUser);
+        setProfile({ user: u });
+        setLoading(false);
+      }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -86,7 +95,8 @@ export default function UserDashboard() {
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      // Only show full loading spinner if no cached profile exists
+      if (!profile) setLoading(true);
       const [profileRes, colRes, usageRes, subRes, sysUsersRes] = await Promise.all([
         apiFetch("/api/auth/me"),
         apiFetch("/collections"),
@@ -117,9 +127,22 @@ export default function UserDashboard() {
     }
   };
 
+  // Lightweight refresh for tab switches — only collections + users
+  const refreshCollections = async () => {
+    try {
+      const [colRes, sysUsersRes] = await Promise.all([
+        apiFetch("/collections"),
+        apiFetch("/api/auth/users").catch(() => null),
+      ]);
+      if (colRes.ok) setCollections(await colRes.json());
+      if (sysUsersRes?.ok) setSystemUsers(await sysUsersRes.json());
+    } catch {}
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("jetapi_init_cache");
     router.push("/login");
   };
 
@@ -338,7 +361,7 @@ export default function UserDashboard() {
     },
     {
       label: "API Requests",
-      value: stats.requests,
+      value: stats?.requests ?? 0,
       icon: Activity,
       gradient: "from-emerald-500/20 to-green-500/10",
       iconColor: "text-emerald-400",
@@ -346,7 +369,7 @@ export default function UserDashboard() {
     },
     {
       label: "Workspaces",
-      value: stats.workspaces,
+      value: stats?.workspaces ?? 0,
       icon: Server,
       gradient: "from-amber-500/20 to-orange-500/10",
       iconColor: "text-amber-400",
@@ -358,15 +381,9 @@ export default function UserDashboard() {
     <div className="flex h-full w-full bg-[var(--background)] text-[var(--foreground)] font-sans relative">
 
       {/* Background Overlay Spinner for Refreshes */}
-      {loading && profile && (
-        <div className="absolute inset-0 z-50 bg-[var(--background)]/40 backdrop-blur-[1px] flex items-center justify-center">
-          <div className="bg-[var(--card)] border border-[var(--border)] shadow-xl rounded-full p-3 flex items-center justify-center anim-scale-in">
-            <Loader2 className="w-6 h-6 animate-spin text-[var(--color-brand-500)]" />
-          </div>
-        </div>
-      )}
 
-      <UserSidebar activePage="profile" userName={user.name || user.email.split('@')[0]} activeTab={activeTab} onTabChange={(t) => { setActiveTab(t as any); fetchData(); }} />
+
+      <UserSidebar activePage="profile" userName={user.name || user.email.split('@')[0]} activeTab={activeTab} onTabChange={(t) => { setActiveTab(t as any); refreshCollections(); }} />
 
       <div className="flex-1 overflow-auto">
         {/* Banner */}

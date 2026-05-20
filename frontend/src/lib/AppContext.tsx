@@ -66,6 +66,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Track whether the initial boot has completed to avoid re-running org-switch logic
   const hasBootedRef = useRef(false);
 
+  // ──── Instant cache restore on mount ────
+  useEffect(() => {
+    try {
+      const cachedInit = localStorage.getItem('jetapi_init_cache');
+      if (cachedInit) {
+        const data = JSON.parse(cachedInit);
+        if (data.organizations) setOrganizations(data.organizations);
+        if (data.activeOrganizationId) setActiveOrganizationId(data.activeOrganizationId);
+        if (data.workspaces) {
+          setWorkspaces(data.workspaces);
+          setGlobalVariables(extractGlobalVars(data.workspaces));
+        }
+        if (data.activeWorkspaceId) setActiveWorkspaceId(data.activeWorkspaceId);
+        if (data.sharedCollections) setSharedCollections(data.sharedCollections);
+        if (data.environments) setEnvironments(data.environments);
+        // Show UI immediately with cached data
+        setIsAppReady(true);
+      }
+    } catch {}
+  }, []);
+
   // ──── Single init call ────
   const initApp = useCallback(async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -156,6 +177,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem("postclone_envId");
         }
       }
+
+      // ── Cache init data for instant next load ──
+      try {
+        localStorage.setItem('jetapi_init_cache', JSON.stringify({
+          organizations,
+          activeOrganizationId: defaultOrgId,
+          workspaces: combinedWs,
+          activeWorkspaceId: localStorage.getItem("postclone_workspaceId") || combinedWs.find((w: any) => w.collections?.length > 0)?.id || combinedWs[0]?.id,
+          sharedCollections: data.sharedCollections || [],
+          environments: data.environments || [],
+        }));
+      } catch {}
 
       hasBootedRef.current = true;
     } catch (err) {

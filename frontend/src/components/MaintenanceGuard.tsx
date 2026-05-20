@@ -39,7 +39,7 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
     return () => clearInterval(t);
   }, []);
 
-  if (maintenance === null) return null;
+  if (maintenance === null) return <>{children}</>;
 
   if (maintenance.enabled && !isAdmin) {
     return (
