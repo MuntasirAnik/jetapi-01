@@ -56,12 +56,34 @@ export class SubscriptionsController {
   async createCheckout(
     @Req() req: any,
     @Body() body: { planId: string; interval?: 'monthly' | 'yearly' },
+    @Headers('origin') origin?: string,
   ) {
     return this.subscriptionsService.createCheckoutSession(
       req.user.sub,
       body.planId as any,
       body.interval || 'monthly',
+      origin,
     );
+  }
+
+  @Post('change-plan')
+  @UseGuards(AuthGuard, FeatureFlagGuard)
+  @RequireFeature('allow_subscriptions')
+  async changePlan(
+    @Req() req: any,
+    @Body() body: { planId: string; interval?: 'monthly' | 'yearly' },
+  ) {
+    return this.subscriptionsService.changePlan(
+      req.user.sub,
+      body.planId as any,
+      body.interval || 'monthly',
+    );
+  }
+
+  @Post('cancel')
+  @UseGuards(AuthGuard)
+  async cancelSubscription(@Req() req: any) {
+    return this.subscriptionsService.cancelSubscription(req.user.sub);
   }
 
   @Post('confirm-payment')
@@ -83,8 +105,17 @@ export class SubscriptionsController {
 
   @Post('create-portal')
   @UseGuards(AuthGuard)
-  async createPortal(@Req() req: any) {
-    return this.subscriptionsService.createPortalSession(req.user.sub);
+  async createPortal(@Req() req: any, @Headers('origin') origin?: string) {
+    return this.subscriptionsService.createPortalSession(req.user.sub, origin);
+  }
+
+  @Post('verify-session')
+  @UseGuards(AuthGuard)
+  async verifySession(
+    @Req() req: any,
+    @Body() body: { sessionId: string },
+  ) {
+    return this.subscriptionsService.verifyCheckoutSession(req.user.sub, body.sessionId);
   }
 
   @Post('webhook')

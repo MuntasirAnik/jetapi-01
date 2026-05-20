@@ -339,24 +339,47 @@ const getMethodColor = (method: string) => {
     }
   };
 
-  const renderHighlightedUrl = (url: string, inputId?: string) => {
+  const renderHighlightedUrl = (url: string, inputId?: string, suggestId?: string) => {
     if (!url) return null;
     const parts = url.split(/(\{\{.*?\}\})/g);
+    
+    // Track character offset for cursor positioning
+    let charOffset = 0;
+    
     return parts.map((part, i) => {
+      const partStart = charOffset;
+      charOffset += part.length;
+      
       if (part.startsWith('{{') && part.endsWith('}}')) {
         const varName = part.substring(2, part.length - 2).trim();
         const activeVar = envVariables?.find((v: any) => v.key === varName && v.enabled !== false);
+        
+        const handleVarClick = (e: React.MouseEvent) => {
+          e.stopPropagation();
+          if (!inputId) return;
+          const input = document.getElementById(inputId) as HTMLInputElement;
+          if (!input) return;
+          
+          input.focus();
+          // Position cursor inside the {{}} and select the variable name
+          const selectStart = partStart + 2;
+          const selectEnd = partStart + part.length - 2;
+          setTimeout(() => {
+            input.setSelectionRange(selectStart, selectEnd);
+            // Use the explicit suggestId, or fall back to 'url-input'
+            checkVarSuggest(suggestId || 'url-input', url, selectStart);
+          }, 0);
+        };
+        
         if (activeVar) {
           const resolveVal = activeVar.currentValue !== undefined ? activeVar.currentValue : activeVar.value;
           return (
              <span 
                key={i} 
-               className="font-bold pointer-events-auto cursor-text" 
+               className="font-bold pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity" 
                style={{ color: 'var(--color-brand-500)' }}
-               title={`Current: ${resolveVal}\nInitial: ${activeVar.initialValue || 'empty'}\nScope: ${activeVar.type}`}
-               onClick={() => {
-                 if (inputId) document.getElementById(inputId)?.focus();
-               }}
+               title={`Click to edit · Current: ${resolveVal}\nInitial: ${activeVar.initialValue || 'empty'}\nScope: ${activeVar.type}`}
+               onClick={handleVarClick}
              >
                {part}
              </span>
@@ -365,11 +388,9 @@ const getMethodColor = (method: string) => {
           return (
              <span 
                key={i} 
-               className="text-red-500 font-bold line-through opacity-80 pointer-events-auto cursor-text" 
-               title="Unresolved Variable! Check environment selection or spelling."
-               onClick={() => {
-                 if (inputId) document.getElementById(inputId)?.focus();
-               }}
+               className="text-red-500 font-bold line-through opacity-80 pointer-events-auto cursor-pointer hover:opacity-60 transition-opacity" 
+               title="Click to replace · Unresolved Variable!"
+               onClick={handleVarClick}
              >
                {part}
              </span>
@@ -705,7 +726,7 @@ const getMethodColor = (method: string) => {
                       className="absolute inset-y-0 left-0 right-10 p-2 pointer-events-none whitespace-pre text-sm font-mono overflow-hidden z-20"
                       aria-hidden="true"
                     >
-                      {auth.bearerToken ? renderHighlightedUrl(auth.bearerToken, `auth-token-${request.id}`) : <span className="text-[var(--muted)] opacity-50">Token</span>}
+                      {auth.bearerToken ? renderHighlightedUrl(auth.bearerToken, `auth-token-${request.id}`, 'auth-bearerToken') : <span className="text-[var(--muted)] opacity-50">Token</span>}
                     </div>
                   )}
 
@@ -1157,7 +1178,7 @@ const getMethodColor = (method: string) => {
               className="absolute inset-0 px-3 py-1.5 pointer-events-none whitespace-pre text-xs font-mono overflow-hidden z-20"
               aria-hidden="true"
             >
-              {request.url ? renderHighlightedUrl(request.url, `url-input-${request.id}`) : <span className="text-[var(--muted)]">Enter request URL</span>}
+              {request.url ? renderHighlightedUrl(request.url, `url-input-${request.id}`, 'url-input') : <span className="text-[var(--muted)]">Enter request URL</span>}
             </div>
             
             {/* URL Variable Autocomplete Dropdown Wrapper */}

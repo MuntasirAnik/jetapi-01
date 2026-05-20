@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import {
   CreditCard, Zap, Rocket, Crown,
@@ -13,6 +13,7 @@ import UserSidebar from "@/components/UserSidebar";
 
 export default function BillingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [subscription, setSubscription] = useState<any>(null);
   const [usage, setUsage] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -20,8 +21,41 @@ export default function BillingPage() {
   const flags = useFeatureFlags();
 
   useEffect(() => {
-    loadData();
+    const sessionId = searchParams.get("session_id");
+    const success = searchParams.get("success");
+
+    if (success === "true" && sessionId) {
+      verifySession(sessionId);
+    } else {
+      loadData();
+    }
   }, []);
+
+  const verifySession = async (sessionId: string) => {
+    try {
+      const res = await apiFetch("/subscriptions/verify-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(
+          data.status === "already_active"
+            ? "Your plan is already active!"
+            : "🎉 Payment successful! Your plan has been upgraded."
+        );
+      } else {
+        toast.error(data.message || "Failed to verify payment session");
+      }
+    } catch {
+      toast.error("Failed to verify payment session");
+    }
+
+    // Clean up URL params and reload data
+    router.replace("/billing");
+    await loadData();
+  };
 
   const loadData = async () => {
     try {

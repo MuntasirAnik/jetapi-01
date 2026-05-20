@@ -6,7 +6,7 @@ export class Subscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ unique: true })
   userId: string;
 
   @ManyToOne(() => User, undefined, { onDelete: 'CASCADE' })

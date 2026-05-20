@@ -13,6 +13,17 @@ export class SubscriptionsService {
   private stripe: any;
   private readonly logger = new Logger(SubscriptionsService.name);
 
+  /** Safely parse a Stripe timestamp (Unix seconds number, ms number, or ISO string) into a Date */
+  private parseStripeDate(val: any): Date {
+    if (!val) return new Date();
+    if (typeof val === 'string') return new Date(val);
+    // If it's a small number, it's Unix seconds; otherwise it's milliseconds
+    if (typeof val === 'number') {
+      return val < 1e12 ? new Date(val * 1000) : new Date(val);
+    }
+    return new Date();
+  }
+
   constructor(
     @InjectRepository(Subscription)
     private subscriptionRepo: Repository<Subscription>,
@@ -99,14 +110,13 @@ export class SubscriptionsService {
 
   // ── Stripe Checkout ──
 
-  async createCheckoutSession(userId: string, planId: PlanId, interval: 'monthly' | 'yearly' = 'monthly') {
+  async createCheckoutSession(userId: string, planId: PlanId, interval: 'monthly' | 'yearly' = 'monthly', origin?: string) {
     const plan = PLANS[planId];
     if (!plan || planId === 'FREE') {
       throw new BadRequestException('Invalid plan selected');
     }
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-    if (!frontendUrl) throw new BadRequestException('FRONTEND_URL is not configured in environment variables');
+    const frontendUrl = origin || this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
     // When Stripe is not configured, create a pending subscription (payment required within 10 days)
     if (!this.stripe) {
@@ -166,6 +176,91 @@ export class SubscriptionsService {
     });
 
     return { url: session.url, sessionId: session.id };
+  }
+
+  // ── Change Plan (upgrade/downgrade for existing subscribers) ──
+
+  async changePlan(userId: string, planId: PlanId, interval: 'monthly' | 'yearly' = 'monthly') {
+    const sub = await this.subscriptionRepo.findOne({ where: { userId } });
+
+    // If user has no subscription or is on FREE, redirect to checkout
+    if (!sub?.stripeSubscriptionId) {
+      if (planId === 'FREE') {
+        return { status: 'already_free' };
+      }
+      throw new BadRequestException('No active subscription. Please use checkout to subscribe.');
+    }
+
+    // Downgrade to FREE = cancel subscription
+    if (planId === 'FREE') {
+      return this.cancelSubscription(userId);
+    }
+
+    const plan = PLANS[planId];
+    if (!plan) throw new BadRequestException('Invalid plan');
+
+    const priceId = interval === 'yearly' ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
+    if (!priceId) throw new BadRequestException('Stripe price not configured for this plan');
+
+    if (!this.stripe) throw new BadRequestException('Stripe is not configured');
+
+    // Retrieve current Stripe subscription
+    const stripeSubscription = await this.stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+    const currentItemId = stripeSubscription.items.data[0]?.id;
+
+    if (!currentItemId) {
+      throw new BadRequestException('Could not find subscription item to update');
+    }
+
+    // Update the subscription with the new price (Stripe handles proration automatically)
+    const updatedSubscription = await this.stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      items: [{
+        id: currentItemId,
+        price: priceId,
+      }],
+      proration_behavior: 'create_prorations',
+      metadata: { userId, planId },
+    });
+
+    // Update local record
+    sub.plan = planId;
+    sub.billingInterval = interval;
+    sub.stripePriceId = priceId;
+    sub.currentPeriodStart = this.parseStripeDate(updatedSubscription.current_period_start);
+    sub.currentPeriodEnd = this.parseStripeDate(updatedSubscription.current_period_end);
+    sub.canceledAt = null as any;
+    sub.status = 'active';
+    await this.subscriptionRepo.save(sub);
+
+    this.logger.log(`User ${userId} changed plan to ${planId} (${interval})`);
+    return { status: 'changed', plan: planId };
+  }
+
+  // ── Cancel Subscription (downgrade to FREE) ──
+
+  async cancelSubscription(userId: string) {
+    const sub = await this.subscriptionRepo.findOne({ where: { userId } });
+
+    if (!sub?.stripeSubscriptionId) {
+      throw new BadRequestException('No active subscription to cancel');
+    }
+
+    if (!this.stripe) throw new BadRequestException('Stripe is not configured');
+
+    // Cancel at period end so user keeps access until their billing cycle ends
+    await this.stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+
+    sub.canceledAt = new Date();
+    await this.subscriptionRepo.save(sub);
+
+    this.logger.log(`User ${userId} canceled subscription (downgrade to FREE at period end)`);
+    return {
+      status: 'canceled',
+      message: 'Your subscription will be canceled at the end of the current billing period.',
+      periodEnd: sub.currentPeriodEnd,
+    };
   }
 
   // ── Confirm Payment (card or MFS) ──
@@ -285,7 +380,7 @@ export class SubscriptionsService {
 
   // ── Stripe Customer Portal ──
 
-  async createPortalSession(userId: string) {
+  async createPortalSession(userId: string, origin?: string) {
     if (!this.stripe) throw new BadRequestException('Stripe is not configured');
 
     const sub = await this.subscriptionRepo.findOne({ where: { userId } });
@@ -293,8 +388,7 @@ export class SubscriptionsService {
       throw new BadRequestException('No active subscription found');
     }
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-    if (!frontendUrl) throw new BadRequestException('FRONTEND_URL is not configured in environment variables');
+    const frontendUrl = origin || this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
     const session = await this.stripe.billingPortal.sessions.create({
       customer: sub.stripeCustomerId,
@@ -361,8 +455,8 @@ export class SubscriptionsService {
       sub.stripeCustomerId = session.customer as string;
       sub.stripeSubscriptionId = stripeSubscription.id;
       sub.stripePriceId = stripeSubscription.items.data[0]?.price.id;
-      sub.currentPeriodStart = new Date(stripeSubscription.current_period_start * 1000);
-      sub.currentPeriodEnd = new Date(stripeSubscription.current_period_end * 1000);
+      sub.currentPeriodStart = this.parseStripeDate(stripeSubscription.current_period_start);
+      sub.currentPeriodEnd = this.parseStripeDate(stripeSubscription.current_period_end);
       sub.canceledAt = null as any;
     } else {
       sub = this.subscriptionRepo.create({
@@ -373,8 +467,8 @@ export class SubscriptionsService {
         stripeCustomerId: session.customer as string,
         stripeSubscriptionId: stripeSubscription.id,
         stripePriceId: stripeSubscription.items.data[0]?.price.id,
-        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        currentPeriodStart: this.parseStripeDate(stripeSubscription.current_period_start),
+        currentPeriodEnd: this.parseStripeDate(stripeSubscription.current_period_end),
       });
     }
 
@@ -392,8 +486,8 @@ export class SubscriptionsService {
     sub.status = subscription.status === 'active' ? 'active' :
                  subscription.status === 'past_due' ? 'past_due' :
                  subscription.status === 'canceled' ? 'canceled' : sub.status;
-    sub.currentPeriodStart = new Date(subscription.current_period_start * 1000);
-    sub.currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+    sub.currentPeriodStart = this.parseStripeDate(subscription.current_period_start);
+    sub.currentPeriodEnd = this.parseStripeDate(subscription.current_period_end);
 
     if (subscription.cancel_at_period_end) {
       sub.canceledAt = new Date();
@@ -434,6 +528,36 @@ export class SubscriptionsService {
   }
 
   // ── Construct webhook event ──
+  // ── Verify Checkout Session (for immediate plan activation after redirect) ──
+
+  async verifyCheckoutSession(userId: string, sessionId: string) {
+    if (!this.stripe) throw new BadRequestException('Stripe is not configured');
+
+    const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+
+    if (!session || session.status !== 'complete') {
+      throw new BadRequestException('Checkout session is not complete');
+    }
+
+    // Verify this session belongs to the requesting user
+    if (session.metadata?.userId !== userId) {
+      throw new BadRequestException('Session does not belong to this user');
+    }
+
+    // Check if already processed
+    const existingSub = await this.subscriptionRepo.findOne({ where: { userId } });
+    if (existingSub?.stripeSubscriptionId === session.subscription) {
+      this.logger.log(`Session ${sessionId} already processed for user ${userId}`);
+      return { status: 'already_active', plan: existingSub?.plan };
+    }
+
+    // Process the checkout — reuse the existing handler
+    await this.handleCheckoutCompleted(session);
+
+    const updatedSub = await this.subscriptionRepo.findOne({ where: { userId } });
+    return { status: 'activated', plan: updatedSub?.plan };
+  }
+
   constructWebhookEvent(payload: Buffer, signature: string): any {
     const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
     if (!webhookSecret) throw new BadRequestException('Webhook secret not configured');

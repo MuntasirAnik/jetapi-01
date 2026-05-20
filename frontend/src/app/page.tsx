@@ -310,7 +310,10 @@ export default function Home() {
 
     activeVars.filter(v => v.enabled !== false && v.key).forEach(v => {
       // Use regex that tolerates spaces e.g. {{ my_var }}
-      const activeValue = v.currentValue !== undefined ? v.currentValue : v.value;
+      // Resolve: currentValue → initialValue → value (whichever is first non-empty)
+      const activeValue = (v.currentValue !== undefined && v.currentValue !== '') ? v.currentValue
+        : (v.initialValue !== undefined && v.initialValue !== '') ? v.initialValue
+        : (v.value !== undefined ? v.value : '');
       interpolated = interpolated.replace(new RegExp(`{{\\s*${v.key}\\s*}}`, 'g'), () => activeValue);
       interpolated = interpolated.replace(new RegExp(`%7B%7B\\s*${v.key}\\s*%7D%7D`, 'i'), () => activeValue);
     });
@@ -706,6 +709,13 @@ export default function Home() {
 
                     // Interpolate Environment Variables & collapse double-slashes (e.g. from trailing slash env vars)
                     let cleanUrl = interpolate(reqData.url) || "";
+
+                    // Warn if any {{variables}} remain unresolved
+                    const unresolvedVars = cleanUrl.match(/\{\{([^}]+)\}\}/g);
+                    if (unresolvedVars) {
+                      const varNames = unresolvedVars.map((m: string) => m.slice(2, -2).trim());
+                      toast.warning(`Unresolved variable${varNames.length > 1 ? 's' : ''}: ${varNames.join(', ')}. Check your environment selection.`);
+                    }
 
                     // Collapse accidental double slashes (like https://domain.com//api) but preserve the protocol ://
                     cleanUrl = cleanUrl.replace(/([^:]\/)\/+/g, "$1");

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { toast } from "react-toastify";
@@ -514,15 +515,36 @@ function CustomSelect({ value, onChange, options, groups, compact }: {
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 6, left: rect.left });
+    }
+  }, []);
 
   useEffect(() => {
+    if (!open) return;
+    updatePosition();
     const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        buttonRef.current && !buttonRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) setOpen(false);
     };
-    if (open) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
+    const handleScroll = () => updatePosition();
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [open, updatePosition]);
 
   const allOptions = [...(options ?? []), ...(groups?.flatMap(g => g.items) ?? [])];
   const selectedLabel = allOptions.find(o => o.value === value)?.label || value;
@@ -543,8 +565,9 @@ function CustomSelect({ value, onChange, options, groups, compact }: {
   );
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={buttonRef}
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-2 bg-[var(--sidebar)] border rounded-lg ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'} font-medium cursor-pointer transition-all ${
           open ? 'border-[var(--color-brand-500)] shadow-[0_0_0_1px_var(--color-brand-500)]' : 'border-[var(--border)] hover:border-[var(--color-brand-500)]/50'
@@ -554,8 +577,12 @@ function CustomSelect({ value, onChange, options, groups, compact }: {
         <ChevronDown className={`w-3.5 h-3.5 text-[var(--muted)] transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 min-w-[180px] max-h-[320px] overflow-y-auto bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl shadow-black/40 z-50 py-1">
+      {open && pos && createPortal(
+        <div
+          ref={dropdownRef}
+          className="min-w-[180px] max-h-[320px] overflow-y-auto bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl shadow-black/40 py-1"
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+        >
           {options && options.map(renderOption)}
           {options && options.length > 0 && groups && groups.length > 0 && <div className="h-px bg-[var(--border)] my-1" />}
           {groups && groups.map((g, gi) => (
@@ -565,9 +592,10 @@ function CustomSelect({ value, onChange, options, groups, compact }: {
               {g.items.map(renderOption)}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 

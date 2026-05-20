@@ -84,8 +84,9 @@ export default function PricingPage() {
     } catch {}
   };
 
-  const handleUpgrade = async (planId: string) => {
-    if (planId === "FREE") return;
+  const planOrder: Record<string, number> = { FREE: 0, PRO: 1, TEAM: 2 };
+
+  const handlePlanAction = async (planId: string) => {
     if (!flags.allow_subscriptions) {
       toast.error("Subscriptions are currently disabled by the administrator.");
       return;
@@ -96,24 +97,58 @@ export default function PricingPage() {
       return;
     }
 
+    if (planId === currentPlan) return;
+
     try {
       setCheckoutLoading(planId);
-      const res = await apiFetch("/subscriptions/create-checkout", {
+
+      // If user is on FREE and selecting a paid plan → checkout
+      // If user is on a paid plan and switching → change-plan
+      // If user is on a paid plan and selecting FREE → cancel
+      const isCurrentlyPaid = currentPlan !== "FREE";
+      const endpoint = isCurrentlyPaid ? "/subscriptions/change-plan" : "/subscriptions/create-checkout";
+
+      const res = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId, interval }),
       });
       const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.message || "Failed to process plan change");
+        return;
+      }
+
       if (data.url) {
+        // Stripe checkout redirect
         window.location.href = data.url;
-      } else {
-        toast.error(data.message || "Failed to create checkout session");
+      } else if (data.status === "changed") {
+        toast.success(`🎉 Plan changed to ${planId}!`);
+        setCurrentPlan(planId);
+      } else if (data.status === "canceled") {
+        toast.success(data.message || "Subscription canceled. You'll keep access until the end of your billing period.");
+        loadCurrentPlan();
+      } else if (data.status === "already_free") {
+        toast.info("You're already on the Free plan.");
       }
     } catch (err) {
-      toast.error("Failed to start checkout. Please try again.");
+      toast.error("Failed to process. Please try again.");
     } finally {
       setCheckoutLoading(null);
     }
+  };
+
+  const getButtonText = (planId: string) => {
+    if (planId === currentPlan) return "Current Plan";
+    if (!flags.allow_subscriptions && planId !== "FREE") return "Subscriptions Disabled";
+
+    const currentRank = planOrder[currentPlan] || 0;
+    const targetRank = planOrder[planId] || 0;
+
+    if (planId === "FREE") return "Downgrade to Free";
+    if (targetRank > currentRank) return `Upgrade to ${plans.find(p => p.id === planId)?.name || planId}`;
+    return `Switch to ${plans.find(p => p.id === planId)?.name || planId}`;
   };
 
   const planIcons: Record<string, any> = {
@@ -272,13 +307,15 @@ export default function PricingPage() {
 
                 {/* CTA Button */}
                 <button
-                  onClick={() => handleUpgrade(plan.id)}
-                  disabled={isCurrentPlan || checkoutLoading === plan.id}
+                  onClick={() => handlePlanAction(plan.id)}
+                  disabled={isCurrentPlan || checkoutLoading === plan.id || (!flags.allow_subscriptions && plan.id !== "FREE" && !isCurrentPlan)}
                   className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                     !flags.allow_subscriptions && plan.id !== "FREE" && !isCurrentPlan
                       ? "bg-[var(--sidebar)] text-[var(--muted)] cursor-not-allowed border border-[var(--border)] opacity-60"
                       : isCurrentPlan
                       ? "bg-[var(--sidebar)] text-[var(--muted)] cursor-default border border-[var(--border)]"
+                      : plan.id === "FREE" && currentPlan !== "FREE"
+                      ? "bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
                       : plan.popular
                       ? "bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white"
                       : plan.id === "TEAM"
@@ -291,14 +328,8 @@ export default function PricingPage() {
                       <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       Processing...
                     </span>
-                  ) : isCurrentPlan ? (
-                    "Current Plan"
-                  ) : plan.id === "FREE" ? (
-                    "Get Started"
-                  ) : !flags.allow_subscriptions ? (
-                    "Subscriptions Disabled"
                   ) : (
-                    `Upgrade to ${plan.name}`
+                    getButtonText(plan.id)
                   )}
                 </button>
               </div>

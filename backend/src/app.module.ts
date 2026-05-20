@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import * as path from 'path';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { CollectionsModule } from './collections/collections.module';
 import { RequestsModule } from './requests/requests.module';
@@ -39,6 +40,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: path.resolve(__dirname, '..', '.env'),
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
