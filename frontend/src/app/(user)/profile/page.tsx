@@ -7,6 +7,7 @@ import {
   ShieldCheck, Users, X, Server, Upload, Loader2, Download, Import, Trash2, UserPlus, Search,
   Eye, EyeOff, Megaphone, Calendar, Mail, Clock, Edit3, Check,
   Zap, Rocket, Crown, Globe, Wifi, Building2, MapPin, Phone, Link as LinkIcon,
+  ChevronDown, Power,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
@@ -34,6 +35,9 @@ export default function UserDashboard() {
   const [sharingColId, setSharingColId] = useState<string | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
   const [systemUsers, setSystemUsers] = useState<any[]>([]);
+  const [expandedSharedCols, setExpandedSharedCols] = useState<Record<string, boolean>>({});
+  const [togglingColId, setTogglingColId] = useState<string | null>(null);
+  const [expandedAccessCols, setExpandedAccessCols] = useState<Record<string, boolean>>({});
 
   // Password Change State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -171,6 +175,22 @@ export default function UserDashboard() {
       fetchData();
     } catch { toast.error("Revoke failed."); }
     finally { setRevokingUserId(null); }
+  };
+
+  const handleToggleActive = async (colId: string, newActive: boolean) => {
+    setTogglingColId(colId);
+    try {
+      const res = await apiFetch(`/collections/${colId}/toggle-active`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: newActive }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Toggle failed");
+      toast.success(newActive ? "Collection enabled" : "Collection disabled");
+      fetchData();
+      window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+    } catch (err: any) { toast.error(err.message || "Failed to toggle collection"); }
+    finally { setTogglingColId(null); }
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -346,7 +366,7 @@ export default function UserDashboard() {
         </div>
       )}
 
-      <UserSidebar activePage="profile" userName={user.name || user.email.split('@')[0]} activeTab={activeTab} onTabChange={(t) => setActiveTab(t as any)} />
+      <UserSidebar activePage="profile" userName={user.name || user.email.split('@')[0]} activeTab={activeTab} onTabChange={(t) => { setActiveTab(t as any); fetchData(); }} />
 
       <div className="flex-1 overflow-auto">
         {/* Banner */}
@@ -584,25 +604,160 @@ export default function UserDashboard() {
               </div>
             )}
             {sharedWithMe.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-semibold text-[var(--muted)] mb-2">Shared With Me</p>
-                <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-                  {sharedWithMe.map((col, i) => (
-                    <div key={col.id} className={`flex items-center justify-between px-5 py-3 ${i < sharedWithMe.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
-                      <div className="flex items-center gap-3">
+              <div className="mt-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-[var(--muted)] uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-400" /> Shared With Me
+                    <span className="text-[10px] normal-case font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400">{sharedWithMe.length}</span>
+                  </h3>
+                  {sharedWithMe.length > 1 && (
+                    <button
+                      onClick={() => {
+                        const allExpanded = sharedWithMe.every(c => expandedSharedCols[c.id]);
+                        const next: Record<string, boolean> = {};
+                        sharedWithMe.forEach(c => { next[c.id] = !allExpanded; });
+                        setExpandedSharedCols(next);
+                      }}
+                      className="text-[10px] font-semibold text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-colors"
+                    >
+                      {sharedWithMe.every(c => expandedSharedCols[c.id]) ? 'Collapse All' : 'Expand All'}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {sharedWithMe.map((col) => {
+                    const myRole = col.sharedUsers?.find((su: any) => su.id === user.id)?.shareRole;
+                    const allPeople: { id: string; name?: string; email: string; role: string; avatarMimeType?: string }[] = [];
+                    if (col.owner && col.owner.id !== user.id) {
+                      allPeople.push({ ...col.owner, role: 'owner' });
+                    }
+                    (col.sharedUsers || []).forEach((su: any) => {
+                      if (su.id !== user.id && !allPeople.some(p => p.id === su.id)) {
+                        allPeople.push({ ...su, role: su.shareRole || 'viewer' });
+                      }
+                    });
+                    const isExpanded = !!expandedSharedCols[col.id];
+                    const totalMembers = allPeople.length + 1; // +1 for current user
+
+                    return (
+                    <div key={col.id} className={`bg-[var(--card)] border rounded-xl overflow-hidden transition-all duration-200 ${isExpanded ? 'border-blue-500/30 shadow-sm shadow-blue-500/5' : 'border-[var(--border)] hover:border-[var(--border)]/80'}`}>
+                      {/* Collapsed header — always visible */}
+                      <button
+                        onClick={() => setExpandedSharedCols(prev => ({ ...prev, [col.id]: !prev[col.id] }))}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--sidebar)]/30 transition-colors group"
+                      >
                         <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                          <Users className="w-4 h-4 text-blue-400" />
+                          <Folder className="w-4 h-4 text-blue-400" />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{col.name}</p>
-                          <p className="text-[11px] text-[var(--muted)]">Shared with you</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold truncate">{col.name}</p>
+                            {myRole && <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                              myRole === 'admin' ? 'bg-purple-500/10 text-purple-400' :
+                              myRole === 'editor' ? 'bg-amber-500/10 text-amber-400' :
+                              'bg-blue-500/10 text-blue-400'
+                            }`}>{myRole}</span>}
+                          </div>
+                          <p className="text-[11px] text-[var(--muted)] truncate">
+                            {col.owner ? `by ${col.owner.name || col.owner.email}` : 'Shared with you'}
+                            {` · ${totalMembers} member${totalMembers !== 1 ? 's' : ''}`}
+                          </p>
                         </div>
-                      </div>
-                      <button onClick={() => handleExport(col.id, col.name)} className="p-1.5 text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)] rounded-md transition-colors" title="Export">
-                        <Download className="w-3.5 h-3.5" />
+                        {/* Stacked avatar preview — only when collapsed */}
+                        {!isExpanded && allPeople.length > 0 && (
+                          <div className="flex items-center -space-x-1.5 flex-shrink-0 mr-1">
+                            {allPeople.slice(0, 4).map((p, idx) => (
+                              p.avatarMimeType ? (
+                                <img key={p.id} src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${p.id}/avatar`} alt="" className="w-6 h-6 rounded-full object-cover border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }} />
+                              ) : (
+                                <div key={p.id} className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold uppercase text-white border-2 border-[var(--card)] ${p.role === 'owner' ? 'bg-[var(--color-brand-500)]' : 'bg-blue-500'}`} style={{ zIndex: 4 - idx }}>
+                                  {(p.name || p.email || '?').charAt(0)}
+                                </div>
+                              )
+                            ))}
+                            {allPeople.length > 4 && (
+                              <div className="w-6 h-6 rounded-full bg-[var(--sidebar)] border-2 border-[var(--card)] flex items-center justify-center text-[8px] font-bold text-[var(--muted)]" style={{ zIndex: 0 }}>+{allPeople.length - 4}</div>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <ChevronDown className={`w-4 h-4 text-[var(--muted)] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
                       </button>
+
+                      {/* Expanded collaborator list */}
+                      {isExpanded && (
+                        <div className="border-t border-[var(--border)] bg-[var(--sidebar)]/20">
+                          {/* Owner row */}
+                          {col.owner && col.owner.id !== user.id && (
+                            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50">
+                              {col.owner.avatarMimeType ? (
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${col.owner.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)] flex items-center justify-center text-[9px] font-bold uppercase text-white border border-[var(--color-brand-500)]/30">
+                                  {(col.owner.name || col.owner.email || '?').charAt(0)}
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold truncate">{col.owner.name || col.owner.email?.split('@')[0]}</p>
+                                <p className="text-[10px] text-[var(--muted)] truncate">{col.owner.email}</p>
+                              </div>
+                              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center gap-1 flex-shrink-0">
+                                <Crown className="w-2.5 h-2.5" /> Owner
+                              </span>
+                            </div>
+                          )}
+                          {/* Current user row */}
+                          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 bg-[var(--color-brand-500)]/[0.03]">
+                            {user.avatarMimeType ? (
+                              <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" />
+                            ) : (
+                              <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)]/15 flex items-center justify-center text-[9px] font-bold uppercase text-[var(--color-brand-500)] border border-[var(--color-brand-500)]/20">
+                                {(user.name || user.email || '?').charAt(0)}
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate">{user.name || user.email?.split('@')[0]} <span className="text-[var(--color-brand-500)] font-bold">(You)</span></p>
+                              <p className="text-[10px] text-[var(--muted)] truncate">{user.email}</p>
+                            </div>
+                            {myRole && <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                              myRole === 'admin' ? 'bg-purple-500/10 text-purple-400' :
+                              myRole === 'editor' ? 'bg-amber-500/10 text-amber-400' :
+                              'bg-blue-500/10 text-blue-400'
+                            }`}>{myRole}</span>}
+                          </div>
+                          {/* Other collaborators */}
+                          {(col.sharedUsers || []).filter((su: any) => su.id !== user.id && su.id !== col.owner?.id).map((su: any) => (
+                            <div key={su.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 last:border-b-0">
+                              {su.avatarMimeType ? (
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${su.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center text-[9px] font-bold uppercase text-blue-400 border border-blue-500/20">
+                                  {(su.name || su.email || '?').charAt(0)}
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">{su.name || su.email?.split('@')[0]}</p>
+                                <p className="text-[10px] text-[var(--muted)] truncate">{su.email}</p>
+                              </div>
+                              <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                                su.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' :
+                                su.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' :
+                                'bg-blue-500/10 text-blue-400'
+                              }`}>{su.shareRole || 'viewer'}</span>
+                            </div>
+                          ))}
+                          {/* Export action */}
+                          <div className="px-4 py-2 border-t border-[var(--border)]/50 flex justify-end">
+                            <button onClick={(e) => { e.stopPropagation(); handleExport(col.id, col.name); }} className="flex items-center gap-1 text-[10px] font-semibold text-[var(--muted)] hover:text-[var(--foreground)] px-2 py-1 rounded-md hover:bg-[var(--sidebar)] transition-colors">
+                              <Download className="w-3 h-3" /> Export Collection
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -616,107 +771,163 @@ export default function UserDashboard() {
           <div>
 
           {/* Access Control */}
-          {manageableCollections.length > 0 ? (
+          {collections.length > 0 ? (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-[var(--muted)] uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Users className="w-4 h-4 text-[var(--color-brand-500)]" /> Access Control
-              </h3>
-              <div className="space-y-3">
-                {manageableCollections.map(col => (
-                  <div key={col.id} className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-                    <div className="bg-[var(--sidebar)]/50 px-4 py-3 border-b border-[var(--border)] flex justify-between items-center">
-                      <div className="font-semibold text-sm flex items-center gap-2">
-                        <Folder className="w-4 h-4 text-[var(--color-brand-500)]" /> {col.name}
-                        {col.ownerId !== user.id && <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 ml-1">Admin</span>}
-                      </div>
-                      <form onSubmit={e => { e.preventDefault(); handleShare(col.id); }} className="flex gap-2 items-center">
-                        <div className="relative">
-                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                          <input
-                            type="email"
-                            list={`sys-users-${col.id}`}
-                            placeholder="Email to share..."
-                            className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] w-48 font-medium placeholder-[var(--muted)]"
-                            value={shareEmails[col.id] || ''}
-                            onChange={(e) => setShareEmails({ ...shareEmails, [col.id]: e.target.value })}
-                            required
-                          />
-                          <datalist id={`sys-users-${col.id}`}>
-                            {systemUsers.filter(u => u.id !== col.ownerId && !col.sharedUsers?.some((su: any) => su.id === u.id)).map(u => (
-                              <option key={u.id} value={u.email} />
-                            ))}
-                          </datalist>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-[var(--muted)] uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[var(--color-brand-500)]" /> Access Control
+                  <span className="text-[10px] normal-case font-semibold px-1.5 py-0.5 rounded-full bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]">{collections.length}</span>
+                </h3>
+                {collections.length > 1 && (
+                  <button
+                    onClick={() => {
+                      const allExpanded = collections.every((c: any) => expandedAccessCols[c.id]);
+                      const next: Record<string, boolean> = {};
+                      collections.forEach((c: any) => { next[c.id] = !allExpanded; });
+                      setExpandedAccessCols(next);
+                    }}
+                    className="text-[10px] font-semibold text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-colors"
+                  >
+                    {collections.every((c: any) => expandedAccessCols[c.id]) ? 'Collapse All' : 'Expand All'}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {collections.map((col: any) => {
+                  const isOwner = !col.ownerId || col.ownerId === user.id;
+                  const isSharedAdmin = col.sharedUsers?.some((su: any) => su.id === user.id && su.shareRole === 'admin');
+                  const canManage = isOwner || isSharedAdmin;
+                  const myShareRole = col.sharedUsers?.find((su: any) => su.id === user.id)?.shareRole;
+                  const isExpanded = !!expandedAccessCols[col.id];
+                  const memberCount = (col.sharedUsers?.length || 0) + (col.owner ? 1 : 0);
+                  const previewUsers = (col.sharedUsers || []).filter((u: any) => u.id !== user.id).slice(0, 4);
+
+                  return (
+                  <div key={col.id} className={`bg-[var(--card)] border rounded-xl overflow-hidden transition-all duration-200 ${isExpanded ? 'border-[var(--color-brand-500)]/30 shadow-sm shadow-[var(--color-brand-500)]/5' : col.isActive === false ? 'border-red-500/20 opacity-70' : 'border-[var(--border)]'}`}>
+                    {/* Accordion header */}
+                    <div
+                      onClick={() => setExpandedAccessCols(prev => ({ ...prev, [col.id]: !prev[col.id] }))}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--sidebar)]/30 transition-colors group cursor-pointer"
+                    >
+                      <Folder className={`w-4 h-4 flex-shrink-0 ${col.isActive === false ? 'text-[var(--muted)]' : 'text-[var(--color-brand-500)]'}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-semibold truncate">{col.name}</span>
+                          {isOwner && <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">Owner</span>}
+                          {!isOwner && isSharedAdmin && <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400">Admin</span>}
+                          {!isOwner && !isSharedAdmin && myShareRole && <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full ${myShareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}`}>{myShareRole}</span>}
+                          {col.isActive === false && <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 flex items-center gap-0.5"><Power className="w-2.5 h-2.5" /> Off</span>}
                         </div>
-                        <select
-                          value={shareEmails[`${col.id}_role`] || 'viewer'}
-                          onChange={e => setShareEmails({ ...shareEmails, [`${col.id}_role`]: e.target.value })}
-                          className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md px-2 py-1.5 outline-none focus:border-[var(--color-brand-500)] font-medium text-[var(--foreground)] cursor-pointer"
-                        >
-                          <option value="viewer">Viewer</option>
-                          <option value="editor">Editor</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                        <button type="submit" disabled={!shareEmails[col.id] || sharingColId === col.id} className="bg-[var(--color-brand-500)] text-white px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1 disabled:opacity-50 min-w-[65px] justify-center">
-                          {sharingColId === col.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><UserPlus className="w-3.5 h-3.5" /> Share</>}
-                        </button>
-                      </form>
+                        <p className="text-[11px] text-[var(--muted)] truncate">{memberCount} member{memberCount !== 1 ? 's' : ''}{col.owner && !isOwner ? ` · by ${col.owner.name || col.owner.email}` : ''}</p>
+                      </div>
+                      {/* Stacked avatars when collapsed */}
+                      {!isExpanded && previewUsers.length > 0 && (
+                        <div className="flex items-center -space-x-1.5 flex-shrink-0 mr-1">
+                          {previewUsers.map((p: any, idx: number) => (
+                            <div key={p.id} className="w-6 h-6 rounded-full bg-blue-500/15 flex items-center justify-center text-[8px] font-bold uppercase text-blue-400 border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }}>
+                              {(p.name || p.email || '?').charAt(0)}
+                            </div>
+                          ))}
+                          {(col.sharedUsers?.length || 0) > 5 && (
+                            <div className="w-6 h-6 rounded-full bg-[var(--sidebar)] border-2 border-[var(--card)] flex items-center justify-center text-[8px] font-bold text-[var(--muted)]">+{col.sharedUsers.length - 4}</div>
+                          )}
+                        </div>
+                      )}
+                      {/* Toggle switch (stop propagation so it doesn't toggle accordion) */}
+                      {canManage && (
+                        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleToggleActive(col.id, col.isActive === false)}
+                            disabled={togglingColId === col.id}
+                            className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 cursor-pointer disabled:opacity-50 ${col.isActive === false ? 'bg-red-500/30' : 'bg-emerald-500'}`}
+                          >
+                            {togglingColId === col.id ? (
+                              <div className="absolute top-[1px] left-1/2 -translate-x-1/2 w-4 h-4 flex items-center justify-center"><Loader2 className="w-3 h-3 animate-spin text-white" /></div>
+                            ) : (
+                              <div className={`absolute top-[1px] w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200 ${col.isActive === false ? 'translate-x-[1px]' : 'translate-x-[14px]'}`} />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                      <ChevronDown className={`w-4 h-4 text-[var(--muted)] transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                     </div>
-                    <div className="p-3">
-                      {col.sharedUsers?.length > 0 ? (
-                        <div className="flex flex-col gap-1.5">
-                          {col.sharedUsers.map((u: any) => (
-                            <div key={u.id} className="flex items-center justify-between bg-[var(--sidebar)] px-3 py-2 border border-[var(--border)] rounded-md text-sm group">
-                              <div className="flex items-center gap-2 text-[var(--muted)]">
-                                <div className="w-5 h-5 rounded-full bg-[var(--background)] flex items-center justify-center border border-[var(--border)] shrink-0">
-                                  <User className="w-3 h-3" />
-                                </div>
-                                <span>{u.email}</span>
+
+                    {/* Expanded content */}
+                    {isExpanded && (
+                      <div className="border-t border-[var(--border)]">
+                        {/* Share form for managers */}
+                        {canManage && (
+                          <div className="bg-[var(--sidebar)]/30 px-4 py-2.5 border-b border-[var(--border)] flex justify-end">
+                            <form onSubmit={e => { e.preventDefault(); handleShare(col.id); }} className="flex gap-2 items-center">
+                              <div className="relative">
+                                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+                                <input type="email" list={`sys-users-${col.id}`} placeholder="Email to share..." className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] w-48 font-medium placeholder-[var(--muted)]" value={shareEmails[col.id] || ''} onChange={(e) => setShareEmails({ ...shareEmails, [col.id]: e.target.value })} required />
+                                <datalist id={`sys-users-${col.id}`}>{systemUsers.filter(u => u.id !== col.ownerId && !col.sharedUsers?.some((su: any) => su.id === u.id)).map(u => (<option key={u.id} value={u.email} />))}</datalist>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <select
-                                  value={u.shareRole || 'viewer'}
-                                  disabled={u.id === user.id}
-                                  onChange={async (e) => {
-                                    const newRole = e.target.value;
-                                    try {
-                                      const res = await apiFetch(`/collections/${col.id}/share/${u.id}`, {
-                                        method: "PUT",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ role: newRole })
-                                      });
-                                      if (!res.ok) throw new Error("Failed");
-                                      toast.success(`Role updated to ${newRole}`);
-                                      fetchData();
-                                    } catch { toast.error("Failed to update role"); }
-                                  }}
-                                  className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border-0 outline-none cursor-pointer ${
-                                    u.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' :
-                                    u.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' :
-                                    'bg-blue-500/10 text-blue-400'
-                                  } ${u.id === user.id ? 'opacity-60 cursor-default' : ''}`}
-                                >
-                                  <option value="viewer">Viewer</option>
-                                  <option value="editor">Editor</option>
-                                  <option value="admin">Admin</option>
-                                </select>
-                                <button onClick={() => handleUnshare(col.id, u.id)} disabled={revokingUserId === u.id} className="text-red-500 hover:bg-red-500 hover:text-white p-1 rounded transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100">
-                                  {revokingUserId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                                </button>
+                              <select value={shareEmails[`${col.id}_role`] || 'viewer'} onChange={e => setShareEmails({ ...shareEmails, [`${col.id}_role`]: e.target.value })} className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md px-2 py-1.5 outline-none focus:border-[var(--color-brand-500)] font-medium text-[var(--foreground)] cursor-pointer">
+                                <option value="viewer">Viewer</option><option value="editor">Editor</option><option value="admin">Admin</option>
+                              </select>
+                              <button type="submit" disabled={!shareEmails[col.id] || sharingColId === col.id} className="bg-[var(--color-brand-500)] text-white px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1 disabled:opacity-50 min-w-[65px] justify-center">
+                                {sharingColId === col.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><UserPlus className="w-3.5 h-3.5" /> Share</>}
+                              </button>
+                            </form>
+                          </div>
+                        )}
+                        {/* Member list */}
+                        <div className="bg-[var(--sidebar)]/10">
+                          {/* Owner */}
+                          {!isOwner && col.owner && (
+                            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50">
+                              <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)] flex items-center justify-center text-[9px] font-bold uppercase text-white border border-[var(--color-brand-500)]/30 flex-shrink-0">
+                                {(col.owner.name || col.owner.email || '?').charAt(0)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold truncate">{col.owner.name || col.owner.email?.split('@')[0]}</p>
+                                <p className="text-[10px] text-[var(--muted)] truncate">{col.owner.email}</p>
+                              </div>
+                              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center gap-1 flex-shrink-0"><Crown className="w-2.5 h-2.5" /> Owner</span>
+                            </div>
+                          )}
+                          {/* Shared users */}
+                          {col.sharedUsers?.filter((u: any) => u.id !== user.id || canManage).map((u: any) => (
+                            <div key={u.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 last:border-b-0 group">
+                              <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center text-[9px] font-bold uppercase text-blue-400 border border-blue-500/20 flex-shrink-0">
+                                {(u.name || u.email || '?').charAt(0)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">{u.name || u.email?.split('@')[0]} {u.id === user.id && <span className="text-[var(--color-brand-500)] font-bold">(You)</span>}</p>
+                                <p className="text-[10px] text-[var(--muted)] truncate">{u.email}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {canManage ? (
+                                  <>
+                                    <select value={u.shareRole || 'viewer'} disabled={u.id === user.id} onChange={async (e) => { try { const res = await apiFetch(`/collections/${col.id}/share/${u.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: e.target.value }) }); if (!res.ok) throw new Error(); toast.success(`Role updated`); fetchData(); } catch { toast.error("Failed"); } }} className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border-0 outline-none cursor-pointer ${u.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' : u.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'} ${u.id === user.id ? 'opacity-60 cursor-default' : ''}`}>
+                                      <option value="viewer">Viewer</option><option value="editor">Editor</option><option value="admin">Admin</option>
+                                    </select>
+                                    <button onClick={() => handleUnshare(col.id, u.id)} disabled={revokingUserId === u.id} className="text-red-500 hover:bg-red-500 hover:text-white p-1 rounded transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100">
+                                      {revokingUserId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${u.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' : u.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}`}>{u.shareRole || 'viewer'}</span>
+                                )}
                               </div>
                             </div>
                           ))}
+                          {(!col.sharedUsers || col.sharedUsers.length === 0) && (
+                            <p className="text-xs text-[var(--muted)] italic px-4 py-3">Not shared with anyone.</p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-xs text-[var(--muted)] italic">Not shared with anyone.</p>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (
             <div className="bg-[var(--card)] border border-dashed border-[var(--border)] rounded-xl p-8 text-center text-sm text-[var(--muted)]">
-              No collections available to manage.
+              No collections available.
             </div>
           )}
 

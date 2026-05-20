@@ -1,7 +1,7 @@
 "use client";
 import { apiFetch, copyToClipboard, getApiError } from '@/lib/api';
 import { useState, useEffect, useRef } from "react";
-import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star, Lock, Crown } from "lucide-react";
+import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star, Lock, Crown, Power } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import ActivityFeed from "./ActivityFeed";
 import { toast } from "react-toastify";
@@ -517,6 +517,27 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     toast.success("Link copied to clipboard");
   };
 
+  const handleToggleCollectionActive = async (e: React.MouseEvent, collectionId: string, currentlyActive: boolean) => {
+    e.stopPropagation();
+    const newActive = !currentlyActive;
+    try {
+      const res = await apiFetch(`/collections/${collectionId}/toggle-active`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: newActive }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.message || "Failed to toggle collection");
+        return;
+      }
+      toast.success(newActive ? "Collection enabled" : "Collection disabled");
+      window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+    } catch (err) {
+      toast.error("Failed to toggle collection.");
+    }
+  };
+
   const handleDeleteRequest = async (e: React.MouseEvent, requestId: string, requestName: string) => {
     e.stopPropagation();
     try {
@@ -760,6 +781,16 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                   <div className="flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete</div>
                   <span className="text-[10px] opacity-50 font-mono">⌫</span>
                 </button>
+                <div className="border-t border-[var(--border)] my-1"></div>
+                {(() => {
+                  const col = workspaces.flatMap((w:any) => w.collections || []).concat(sharedCollections).find((c:any) => c.id === contextMenu.id);
+                  const isActive = col?.isActive !== false;
+                  return (
+                    <button className={`flex items-center justify-between px-3 py-1.5 transition-colors w-full text-left ${isActive ? 'hover:bg-amber-500/10 text-amber-500' : 'hover:bg-emerald-500/10 text-emerald-500'}`} onClick={(e) => { handleToggleCollectionActive(e, contextMenu.id, isActive); setContextMenu(null); }}>
+                      <div className="flex items-center gap-2"><Power className="w-3.5 h-3.5" /> {isActive ? 'Disable' : 'Enable'}</div>
+                    </button>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -1033,8 +1064,9 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                 <ChevronDown className="w-3.5 h-3.5 text-[var(--muted)]" /> : 
                 <ChevronRight className="w-3.5 h-3.5 text-[var(--muted)]" />
               }
-              <Folder className="w-3.5 h-3.5 text-[var(--color-brand-500)]" />
-              <span className="truncate flex-1 text-xs">{col.name}</span>
+              <Folder className={`w-3.5 h-3.5 ${col.isActive === false ? 'text-[var(--muted)]' : 'text-[var(--color-brand-500)]'}`} />
+              <span className={`truncate flex-1 text-xs ${col.isActive === false ? 'text-[var(--muted)] line-through opacity-60' : ''}`}>{col.name}</span>
+              {col.isActive === false && <span className="text-[8px] uppercase font-bold px-1 py-px rounded bg-red-500/10 text-red-400 shrink-0 mr-1">off</span>}
               <div className="opacity-0 group-hover:opacity-100 flex items-center transition-opacity ml-auto z-10 relative">
                 <button
                   onClick={(e) => {

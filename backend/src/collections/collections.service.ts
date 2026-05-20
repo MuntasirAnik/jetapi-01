@@ -89,7 +89,7 @@ export class CollectionsService {
     return collections.map(c => this.hydrateSharedUsers(c));
   }
 
-  async findOne(id: string, userId: string): Promise<{ collection: Collection, membership: OrganizationUser }> {
+  async findOne(id: string, userId: string): Promise<{ collection: Collection, membership: OrganizationUser | null }> {
     const collection = await this.collectionRepository.findOne({
       where: { id },
       relationLoadStrategy: 'query',
@@ -101,7 +101,13 @@ export class CollectionsService {
     const workspace = await this.workspaceRepository.findOne({ where: { id: collection.workspace.id } });
     if (!workspace) throw new NotFoundException('Workspace not found');
     const membership = await this.orgUserRepo.findOne({ where: { organizationId: workspace.organizationId, userId }});
-    if (!membership) throw new ForbiddenException('Access denied');
+    
+    // Allow access if user is an org member OR has a share on this collection
+    const hasShare = collection.shares?.some(s => s.userId === userId);
+    const isOwner = collection.ownerId === userId;
+    if (!membership && !hasShare && !isOwner) {
+      throw new ForbiddenException('Access denied');
+    }
 
     return { collection, membership };
   }
@@ -115,16 +121,27 @@ export class CollectionsService {
   async remove(id: string, userId: string): Promise<void> {
     const { collection, membership } = await this.findOne(id, userId);
     const isOwner = collection.ownerId === userId;
-    if (membership.role !== 'ADMIN' && membership.role !== 'OWNER' && !isOwner) {
+    if (membership?.role !== 'ADMIN' && membership?.role !== 'OWNER' && !isOwner) {
       throw new ForbiddenException('Only Admins or the Owner can delete this collection');
     }
     await this.collectionRepository.remove(collection);
   }
 
+  async toggleActive(id: string, isActive: boolean, userId: string): Promise<Collection> {
+    const { collection, membership } = await this.findOne(id, userId);
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException('Only Owners or Admins can enable/disable this collection');
+    }
+    collection.isActive = isActive;
+    await this.collectionRepository.save(collection);
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
+  }
+
   /** Check if a user can manage sharing (is owner, org admin, or collection-level admin) */
-  private canManageSharing(collection: Collection, membership: OrganizationUser, userId: string): boolean {
+  private canManageSharing(collection: Collection, membership: OrganizationUser | null, userId: string): boolean {
     const isOwner = collection.ownerId === userId;
-    const isOrgAdmin = membership.role === 'ADMIN' || membership.role === 'OWNER';
+    const isOrgAdmin = membership?.role === 'ADMIN' || membership?.role === 'OWNER';
     const shareRecord = collection.shares?.find(s => s.userId === userId);
     const isCollectionAdmin = shareRecord?.role === 'admin';
     return isOwner || isOrgAdmin || isCollectionAdmin;

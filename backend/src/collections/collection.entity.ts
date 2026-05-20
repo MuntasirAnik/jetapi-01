@@ -35,6 +35,9 @@ export class Collection {
   @OneToMany(() => CollectionShare, (share) => share.collection, { cascade: true })
   shares: CollectionShare[];
 
+  @Column({ default: true })
+  isActive: boolean;
+
   // Virtual property for backward compatibility — populated in service layer
   sharedUsers?: User[];
 

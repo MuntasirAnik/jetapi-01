@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, UseGuards, Request, Query } from '@nestjs/common';
 import { CollectionsService } from './collections.service';
 import { Collection } from './collection.entity';
 import { AuthGuard } from '../auth/auth.guard';
@@ -62,6 +62,15 @@ export class CollectionsController {
   @Delete(':id/share/:userId')
   unshare(@Param('id') id: string, @Param('userId') userToUnshareId: string, @Request() req: any) {
     return this.collectionsService.unshare(id, userToUnshareId, req.user.sub);
+  }
+
+  @Patch(':id/toggle-active')
+  toggleActive(
+    @Param('id') id: string,
+    @Body('isActive') isActive: boolean,
+    @Request() req: any,
+  ) {
+    return this.collectionsService.toggleActive(id, isActive, req.user.sub);
   }
 
   @Get(':id')
