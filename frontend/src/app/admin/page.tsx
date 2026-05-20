@@ -613,9 +613,9 @@ function CustomSelect({ value, onChange, options, groups, compact }: {
 function UsersTab({
   onDelete, onToggleAdmin, onToggleActive, onImpersonate, currentUserRole,
 }: {
-  onDelete: (id: string, email: string) => void;
-  onToggleAdmin: (id: string, role: string) => void;
-  onToggleActive: (id: string, email: string, isActive: boolean) => void;
+  onDelete: (id: string, email: string) => void | Promise<void>;
+  onToggleAdmin: (id: string, role: string) => void | Promise<void>;
+  onToggleActive: (id: string, email: string, isActive: boolean) => void | Promise<void>;
   onImpersonate: (id: string, email: string) => void;
   currentUserRole?: string;
 }) {
@@ -844,10 +844,16 @@ function UsersTab({
                         if (res.ok) toast.success(`Force logged out ${u.email}`);
                         else toast.error("Failed");
                       }} title="Force logout" className="p-1.5 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"><Power className="w-4 h-4" /></button>
-                      <button onClick={() => onToggleActive(u.id, u.email, u.isActive !== false)} title={u.isActive !== false ? "Deactivate" : "Activate"} className={`p-1.5 rounded ${u.isActive !== false ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"}`}>
+                      <button onClick={async () => {
+                        await onToggleActive(u.id, u.email, u.isActive !== false);
+                        setUsers(prev => prev.map(x => x.id === u.id ? { ...x, isActive: x.isActive === false ? true : false } : x));
+                      }} title={u.isActive !== false ? "Deactivate" : "Activate"} className={`p-1.5 rounded ${u.isActive !== false ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"}`}>
                         {u.isActive !== false ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                       </button>
-                      <button onClick={() => onToggleAdmin(u.id, u.role)} title="Toggle role" className="p-1.5 rounded hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"><UserCog className="w-4 h-4" /></button>
+                      <button onClick={async () => {
+                        await onToggleAdmin(u.id, u.role);
+                        setUsers(prev => prev.map(x => x.id === u.id ? { ...x, role: x.role === 'ADMIN' ? 'USER' : 'ADMIN' } : x));
+                      }} title="Toggle role" className="p-1.5 rounded hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"><UserCog className="w-4 h-4" /></button>
                     </>) : <span className="text-[10px] text-[var(--muted)] italic">Protected</span>}
                   </div>
                 </td>

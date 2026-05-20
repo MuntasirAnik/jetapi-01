@@ -3,11 +3,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   User, Activity, Folder, Users, CreditCard, BarChart3,
-  Receipt, ChevronLeft, LogOut, Tag, ShieldCheck,
+  Receipt, ChevronLeft, LogOut, Tag, ShieldCheck, Bell,
 } from "lucide-react";
 
 interface UserSidebarProps {
-  activePage: "profile" | "billing" | "reports" | "payment-history" | "pricing";
+  activePage: "profile" | "billing" | "reports" | "payment-history" | "pricing" | "notifications";
   userName?: string;
   /** Profile sub-tab support */
   activeTab?: string;
@@ -38,6 +38,7 @@ export default function UserSidebar({ activePage, userName, activeTab, onTabChan
 
   const navItems = [
     { id: "profile", label: "Profile", icon: User, href: "/profile" },
+    { id: "notifications", label: "Notifications", icon: Bell, href: "/notifications" },
     { id: "billing", label: "Billing & Subscription", icon: CreditCard, href: "/billing" },
     { id: "reports", label: "My Reports", icon: BarChart3, href: "/reports" },
     { id: "payment-history", label: "Payment History", icon: Receipt, href: "/payment-history" },
@@ -131,7 +132,7 @@ export default function UserSidebar({ activePage, userName, activeTab, onTabChan
           onClick={handleLogout}
           className="text-sm text-red-500 hover:text-white hover:bg-red-500 flex items-center gap-2 px-2 py-2 rounded transition-colors mt-1"
         >
-          <LogOut className="w-4 h-4" /> Sign Out
+          <LogOut className="w-4 h-4" /> Log Out
         </button>
       </div>
     </div>

@@ -2,7 +2,7 @@
 import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
-import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell } from "lucide-react";
+import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink } from "lucide-react";
 import dynamic from 'next/dynamic';
 const EnvironmentManager = dynamic(() => import('./EnvironmentManager'), { ssr: false });
 const TeamSettingsModal = dynamic(() => import('./TeamSettingsModal'), { ssr: false });
@@ -35,10 +35,10 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await apiFetch("/notifications");
+        const res = await apiFetch("/notifications?page=1&limit=5");
         if (res.ok) {
-          const data = await res.json();
-          setNotifications(data);
+          const json = await res.json();
+          setNotifications(json.data || []);
         }
       } catch {}
     };
@@ -61,6 +61,9 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
       if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
         setIsNotificationsOpen(false);
       }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -74,6 +77,8 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   const orgDropdownRef = useRef<HTMLDivElement>(null);
   const [isTeamSettingsOpen, setIsTeamSettingsOpen] = useState(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
   const activeOrg = organizations.find((o:any) => o.id === activeOrganizationId);
   const activeWs = workspaces?.find((w:any) => w.id === workspaceId);
 
@@ -128,6 +133,14 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
   };
 
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
+    localStorage.removeItem('impersonating');
+    window.location.href = '/login';
+  };
 
   // Environments are now loaded globally by AppContext.initApp().
   // This effect only syncs envVariables when the user selects a different environment.
@@ -295,11 +308,11 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
         {/* Right Nav (Environments & Profile) */}
         <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded text-sm px-2 py-1">
           {/* Environment dropdown removed as per request */}
-          <div className="flex items-center gap-1 border-l border-[var(--border)] pl-2 ml-1">
-            <div className="relative" ref={notificationsRef}>
+          <div className="flex items-center gap-1.5 border-l border-[var(--border)] pl-2 ml-1">
+            <div className="relative flex items-center" ref={notificationsRef}>
               <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors relative" 
+                className="text-[var(--muted)] hover:text-[var(--foreground)] w-7 h-7 flex items-center justify-center rounded hover:bg-[var(--sidebar)] transition-colors relative" 
                 title="Notifications"
               >
                 <Bell className="w-4 h-4" />
@@ -325,7 +338,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                   </div>
                   <div className="max-h-64 overflow-y-auto custom-scrollbar flex flex-col">
                     {notifications.length === 0 ? (
-                      <div className="px-4 py-6 text-center text-xs text-[var(--muted)] border-red">
+                      <div className="px-4 py-6 text-center text-xs text-[var(--muted)]">
                         No notifications
                       </div>
                     ) : (
@@ -350,20 +363,128 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                       ))
                     )}
                   </div>
+                  <a
+                    href="/notifications"
+                    className="block text-center text-[10px] font-semibold text-[var(--color-brand-500)] hover:text-[var(--color-brand-600)] py-2 border-t border-[var(--border)] bg-[var(--sidebar)]/30 hover:bg-[var(--sidebar)]/60 transition-colors"
+                  >
+                    View all notifications →
+                  </a>
                 </div>
               )}
             </div>
             
             
-            <a href={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? '/admin' : '/profile'} className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all" title={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? 'Admin Panel' : 'User Profile'}>
-              {localUser?.avatarMimeType ? (
-                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" width={24} height={24} />
-              ) : (
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white uppercase" style={{ background: 'var(--color-brand-500)' }}>
-                  {(localUser?.name || localUser?.email || 'U').charAt(0)}
+            <div className="relative flex items-center" ref={userDropdownRef}>
+              <button
+                onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)] w-7 h-7 flex items-center justify-center rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all cursor-pointer"
+                title="Account"
+              >
+                {localUser?.avatarMimeType ? (
+                  <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" width={24} height={24} />
+                ) : (
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white uppercase" style={{ background: 'var(--color-brand-500)' }}>
+                    {(localUser?.name || localUser?.email || 'U').charAt(0)}
+                  </div>
+                )}
+              </button>
+              {isUserDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.25)] z-[99999] overflow-hidden dropdown-enter">
+                  {/* User info header with avatar */}
+                  <div className="px-4 pt-4 pb-3 bg-gradient-to-b from-[var(--color-brand-500)]/[0.06] to-transparent">
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex-shrink-0">
+                        {localUser?.avatarMimeType ? (
+                          <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-10 h-10 rounded-full object-cover border-2 border-[var(--color-brand-500)]/20" width={40} height={40} />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white uppercase" style={{ background: 'var(--color-brand-500)' }}>
+                            {(localUser?.name || localUser?.email || 'U').charAt(0)}
+                          </div>
+                        )}
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[var(--card)]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-[var(--foreground)] truncate">{localUser?.name || 'User'}</p>
+                        <p className="text-[11px] text-[var(--muted)] truncate">{localUser?.email}</p>
+                      </div>
+                      {(localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN') && (
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 flex-shrink-0">
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick links */}
+                  <div className="p-1.5 border-t border-[var(--border)]">
+                    {localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? (
+                      <a
+                        href="/admin"
+                        className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-[var(--foreground)] hover:bg-[var(--sidebar)] transition-colors group"
+                        onClick={() => setIsUserDropdownOpen(false)}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-purple-500/20 transition-colors">
+                          <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                        </div>
+                        <span>Admin Panel</span>
+                        <ExternalLink className="w-3 h-3 text-[var(--muted)] ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                    ) : (
+                      <a
+                        href="/profile"
+                        className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-[var(--foreground)] hover:bg-[var(--sidebar)] transition-colors group"
+                        onClick={() => setIsUserDropdownOpen(false)}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-[var(--color-brand-500)]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[var(--color-brand-500)]/20 transition-colors">
+                          <UserIcon className="w-3.5 h-3.5 text-[var(--color-brand-500)]" />
+                        </div>
+                        <span>My Profile</span>
+                      </a>
+                    )}
+                    <a
+                      href="/notifications"
+                      className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-[var(--foreground)] hover:bg-[var(--sidebar)] transition-colors group"
+                      onClick={() => setIsUserDropdownOpen(false)}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                        <Bell className="w-3.5 h-3.5 text-blue-400" />
+                      </div>
+                      <span>Notifications</span>
+                      {notifications.filter(n => !n.isRead).length > 0 && (
+                        <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400">
+                          {notifications.filter(n => !n.isRead).length}
+                        </span>
+                      )}
+                    </a>
+                    {localUser?.role !== 'SUPER_ADMIN' && localUser?.role !== 'ADMIN' && (
+                      <a
+                        href="/billing"
+                        className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-[var(--foreground)] hover:bg-[var(--sidebar)] transition-colors group"
+                        onClick={() => setIsUserDropdownOpen(false)}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+                          <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                        </div>
+                        <span>Billing</span>
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Logout */}
+                  <div className="border-t border-[var(--border)] p-1.5">
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors group"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-red-500/20 transition-colors">
+                        <LogOut className="w-3.5 h-3.5" />
+                      </div>
+                      Log Out
+                    </button>
+                  </div>
                 </div>
               )}
-            </a>
+            </div>
             <ThemeToggle />
 
             {/* Manage Environments button removed as per request */}

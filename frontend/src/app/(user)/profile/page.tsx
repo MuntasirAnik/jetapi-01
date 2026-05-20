@@ -408,7 +408,7 @@ export default function UserDashboard() {
 
       <div className="flex-1 overflow-auto">
         {/* Banner */}
-        <div className="relative h-32 bg-gradient-to-r from-[var(--color-brand-500)]/20 via-purple-500/15 to-blue-500/10">
+        <div className="relative h-24 bg-gradient-to-r from-[var(--color-brand-500)]/20 via-purple-500/15 to-blue-500/10">
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
             <div className="w-20 h-20 rounded-full bg-[var(--card)] border-4 border-[var(--background)] flex items-center justify-center text-[var(--color-brand-500)] group cursor-pointer overflow-hidden shadow-lg hover:scale-105 transition-transform" onClick={() => avatarInputRef.current?.click()}>
               {user.avatarMimeType ? (<img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-full h-full object-cover" width={80} height={80} fetchPriority="high" />) : (<User className="w-8 h-8" />)}
@@ -418,8 +418,8 @@ export default function UserDashboard() {
         </div>
         <input type="file" accept="image/*" className="hidden" ref={avatarInputRef} onChange={handleAvatarUpload} />
 
-        <div className="max-w-4xl mx-auto px-8 pt-14 pb-10">
-          <div className="flex flex-col items-center text-center mb-6">
+        <div className="max-w-4xl mx-auto px-8 pt-12 pb-6">
+          <div className="flex flex-col items-center text-center mb-4">
             {!isEditingProfile ? (
               <>
                 <div className="flex items-center gap-3 mb-1">
@@ -481,7 +481,7 @@ export default function UserDashboard() {
           </div>
 
           {/* Stat Pills */}
-          <div className="flex gap-2.5 mb-8 min-h-[60px]">
+          <div className="flex gap-2.5 mb-5 min-h-[56px]">
             {statCards.map((s) => { const I = s.icon; return (
               <div key={s.label} className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] flex-1 hover:border-[var(--color-brand-500)]/20 transition-colors">
                 <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center flex-shrink-0`}><I className={`w-4 h-4 ${s.iconColor}`} /></div>
@@ -490,9 +490,9 @@ export default function UserDashboard() {
           </div>
 
           {/* TAB: OVERVIEW */}
-          {activeTab === 'overview' && (<div className="space-y-5">
+          {activeTab === 'overview' && (<div className="space-y-4">
           {/* Usage + Account */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-3">
           {usage && (<div className="col-span-2 bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-[var(--color-brand-500)]" />Plan Usage</h3>
@@ -526,7 +526,7 @@ export default function UserDashboard() {
           </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
               <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-[var(--color-brand-500)]" /> Security

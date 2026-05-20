@@ -140,10 +140,10 @@ export default function ThemeToggle() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 text-[var(--muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--sidebar)] transition-colors focus:outline-none"
+        className="flex items-center justify-center w-7 h-7 text-[var(--muted)] hover:text-[var(--foreground)] rounded hover:bg-[var(--sidebar)] transition-colors focus:outline-none"
         title="Change theme"
       >
-        <Palette className="w-4.5 h-4.5" />
+        <Palette className="w-4 h-4" />
       </button>
 
       {isOpen && (
