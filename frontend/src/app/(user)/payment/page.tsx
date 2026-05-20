@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { toast } from "react-toastify";
@@ -11,7 +11,7 @@ import {
 
 type PaymentMethod = "card" | "mfs";
 
-export default function PaymentPage() {
+function PaymentPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [subscription, setSubscription] = useState<any>(null);
@@ -372,5 +372,13 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-[var(--muted)]">Loading...</div>}>
+      <PaymentPageInner />
+    </Suspense>
   );
 }

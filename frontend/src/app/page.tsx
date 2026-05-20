@@ -3,17 +3,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, getApiError } from "@/lib/api";
 import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 import RequestPanel from "@/components/RequestPanel";
 import ResponsePanel from "@/components/ResponsePanel";
-import TopBar from "@/components/TopBar";
-import RightSidebar from "@/components/RightSidebar";
-import CodeSnippetPanel from "@/components/CodeSnippetPanel";
-import VariablesPanel from "@/components/VariablesPanel";
-import DocumentationPanel from "@/components/DocumentationPanel";
-import CommentsPanel from "@/components/CommentsPanel";
-import ResponseDiffPanel from "@/components/ResponseDiffPanel";
-import CommandPalette from "@/components/CommandPalette";
+// Dynamically import non-critical panels to reduce initial JS bundle
+const RightSidebar = dynamic(() => import("@/components/RightSidebar"), { ssr: false });
+const CodeSnippetPanel = dynamic(() => import("@/components/CodeSnippetPanel"), { ssr: false });
+const VariablesPanel = dynamic(() => import("@/components/VariablesPanel"), { ssr: false });
+const DocumentationPanel = dynamic(() => import("@/components/DocumentationPanel"), { ssr: false });
+const CommentsPanel = dynamic(() => import("@/components/CommentsPanel"), { ssr: false });
+const ResponseDiffPanel = dynamic(() => import("@/components/ResponseDiffPanel"), { ssr: false });
+const CommandPalette = dynamic(() => import("@/components/CommandPalette"), { ssr: false });
 import StyledSelect from "@/components/StyledSelect";
 import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
@@ -437,8 +438,8 @@ export default function Home() {
   if (!isAppReady || !isInitialized) {
     return (
       <div className="flex w-full h-full bg-[var(--background)] overflow-hidden animate-pulse">
-        {/* Sidebar Skeleton */}
-        <div className="w-72 flex-shrink-0 h-full border-r border-[var(--border)] flex flex-col bg-[var(--sidebar)]">
+        {/* Sidebar Skeleton — MUST match actual sidebar width (320px) to prevent CLS */}
+        <div style={{ width: '320px' }} className="flex-shrink-0 h-full border-r border-[var(--border)] flex flex-col bg-[var(--sidebar)]">
           <div className="h-14 border-b border-[var(--border)] flex items-center px-4">
             <div className="w-32 h-5 bg-[var(--border)]/60 rounded"></div>
             <div className="w-8 h-8 bg-[var(--border)]/40 rounded-full ml-auto"></div>

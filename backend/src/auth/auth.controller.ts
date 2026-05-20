@@ -104,8 +104,27 @@ export class AuthController {
     if (!user || !user.avatarData) {
       throw new NotFoundException('Avatar not found');
     }
-    res.setHeader('Content-Type', user.avatarMimeType || 'image/jpeg');
-    res.send(user.avatarData);
+    let data = user.avatarData;
+    let mime = user.avatarMimeType || 'image/jpeg';
+
+    // Compress on-the-fly if the stored avatar is too large (> 100KB)
+    if (data.length > 100 * 1024) {
+      try {
+        const sharp = require('sharp');
+        data = await sharp(data)
+          .resize(256, 256, { fit: 'cover', withoutEnlargement: false })
+          .webp({ quality: 80 })
+          .toBuffer();
+        mime = 'image/webp';
+        // Cache the compressed version back to DB in background
+        this.usersService.updateUser(id, { avatarData: data, avatarMimeType: mime } as any).catch(() => {});
+      } catch {}
+    }
+
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Length', data.length);
+    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    res.send(data);
   }
 
   @UseGuards(AuthGuard)

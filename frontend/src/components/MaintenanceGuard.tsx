@@ -28,16 +28,18 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
       }
     };
 
-    checkMaintenance();
+    // Defer initial check so it doesn't compete with critical rendering
+    const initialDelay = setTimeout(checkMaintenance, 500);
     const interval = setInterval(checkMaintenance, 15000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, []);
 
-  // Animate dots
+  // Animate dots — ONLY when maintenance is actually enabled
   useEffect(() => {
+    if (!maintenance?.enabled) return;
     const t = setInterval(() => setDots(d => (d + 1) % 4), 500);
     return () => clearInterval(t);
-  }, []);
+  }, [maintenance?.enabled]);
 
   if (maintenance === null) return <>{children}</>;
 

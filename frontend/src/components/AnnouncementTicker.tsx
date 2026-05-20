@@ -53,10 +53,12 @@ export default function AnnouncementTicker() {
         .catch(() => {});
     };
 
-    fetchBanners();
-    const interval = setInterval(fetchBanners, 30000);
+    // Defer initial fetch so it doesn't compete with critical rendering
+    const initialDelay = setTimeout(fetchBanners, 2000);
+    const interval = setInterval(fetchBanners, 120000); // 2 min, not 30s
     window.addEventListener("banners-updated", fetchBanners);
     return () => {
+      clearTimeout(initialDelay);
       clearInterval(interval);
       window.removeEventListener("banners-updated", fetchBanners);
     };
@@ -64,7 +66,7 @@ export default function AnnouncementTicker() {
 
   const allMessages = [...disabledMessages, ...announcements];
 
-  if (!visible || allMessages.length === 0) return null;
+  if (!visible || allMessages.length === 0) return <div className="h-7 shrink-0" />;
 
   const tickerText = allMessages.join("     •     ");
 

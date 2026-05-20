@@ -215,7 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [activeOrganizationId]);
 
   const fetchSharedCollections = useCallback(() => {
-    apiFetch("/collections?includeRequests=true")
+    apiFetch("/collections")
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setSharedCollections(data); })
       .catch(console.error);

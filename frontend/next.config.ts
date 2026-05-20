@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'react-toastify'],
+  },
+  // Compress static assets
+  compress: true,
 };
 
 export default nextConfig;

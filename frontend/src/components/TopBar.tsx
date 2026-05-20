@@ -3,9 +3,10 @@ import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
 import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell } from "lucide-react";
-import EnvironmentManager from "./EnvironmentManager";
-import TeamSettingsModal from "./TeamSettingsModal";
-import WorkspaceSettingsModal from "./WorkspaceSettingsModal";
+import dynamic from 'next/dynamic';
+const EnvironmentManager = dynamic(() => import('./EnvironmentManager'), { ssr: false });
+const TeamSettingsModal = dynamic(() => import('./TeamSettingsModal'), { ssr: false });
+const WorkspaceSettingsModal = dynamic(() => import('./WorkspaceSettingsModal'), { ssr: false });
 import { useDialog } from "./DialogProvider";
 import JetLogo from "./JetLogo";
 import ThemeToggle from "./ThemeToggle";
@@ -39,14 +40,13 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
           const data = await res.json();
           setNotifications(data);
         }
-      } catch (err) {
-        console.error(err);
-      }
+      } catch {}
     };
     if (localUser) {
-      fetchNotifications();
-      const interval = setInterval(fetchNotifications, 20000);
-      return () => clearInterval(interval);
+      // Defer — notifications aren't critical for initial render
+      const initialDelay = setTimeout(fetchNotifications, 3000);
+      const interval = setInterval(fetchNotifications, 30000);
+      return () => { clearTimeout(initialDelay); clearInterval(interval); };
     }
   }, [localUser]);
 
@@ -357,7 +357,7 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
             
             <a href={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? '/admin' : '/profile'} className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded-full hover:ring-2 hover:ring-[var(--color-brand-500)]/40 transition-all" title={localUser?.role === 'SUPER_ADMIN' || localUser?.role === 'ADMIN' ? 'Admin Panel' : 'User Profile'}>
               {localUser?.avatarMimeType ? (
-                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" />
+                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${localUser.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover border border-[var(--border)]" width={24} height={24} />
               ) : (
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white uppercase" style={{ background: 'var(--color-brand-500)' }}>
                   {(localUser?.name || localUser?.email || 'U').charAt(0)}

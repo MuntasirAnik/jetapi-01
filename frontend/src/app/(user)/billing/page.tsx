@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import {
@@ -11,7 +11,7 @@ import { toast } from "react-toastify";
 import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 import UserSidebar from "@/components/UserSidebar";
 
-export default function BillingPage() {
+function BillingPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [subscription, setSubscription] = useState<any>(null);
@@ -389,5 +389,13 @@ function UsageMeter({ label, current, max }: { label: string; current: number; m
         />
       </div>
     </div>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full w-full items-center justify-center text-[var(--muted)]">Loading...</div>}>
+      <BillingPageInner />
+    </Suspense>
   );
 }

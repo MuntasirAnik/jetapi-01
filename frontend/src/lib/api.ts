@@ -3,15 +3,15 @@ if (!process.env.NEXT_PUBLIC_API_URL) {
 }
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
-// Lazy import to avoid circular deps in SSR
+// Lazy async import to avoid blocking main thread and circular deps
 let pushLogFn: ((entry: any) => void) | null = null;
+let pushLogResolved = false;
 function getPushLog() {
-  if (!pushLogFn && typeof window !== 'undefined') {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require('@/components/FooterTerminal');
+  if (!pushLogResolved && typeof window !== 'undefined') {
+    pushLogResolved = true;
+    import('@/components/FooterTerminal').then(mod => {
       pushLogFn = mod.pushLog;
-    } catch {}
+    }).catch(() => {});
   }
   return pushLogFn;
 }

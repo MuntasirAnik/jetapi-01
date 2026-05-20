@@ -8,13 +8,14 @@ export const metadata: Metadata = {
   title: 'JetAPI',
   description: 'A premium API client built with Next.js and NestJS',
 };
+import dynamic from 'next/dynamic';
 import ToastProvider from '@/components/ToastProvider';
 import ThemeToggle from '@/components/ThemeToggle';
 import { DialogProvider } from '@/components/DialogProvider';
 import { AppProvider } from '@/lib/AppContext';
 import GlobalTopBar from '@/components/GlobalTopBar';
-import AnnouncementTicker from '@/components/AnnouncementTicker';
-import FooterTerminal from '@/components/FooterTerminal';
+const AnnouncementTicker = dynamic(() => import('@/components/AnnouncementTicker'));
+const FooterTerminal = dynamic(() => import('@/components/FooterTerminal'));
 import MaintenanceGuard from '@/components/MaintenanceGuard';
 import { FeatureFlagProvider } from '@/lib/FeatureFlagContext';
 
@@ -31,12 +32,18 @@ export default function RootLayout({
           <DialogProvider>
             <ToastProvider />
             <MaintenanceGuard>
-              <GlobalTopBar />
+              {/* min-h-12 reserves TopBar space to prevent CLS */}
+              <div className="shrink-0 min-h-12">
+                <GlobalTopBar />
+              </div>
               <AnnouncementTicker />
               <main className="flex-1 flex overflow-hidden">
                 {children}
               </main>
-              <FooterTerminal />
+              {/* min-h reserves space for the footer bar to prevent CLS */}
+              <div className="shrink-0 min-h-7">
+                <FooterTerminal />
+              </div>
             </MaintenanceGuard>
           </DialogProvider>
           </FeatureFlagProvider>

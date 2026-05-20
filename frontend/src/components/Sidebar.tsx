@@ -75,7 +75,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     return false; // default to hidden until confirmed
   });
 
-  // Fetch user plan limits to check analytics access
+  // Fetch user plan limits to check analytics access (deferred — cached value used immediately)
   useEffect(() => {
     const fetchPlanLimits = async () => {
       try {
@@ -92,7 +92,9 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
         }
       } catch {}
     };
-    fetchPlanLimits();
+    // Defer — analytics access is already cached from localStorage above
+    const t = setTimeout(fetchPlanLimits, 3000);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {

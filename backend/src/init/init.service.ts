@@ -68,14 +68,18 @@ export class InitService {
         ? this.collectionRepo
             .createQueryBuilder('col')
             .leftJoinAndSelect('col.shares', 'share')
-            .leftJoinAndSelect('share.user', 'sharedUser')
-            .leftJoinAndSelect('col.owner', 'owner')
+            .leftJoin('share.user', 'sharedUser')
+            .addSelect(['sharedUser.id', 'sharedUser.email', 'sharedUser.name', 'sharedUser.avatarMimeType'])
+            .leftJoin('col.owner', 'owner')
+            .addSelect(['owner.id', 'owner.email', 'owner.name', 'owner.avatarMimeType'])
             .leftJoinAndSelect('col.workspace', 'ws')
             .where('col.id IN (:...colIds)', { colIds })
             .getMany()
             .then(cols => cols.map(c => {
               // Hydrate virtual sharedUsers from shares for backward compat
               c.sharedUsers = (c.shares || []).map(s => ({ ...s.user, shareRole: s.role })) as any;
+              // Strip shares array to reduce payload — frontend only uses sharedUsers
+              delete (c as any).shares;
               return c;
             }))
         : [],
@@ -84,6 +88,7 @@ export class InitService {
         ? this.collectionRepo.manager
             .getRepository('RequestItem')
             .createQueryBuilder('req')
+            .select(['req.id', 'req.name', 'req.method', 'req.url', 'req.folder', 'req.collectionId'])
             .where('req.collectionId IN (:...colIds)', { colIds })
             .getMany()
         : [],

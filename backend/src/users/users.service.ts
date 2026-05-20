@@ -42,7 +42,21 @@ export class UsersService {
   }
 
   async updateAvatar(id: string, avatarData: Buffer, avatarMimeType: string): Promise<User | null> {
-    await this.userRepository.update(id, { avatarData, avatarMimeType });
+    // Compress and resize avatar to max 256x256, convert to WebP
+    let compressedData = avatarData;
+    let finalMimeType = avatarMimeType;
+    try {
+      const sharp = require('sharp');
+      compressedData = await sharp(avatarData)
+        .resize(256, 256, { fit: 'cover', withoutEnlargement: false })
+        .webp({ quality: 80 })
+        .toBuffer();
+      finalMimeType = 'image/webp';
+    } catch (err) {
+      // If sharp fails, store the original
+      console.warn('[Avatar] sharp compression failed, storing original:', err?.message);
+    }
+    await this.userRepository.update(id, { avatarData: compressedData, avatarMimeType: finalMimeType });
     return this.findOneById(id);
   }
 

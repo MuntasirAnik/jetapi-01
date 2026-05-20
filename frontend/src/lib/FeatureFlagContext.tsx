@@ -47,10 +47,10 @@ export function FeatureFlagProvider({ children }: { children: ReactNode }) {
         }
       } catch {}
     };
-    load();
-    // Refresh every 60s
+    // Defer — cached flags are already loaded from localStorage above
+    const initialDelay = setTimeout(load, 1000);
     const interval = setInterval(load, 60000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, []);
 
   return (

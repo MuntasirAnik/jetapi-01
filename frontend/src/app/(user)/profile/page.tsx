@@ -12,18 +12,28 @@ import {
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
 import { useDialog } from "@/components/DialogProvider";
-import ImportCollectionModal from "@/components/ImportCollectionModal";
+import dynamic from 'next/dynamic';
+const ImportCollectionModal = dynamic(() => import('@/components/ImportCollectionModal'), { ssr: false });
 import UserSidebar from "@/components/UserSidebar";
 
 export default function UserDashboard() {
   const router = useRouter();
-  const { activeOrganizationId } = useAppContext();
+  const { activeOrganizationId, workspaces, sharedCollections: ctxSharedCollections, refreshInit } = useAppContext();
   const { confirmDialog } = useDialog();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'collections' | 'access'>('overview');
   const [userRole, setUserRole] = useState("Member");
   const [profile, setProfile] = useState<any>(null);
   const [collections, setCollections] = useState<any[]>([]);
+
+  // Sync collections from AppContext (already loaded by /api/init)
+  useEffect(() => {
+    const allCols: any[] = [];
+    for (const ws of workspaces) {
+      if (ws.collections) allCols.push(...ws.collections);
+    }
+    if (allCols.length > 0 || workspaces.length > 0) setCollections(allCols);
+  }, [workspaces]);
   const [usage, setUsage] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -76,66 +86,77 @@ export default function UserDashboard() {
     } catch {}
   }, []);
 
+  // Fetch org role in background (non-blocking, deferred)
   useEffect(() => {
     if (activeOrganizationId && profile?.user?.id) {
-      apiFetch(`/organizations/${activeOrganizationId}/users`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const me = data.find((u: any) => u.id === profile.user.id);
-            if (me && me.role) setUserRole(me.role);
-          }
-        }).catch(console.error);
+      const t = setTimeout(() => {
+        apiFetch(`/organizations/${activeOrganizationId}/users`)
+          .then(res => res.json())
+          .then(data => {
+            if (Array.isArray(data)) {
+              const me = data.find((u: any) => u.id === profile.user.id);
+              if (me && me.role) setUserRole(me.role);
+            }
+          }).catch(() => {});
+      }, 100); // defer to avoid blocking main thread
+      return () => clearTimeout(t);
     }
   }, [activeOrganizationId, profile?.user?.id]);
 
+  // ─── CRITICAL PATH: Only load profile on mount (1 request, not 5) ───
   useEffect(() => {
-    fetchData();
+    (async () => {
+      try {
+        if (!profile) setLoading(true);
+        const profileRes = await apiFetch("/api/auth/me");
+        if (!profileRes.ok) throw new Error("Failed to load profile");
+        const profileData = await profileRes.json();
+        setProfile(profileData);
+        if (profileData.user) {
+          localStorage.setItem("user", JSON.stringify(profileData.user));
+        }
+      } catch (err: any) {
+        setError(err.message || "Something went wrong.");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const fetchData = async () => {
-    try {
-      // Only show full loading spinner if no cached profile exists
-      if (!profile) setLoading(true);
-      const [profileRes, colRes, usageRes, subRes, sysUsersRes] = await Promise.all([
-        apiFetch("/api/auth/me"),
-        apiFetch("/collections"),
+  // ─── LAZY: Load usage + subscription when overview tab is active ───
+  const usageFetchedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab === 'overview' && profile && !usageFetchedRef.current) {
+      usageFetchedRef.current = true;
+      Promise.all([
         apiFetch("/subscriptions/usage").catch(() => null),
         apiFetch("/subscriptions/current").catch(() => null),
-        apiFetch("/api/auth/users").catch(() => null),
-      ]);
-
-      if (!profileRes.ok) throw new Error("Failed to load profile");
-      const profileData = await profileRes.json();
-      setProfile(profileData);
-
-      // Sync user data (including avatarMimeType) to localStorage for TopBar/UserSidebar
-      if (profileData.user) {
-        localStorage.setItem("user", JSON.stringify(profileData.user));
-        window.dispatchEvent(new Event('postclone-refresh-sidebar'));
-      }
-
-      if (colRes.ok) setCollections(await colRes.json());
-      if (usageRes?.ok) setUsage(await usageRes.json());
-      if (subRes?.ok) setSubscription(await subRes.json());
-      if (sysUsersRes?.ok) setSystemUsers(await sysUsersRes.json());
-
-    } catch (err: any) {
-      setError(err.message || "Something went wrong.");
-    } finally {
-      setLoading(false);
+      ]).then(async ([usageRes, subRes]) => {
+        if (usageRes?.ok) setUsage(await usageRes.json());
+        if (subRes?.ok) setSubscription(await subRes.json());
+      });
     }
-  };
+  }, [activeTab, profile]);
 
-  // Lightweight refresh for tab switches — only collections + users
+  // ─── LAZY: Load system users when access tab is opened ───
+  const usersFetchedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab === 'access' && !usersFetchedRef.current) {
+      usersFetchedRef.current = true;
+      apiFetch("/api/auth/users").then(async (res) => {
+        if (res.ok) setSystemUsers(await res.json());
+      }).catch(() => {});
+    }
+  }, [activeTab]);
+
+  // Lightweight refresh for tab switches — refresh from AppContext + users
   const refreshCollections = async () => {
     try {
-      const [colRes, sysUsersRes] = await Promise.all([
-        apiFetch("/collections"),
-        apiFetch("/api/auth/users").catch(() => null),
-      ]);
-      if (colRes.ok) setCollections(await colRes.json());
-      if (sysUsersRes?.ok) setSystemUsers(await sysUsersRes.json());
+      refreshInit();
+      if (activeTab === 'access') {
+        const sysUsersRes = await apiFetch("/api/auth/users").catch(() => null);
+        if (sysUsersRes?.ok) setSystemUsers(await sysUsersRes.json());
+      }
     } catch {}
   };
 
@@ -168,7 +189,7 @@ export default function UserDashboard() {
       const res = await apiFetch(`/collections/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       toast.success("Collection deleted");
-      fetchData();
+      refreshCollections();
       window.dispatchEvent(new Event('postclone-refresh-sidebar'));
     } catch { toast.error("Delete failed."); }
   };
@@ -185,7 +206,7 @@ export default function UserDashboard() {
       });
       if (!res.ok) throw new Error((await res.json()).message || "Share failed");
       setShareEmails({ ...shareEmails, [colId]: "" });
-      fetchData();
+      refreshCollections();
     } catch (err: any) { toast.error(err.message); }
     finally { setSharingColId(null); }
   };
@@ -195,7 +216,7 @@ export default function UserDashboard() {
     try {
       await apiFetch(`/collections/${colId}/share/${userId}`, { method: "DELETE" });
       toast.success("Access revoked");
-      fetchData();
+      refreshCollections();
     } catch { toast.error("Revoke failed."); }
     finally { setRevokingUserId(null); }
   };
@@ -210,7 +231,7 @@ export default function UserDashboard() {
       });
       if (!res.ok) throw new Error((await res.json()).message || "Toggle failed");
       toast.success(newActive ? "Collection enabled" : "Collection disabled");
-      fetchData();
+      refreshCollections();
       window.dispatchEvent(new Event('postclone-refresh-sidebar'));
     } catch (err: any) { toast.error(err.message || "Failed to toggle collection"); }
     finally { setTogglingColId(null); }
@@ -390,7 +411,7 @@ export default function UserDashboard() {
         <div className="relative h-32 bg-gradient-to-r from-[var(--color-brand-500)]/20 via-purple-500/15 to-blue-500/10">
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
             <div className="w-20 h-20 rounded-full bg-[var(--card)] border-4 border-[var(--background)] flex items-center justify-center text-[var(--color-brand-500)] group cursor-pointer overflow-hidden shadow-lg hover:scale-105 transition-transform" onClick={() => avatarInputRef.current?.click()}>
-              {user.avatarMimeType ? (<img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-full h-full object-cover" />) : (<User className="w-8 h-8" />)}
+              {user.avatarMimeType ? (<img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-full h-full object-cover" width={80} height={80} fetchPriority="high" />) : (<User className="w-8 h-8" />)}
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Upload className="w-4 h-4 text-white" /></div>
             </div>
           </div>
@@ -460,7 +481,7 @@ export default function UserDashboard() {
           </div>
 
           {/* Stat Pills */}
-          <div className="flex gap-2.5 mb-8">
+          <div className="flex gap-2.5 mb-8 min-h-[60px]">
             {statCards.map((s) => { const I = s.icon; return (
               <div key={s.label} className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] flex-1 hover:border-[var(--color-brand-500)]/20 transition-colors">
                 <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center flex-shrink-0`}><I className={`w-4 h-4 ${s.iconColor}`} /></div>
@@ -685,7 +706,7 @@ export default function UserDashboard() {
                           <div className="flex items-center -space-x-1.5 flex-shrink-0 mr-1">
                             {allPeople.slice(0, 4).map((p, idx) => (
                               p.avatarMimeType ? (
-                                <img key={p.id} src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${p.id}/avatar`} alt="" className="w-6 h-6 rounded-full object-cover border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }} />
+                                <img key={p.id} src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${p.id}/avatar`} alt="" className="w-6 h-6 rounded-full object-cover border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }} loading="lazy" />
                               ) : (
                                 <div key={p.id} className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold uppercase text-white border-2 border-[var(--card)] ${p.role === 'owner' ? 'bg-[var(--color-brand-500)]' : 'bg-blue-500'}`} style={{ zIndex: 4 - idx }}>
                                   {(p.name || p.email || '?').charAt(0)}
@@ -709,7 +730,7 @@ export default function UserDashboard() {
                           {col.owner && col.owner.id !== user.id && (
                             <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50">
                               {col.owner.avatarMimeType ? (
-                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${col.owner.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" />
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${col.owner.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" loading="lazy" />
                               ) : (
                                 <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)] flex items-center justify-center text-[9px] font-bold uppercase text-white border border-[var(--color-brand-500)]/30">
                                   {(col.owner.name || col.owner.email || '?').charAt(0)}
@@ -727,7 +748,7 @@ export default function UserDashboard() {
                           {/* Current user row */}
                           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 bg-[var(--color-brand-500)]/[0.03]">
                             {user.avatarMimeType ? (
-                              <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" />
+                              <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${user.id}/avatar?t=${avatarKey}`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" loading="lazy" />
                             ) : (
                               <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)]/15 flex items-center justify-center text-[9px] font-bold uppercase text-[var(--color-brand-500)] border border-[var(--color-brand-500)]/20">
                                 {(user.name || user.email || '?').charAt(0)}
@@ -747,7 +768,7 @@ export default function UserDashboard() {
                           {(col.sharedUsers || []).filter((su: any) => su.id !== user.id && su.id !== col.owner?.id).map((su: any) => (
                             <div key={su.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 last:border-b-0">
                               {su.avatarMimeType ? (
-                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${su.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" />
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${su.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border)]" loading="lazy" />
                               ) : (
                                 <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center text-[9px] font-bold uppercase text-blue-400 border border-blue-500/20">
                                   {(su.name || su.email || '?').charAt(0)}
@@ -918,7 +939,7 @@ export default function UserDashboard() {
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 {canManage ? (
                                   <>
-                                    <select value={u.shareRole || 'viewer'} disabled={u.id === user.id} onChange={async (e) => { try { const res = await apiFetch(`/collections/${col.id}/share/${u.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: e.target.value }) }); if (!res.ok) throw new Error(); toast.success(`Role updated`); fetchData(); } catch { toast.error("Failed"); } }} className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border-0 outline-none cursor-pointer ${u.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' : u.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'} ${u.id === user.id ? 'opacity-60 cursor-default' : ''}`}>
+                                    <select value={u.shareRole || 'viewer'} disabled={u.id === user.id} onChange={async (e) => { try { const res = await apiFetch(`/collections/${col.id}/share/${u.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: e.target.value }) }); if (!res.ok) throw new Error(); toast.success(`Role updated`); refreshCollections(); } catch { toast.error("Failed"); } }} className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border-0 outline-none cursor-pointer ${u.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' : u.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'} ${u.id === user.id ? 'opacity-60 cursor-default' : ''}`}>
                                       <option value="viewer">Viewer</option><option value="editor">Editor</option><option value="admin">Admin</option>
                                     </select>
                                     <button onClick={() => handleUnshare(col.id, u.id)} disabled={revokingUserId === u.id} className="text-red-500 hover:bg-red-500 hover:text-white p-1 rounded transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100">
@@ -958,7 +979,7 @@ export default function UserDashboard() {
         <ImportCollectionModal
           isOpen={isImportModalOpen}
           onClose={() => setIsImportModalOpen(false)}
-          onSuccess={() => { fetchData(); window.dispatchEvent(new Event('postclone-refresh-sidebar')); }}
+          onSuccess={() => { refreshCollections(); window.dispatchEvent(new Event('postclone-refresh-sidebar')); }}
         />
 
       </div>
