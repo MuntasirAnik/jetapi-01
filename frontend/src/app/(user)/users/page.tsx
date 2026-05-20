@@ -204,9 +204,9 @@ export default function UsersPage() {
                 </p>
               </div>
             ) : (
-              filteredUsers.map(({ user, collections: userCols, role }, index) => {
+              filteredUsers.map(({ user, collections: userCols, role }: any, index: number) => {
                 const isRemoving = removingUserId === user.id;
-                const uniqueCols = userCols.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
+                const uniqueCols = userCols.filter((c: any, i: number, arr: any[]) => arr.findIndex((x: any) => x.id === c.id) === i);
                 const isExpanded = !!expandedUsers[user.id];
 
                 return (
@@ -241,7 +241,7 @@ export default function UsersPage() {
                       {/* Preview pills when collapsed */}
                       {!isExpanded && (
                         <div className="hidden sm:flex items-center gap-1 flex-wrap justify-end max-w-[35%]">
-                          {uniqueCols.slice(0, 2).map((col, idx) => (
+                          {uniqueCols.slice(0, 2).map((col: any, idx: number) => (
                             <span key={idx} className={`inline-flex items-center gap-0.5 border text-[9px] font-semibold px-1.5 py-px rounded-full whitespace-nowrap ${col.isActive === false ? 'bg-red-500/5 border-red-500/15 text-red-400' : 'bg-[var(--sidebar)] border-[var(--border)] text-[var(--muted)]'}`}>
                               <Folder className="w-2 h-2" /> {col.name}
                             </span>
@@ -265,7 +265,7 @@ export default function UsersPage() {
                     {/* Expanded collection list */}
                     {isExpanded && (
                       <div className="border-t border-[var(--border)] bg-[var(--sidebar)]/10">
-                        {uniqueCols.map((col, idx) => (
+                        {uniqueCols.map((col: any, idx: number) => (
                           <div key={col.id} className={`flex items-center gap-3 px-4 py-2 ${idx < uniqueCols.length - 1 ? 'border-b border-[var(--border)]/50' : ''}`}>
                             <Folder className={`w-3.5 h-3.5 flex-shrink-0 ${col.isActive === false ? 'text-[var(--muted)]' : 'text-[var(--color-brand-500)]'}`} />
                             <span className={`text-xs font-medium flex-1 truncate ${col.isActive === false ? 'text-[var(--muted)] line-through' : ''}`}>{col.name}</span>
