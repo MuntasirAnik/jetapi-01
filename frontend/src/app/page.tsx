@@ -529,18 +529,47 @@ export default function Home() {
           workspaces={workspaces}
           activeWorkspace={activeWorkspaceId}
           sharedCollections={sharedCollections}
-          onSelectRequest={(req: any) => {
+          onSelectRequest={async (req: any) => {
             if (!req) {
               setActiveRequestId(null);
               return;
             }
-            setOpenRequests(prev => {
-              if (!prev.find(p => p.id === req.id)) {
-                return [...prev, req];
+            
+            // If the request is already open in a tab, just activate it
+            const existingTab = openRequests.find(p => p.id === req.id);
+            if (existingTab) {
+              setActiveRequestId(req.id);
+              setRightPanelOpen(null);
+              return;
+            }
+
+            // New/unsaved requests already have full data
+            if (String(req.id).startsWith('new') || req._isNew) {
+              setOpenRequests(prev => [...prev, req]);
+              setActiveRequestId(req.id);
+              setRightPanelOpen(null);
+              return;
+            }
+
+            // Sidebar only has partial data (id, name, method, url, folder).
+            // Fetch full request (body, headers, params, auth, scripts) from the backend.
+            try {
+              const res = await apiFetch(`/requests/${req.id}`);
+              if (res.ok) {
+                const fullReq = await res.json();
+                // Preserve sidebar-computed fields like _breadcrumb
+                const merged = { ...fullReq, _breadcrumb: req._breadcrumb };
+                setOpenRequests(prev => [...prev, merged]);
+                setActiveRequestId(merged.id);
+              } else {
+                // Fallback: use partial data if fetch fails
+                setOpenRequests(prev => [...prev, req]);
+                setActiveRequestId(req.id);
               }
-              return prev;
-            });
-            setActiveRequestId(req.id);
+            } catch {
+              setOpenRequests(prev => [...prev, req]);
+              setActiveRequestId(req.id);
+            }
             setRightPanelOpen(null);
           }}
           activeRequestId={activeRequestId}
@@ -1268,12 +1297,33 @@ export default function Home() {
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         workspaces={workspaces}
-        onSelectRequest={(req: any) => {
-          setOpenRequests(prev => {
-            if (!prev.find(p => p.id === req.id)) return [...prev, req];
-            return prev;
-          });
-          setActiveRequestId(req.id);
+        onSelectRequest={async (req: any) => {
+          const existing = openRequests.find(p => p.id === req.id);
+          if (existing) {
+            setActiveRequestId(req.id);
+            setRightPanelOpen(null);
+            return;
+          }
+          if (String(req.id).startsWith('new') || req._isNew) {
+            setOpenRequests(prev => [...prev, req]);
+            setActiveRequestId(req.id);
+            setRightPanelOpen(null);
+            return;
+          }
+          try {
+            const res = await apiFetch(`/requests/${req.id}`);
+            if (res.ok) {
+              const fullReq = await res.json();
+              setOpenRequests(prev => [...prev, { ...fullReq, _breadcrumb: req._breadcrumb }]);
+              setActiveRequestId(fullReq.id);
+            } else {
+              setOpenRequests(prev => [...prev, req]);
+              setActiveRequestId(req.id);
+            }
+          } catch {
+            setOpenRequests(prev => [...prev, req]);
+            setActiveRequestId(req.id);
+          }
           setRightPanelOpen(null);
         }}
       />

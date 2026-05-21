@@ -26,10 +26,13 @@ export class CollectionsService {
   /** Hydrate sharedUsers from shares relation for backward compat */
   private hydrateSharedUsers(collection: Collection): Collection {
     if (collection.shares) {
-      collection.sharedUsers = collection.shares.map(s => ({
-        ...s.user,
-        shareRole: s.role,
-      })) as any;
+      collection.sharedUsers = collection.shares.map(s => {
+        const { avatarData, passwordHash, resetToken, resetTokenExpiry, ...safeUser } = (s.user || {}) as any;
+        return {
+          ...safeUser,
+          shareRole: s.role,
+        };
+      }) as any;
     }
     return collection;
   }
@@ -47,8 +50,10 @@ export class CollectionsService {
 
     const collections = await this.collectionRepository.createQueryBuilder('collection')
       .leftJoinAndSelect('collection.shares', 'shares')
-      .leftJoinAndSelect('shares.user', 'sharedUser')
-      .leftJoinAndSelect('collection.owner', 'owner')
+      .leftJoin('shares.user', 'sharedUser')
+      .addSelect(['sharedUser.id', 'sharedUser.email', 'sharedUser.name', 'sharedUser.avatarMimeType'])
+      .leftJoin('collection.owner', 'owner')
+      .addSelect(['owner.id', 'owner.email', 'owner.name', 'owner.avatarMimeType'])
       .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
       .where('collection.workspaceId = :workspaceId', { workspaceId })
       .getMany();
@@ -67,8 +72,10 @@ export class CollectionsService {
     // Phase 2: Fetch collections with shares
     const collections = await this.collectionRepository.createQueryBuilder('collection')
       .leftJoinAndSelect('collection.shares', 'shares')
-      .leftJoinAndSelect('shares.user', 'sharedUser')
-      .leftJoinAndSelect('collection.owner', 'owner')
+      .leftJoin('shares.user', 'sharedUser')
+      .addSelect(['sharedUser.id', 'sharedUser.email', 'sharedUser.name', 'sharedUser.avatarMimeType'])
+      .leftJoin('collection.owner', 'owner')
+      .addSelect(['owner.id', 'owner.email', 'owner.name', 'owner.avatarMimeType'])
       .leftJoinAndSelect('collection.workspace', 'workspace')
       .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
       .where('collection.id IN (:...allowedIds)', { allowedIds })
@@ -286,18 +293,77 @@ export class CollectionsService {
     if (collection.requests) {
       for (const req of collection.requests) {
         let parsedHeaders = [];
-        let parsedBody = {};
+        let parsedBody: any = null;
         let parsedUrl = req.url || '';
-        try { if (req.headers) parsedHeaders = JSON.parse(req.headers); } catch(e){}
-        try { if (req.body) parsedBody = JSON.parse(req.body); } catch(e){}
+        let parsedParams = [];
+        try { if (req.headers) parsedHeaders = typeof req.headers === 'string' ? JSON.parse(req.headers) : req.headers; } catch(e){}
+        try { if (req.body) parsedBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; } catch(e){}
+        try { if (req.params) parsedParams = typeof req.params === 'string' ? JSON.parse(req.params) : req.params; } catch(e){}
+
+        // Convert internal body format to Postman export format
+        let postmanBody: any = undefined;
+        if (parsedBody && typeof parsedBody === 'object' && parsedBody.mode) {
+          const mode = parsedBody.mode;
+          if (mode === 'raw' && parsedBody.raw) {
+            postmanBody = {
+              mode: 'raw',
+              raw: typeof parsedBody.raw === 'object' ? (parsedBody.raw.data || '') : parsedBody.raw,
+              options: {
+                raw: { language: parsedBody.raw?.language || 'json' }
+              }
+            };
+          } else if (mode === 'formdata' && parsedBody.formdata) {
+            postmanBody = {
+              mode: 'formdata',
+              formdata: (parsedBody.formdata || []).map((fd: any) => ({
+                key: fd.key || '',
+                value: fd.value || '',
+                type: fd.type || 'text',
+                description: fd.description || '',
+                disabled: fd.enabled === false,
+              }))
+            };
+          } else if (mode === 'urlencoded' && parsedBody.urlencoded) {
+            postmanBody = {
+              mode: 'urlencoded',
+              urlencoded: (parsedBody.urlencoded || []).map((ue: any) => ({
+                key: ue.key || '',
+                value: ue.value || '',
+                description: ue.description || '',
+                disabled: ue.enabled === false,
+              }))
+            };
+          } else if (mode === 'graphql' && parsedBody.graphql) {
+            postmanBody = {
+              mode: 'graphql',
+              graphql: {
+                query: parsedBody.graphql.query || '',
+                variables: parsedBody.graphql.variables || '',
+              }
+            };
+          } else if (mode !== 'none') {
+            // Fallback: try to serialize as raw
+            postmanBody = { mode: 'raw', raw: JSON.stringify(parsedBody) };
+          }
+        } else if (parsedBody && typeof parsedBody === 'string') {
+          postmanBody = { mode: 'raw', raw: parsedBody };
+        }
+
+        // Build query params for Postman URL format
+        const queryParams = (parsedParams || [])
+          .filter((p: any) => p.key && p.enabled !== false)
+          .map((p: any) => ({ key: p.key, value: p.value || '' }));
 
         const postmanReq = {
           name: req.name,
           request: {
             method: req.method,
-            url: { raw: parsedUrl },
-            header: parsedHeaders,
-            body: Object.keys(parsedBody).length > 0 ? { mode: 'raw', raw: typeof parsedBody === 'string' ? parsedBody : JSON.stringify(parsedBody) } : undefined
+            url: {
+              raw: parsedUrl,
+              ...(queryParams.length > 0 ? { query: queryParams } : {}),
+            },
+            header: (parsedHeaders || []).map((h: any) => ({ key: h.key, value: h.value, disabled: h.enabled === false })),
+            body: postmanBody,
           }
         };
 
@@ -344,7 +410,7 @@ export class CollectionsService {
             params: item.request.url?.query?.map((q: any) => ({ key: q.key, value: q.value })) || [],
             body: item.request.body ? JSON.stringify({
               mode: item.request.body.mode || (item.request.body.raw ? 'raw' : 'none'),
-              raw: { language: 'json', data: typeof item.request.body.raw === 'string' ? item.request.body.raw : '' },
+              raw: { language: item.request.body.options?.raw?.language || 'json', data: typeof item.request.body.raw === 'string' ? item.request.body.raw : '' },
               formdata: (item.request.body.formdata || []).map((fd: any) => ({
                 key: fd.key || '',
                 value: fd.type === 'file' ? (typeof fd.src === 'string' ? fd.src : (Array.isArray(fd.src) ? fd.src.join(', ') : '')) : (fd.value || ''),

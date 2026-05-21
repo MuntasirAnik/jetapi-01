@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, CheckCircle2, ChevronDown, Folder, Download } from 'lucide-react';
+import { X, Upload, CheckCircle2, Folder, Download, FileJson } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'react-toastify';
 import { useAppContext } from '@/lib/AppContext';
@@ -12,13 +12,17 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
   const [file, setFile] = useState<File | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const featureFlags = useFeatureFlags();
   const isLocked = !featureFlags.allow_collection_upload;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   useEffect(() => {
     if (isOpen) {
       setFile(null);
+      setIsDragging(false);
+      dragCounterRef.current = 0;
       if (activeWorkspaceId) setSelectedWorkspaceId(activeWorkspaceId);
       else if (workspaces && workspaces.length > 0) setSelectedWorkspaceId(workspaces[0].id);
     }
@@ -30,6 +34,41 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
     }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+    if (isLocked) return;
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) {
+      if (droppedFile.type === 'application/json' || droppedFile.name.endsWith('.json')) {
+        setFile(droppedFile);
+      } else {
+        toast.error('Please drop a JSON file');
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (!isLocked) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) setIsDragging(false);
   };
 
   const handleImport = async () => {
@@ -95,7 +134,7 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
             <p className="text-xs text-[var(--muted)] flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-[var(--color-brand-500)] rounded-full animate-pulse"></span> Your collections will be safely isolated to this workspace.</p>
           </div>
 
-          {/* File Upload Zone */}
+          {/* File Upload / Drop Zone */}
           <div className="flex flex-col gap-2">
              <label className="text-sm font-semibold text-[var(--foreground)] uppercase">JSON File</label>
              {isLocked ? (
@@ -108,12 +147,30 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
                </div>
              ) : (
              <div 
-               className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${file ? 'border-[var(--color-brand-500)] bg-[var(--color-brand-500)]/5 hover:bg-[var(--color-brand-500)]/10' : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--sidebar)]'}`}
+               className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 relative ${
+                 isDragging 
+                   ? 'border-[var(--color-brand-500)] bg-[var(--color-brand-500)]/10 scale-[1.02] shadow-lg shadow-[var(--color-brand-500)]/10' 
+                   : file 
+                     ? 'border-[var(--color-brand-500)] bg-[var(--color-brand-500)]/5 hover:bg-[var(--color-brand-500)]/10' 
+                     : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--sidebar)] hover:border-[var(--muted)]'
+               }`}
                onClick={() => fileInputRef.current?.click()}
+               onDrop={handleDrop}
+               onDragOver={handleDragOver}
+               onDragEnter={handleDragEnter}
+               onDragLeave={handleDragLeave}
              >
                <input type="file" ref={fileInputRef} onChange={handleFileChange} onClick={(e) => e.stopPropagation()} accept=".json,application/json" className="hidden" />
                
-               {file ? (
+               {isDragging ? (
+                 <>
+                   <div className="w-14 h-14 bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)] rounded-full flex items-center justify-center mb-3 animate-bounce">
+                     <FileJson className="w-7 h-7" />
+                   </div>
+                   <h3 className="font-bold text-[var(--color-brand-500)] text-sm">Drop your JSON file here</h3>
+                   <p className="text-xs text-[var(--color-brand-500)]/70 mt-1">Release to upload</p>
+                 </>
+               ) : file ? (
                  <>
                    <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-3">
                      <CheckCircle2 className="w-6 h-6" />
@@ -127,8 +184,13 @@ export default function ImportCollectionModal({ isOpen, onClose, onSuccess }: { 
                    <div className="w-12 h-12 bg-[var(--sidebar)] border border-[var(--border)] text-[var(--muted)] rounded-full flex items-center justify-center mb-3">
                      <Upload className="w-5 h-5" />
                    </div>
-                   <h3 className="font-semibold text-[var(--foreground)] text-sm">Click to upload Postman Collection</h3>
-                   <p className="text-xs text-[var(--muted)] mt-1 max-w-[250px]">Upload a valid V2.1 JSON file to parse endpoints</p>
+                   <h3 className="font-semibold text-[var(--foreground)] text-sm">Drag & drop or click to upload</h3>
+                   <p className="text-xs text-[var(--muted)] mt-1 max-w-[280px]">Upload a valid Postman Collection V2.1 JSON file to parse endpoints</p>
+                   <div className="flex items-center gap-3 mt-3 w-full max-w-[200px]">
+                     <span className="h-px flex-1 bg-[var(--border)]" />
+                     <span className="text-[10px] text-[var(--muted)] font-medium uppercase tracking-wider">or browse</span>
+                     <span className="h-px flex-1 bg-[var(--border)]" />
+                   </div>
                  </>
                )}
              </div>

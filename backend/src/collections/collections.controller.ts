@@ -24,7 +24,6 @@ export class CollectionsController {
       return this.collectionsService.getCollectionsByWorkspace(workspaceId, req.user.sub);
     }
     const cols = await this.collectionsService.findAll(req.user.sub, includeRequests === 'true');
-    console.log(`[DEBUG] GET /collections Returning ${cols.length} collections. First collection requests len: ${cols[0]?.requests?.length}`);
     return cols;
   }
 

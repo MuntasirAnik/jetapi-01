@@ -21,7 +21,13 @@ type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | 
 export default function AdminPage() {
   const router = useRouter();
   const { confirmDialog } = useDialog();
-  const [tab, setTab] = useState<Tab>("overview");
+  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security"];
+  const [tab, setTabState] = useState<Tab>("overview");
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    window.location.hash = t;
+  };
+
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const redirectingRef = useRef(false);
@@ -41,6 +47,20 @@ export default function AdminPage() {
   const [auditPage, setAuditPage] = useState(1);
   const [featureFlags, setFeatureFlags] = useState<any[]>([]);
 
+  // Restore tab from URL hash + pre-authorize from localStorage on mount
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '') as Tab;
+    if (validTabs.includes(hash)) setTabState(hash);
+    // Pre-authorize from localStorage to skip spinner for admin users
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
+        setAuthorized(true);
+        setLoading(false);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     checkAccess();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -58,15 +78,15 @@ export default function AdminPage() {
       if (user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
         redirectingRef.current = true;
         setLoading(false);
+        setAuthorized(false);
         router.replace("/");
         return;
       }
+      // Verify with API in background (user already pre-authorized from localStorage)
       const res = await apiFetch("/admin/stats");
       if (res.ok) {
-        setAuthorized(true);
         setStats(await res.json());
       } else {
-        // User claims admin role but API denied — don't redirect (avoids loop)
         toast.error("Admin access denied. Try logging out and back in.");
         setAuthorized(false);
       }

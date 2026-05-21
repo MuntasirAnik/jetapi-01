@@ -8,7 +8,7 @@ export default function GlobalTopBar() {
   const pathname = usePathname();
   
   // Do not show on auth pages or admin panel
-  if (['/login', '/register', '/forgot-password', '/reset-password', '/pricing'].includes(pathname)) {
+  if (['/login', '/register', '/forgot-password', '/reset-password'].includes(pathname)) {
     return null;
   }
 

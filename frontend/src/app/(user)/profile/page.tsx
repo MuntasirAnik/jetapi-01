@@ -861,11 +861,15 @@ export default function UserDashboard() {
                       {/* Stacked avatars when collapsed */}
                       {!isExpanded && previewUsers.length > 0 && (
                         <div className="flex items-center -space-x-1.5 flex-shrink-0 mr-1">
-                          {previewUsers.map((p: any, idx: number) => (
-                            <div key={p.id} className="w-6 h-6 rounded-full bg-blue-500/15 flex items-center justify-center text-[8px] font-bold uppercase text-blue-400 border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }}>
-                              {(p.name || p.email || '?').charAt(0)}
-                            </div>
-                          ))}
+                          {previewUsers.map((p: any, idx: number) =>
+                            p.avatarMimeType ? (
+                              <img key={p.id} src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${p.id}/avatar`} alt="" className="w-6 h-6 rounded-full object-cover border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }} loading="lazy" />
+                            ) : (
+                              <div key={p.id} className="w-6 h-6 rounded-full bg-blue-500/15 flex items-center justify-center text-[8px] font-bold uppercase text-blue-400 border-2 border-[var(--card)]" style={{ zIndex: 4 - idx }}>
+                                {(p.name || p.email || '?').charAt(0)}
+                              </div>
+                            )
+                          )}
                           {(col.sharedUsers?.length || 0) > 5 && (
                             <div className="w-6 h-6 rounded-full bg-[var(--sidebar)] border-2 border-[var(--card)] flex items-center justify-center text-[8px] font-bold text-[var(--muted)]">+{col.sharedUsers.length - 4}</div>
                           )}
@@ -916,9 +920,13 @@ export default function UserDashboard() {
                           {/* Owner */}
                           {!isOwner && col.owner && (
                             <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50">
+                            {col.owner.avatarMimeType ? (
+                              <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${col.owner.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--color-brand-500)]/30 flex-shrink-0" loading="lazy" />
+                            ) : (
                               <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)] flex items-center justify-center text-[9px] font-bold uppercase text-white border border-[var(--color-brand-500)]/30 flex-shrink-0">
                                 {(col.owner.name || col.owner.email || '?').charAt(0)}
                               </div>
+                            )}
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-semibold truncate">{col.owner.name || col.owner.email?.split('@')[0]}</p>
                                 <p className="text-[10px] text-[var(--muted)] truncate">{col.owner.email}</p>
@@ -929,9 +937,13 @@ export default function UserDashboard() {
                           {/* Shared users */}
                           {col.sharedUsers?.filter((u: any) => u.id !== user.id || canManage).map((u: any) => (
                             <div key={u.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 last:border-b-0 group">
-                              <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center text-[9px] font-bold uppercase text-blue-400 border border-blue-500/20 flex-shrink-0">
-                                {(u.name || u.email || '?').charAt(0)}
-                              </div>
+                              {u.avatarMimeType ? (
+                                <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/auth/users/${u.id}/avatar`} alt="" className="w-7 h-7 rounded-full object-cover border border-blue-500/20 flex-shrink-0" loading="lazy" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center text-[9px] font-bold uppercase text-blue-400 border border-blue-500/20 flex-shrink-0">
+                                  {(u.name || u.email || '?').charAt(0)}
+                                </div>
+                              )}
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium truncate">{u.name || u.email?.split('@')[0]} {u.id === user.id && <span className="text-[var(--color-brand-500)] font-bold">(You)</span>}</p>
                                 <p className="text-[10px] text-[var(--muted)] truncate">{u.email}</p>
