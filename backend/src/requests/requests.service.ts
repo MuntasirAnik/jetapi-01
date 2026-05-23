@@ -233,4 +233,79 @@ export class RequestsService {
     
     await this.requestRepository.remove(request);
   }
+
+  // Move a single request to a different folder (within same collection)
+  async moveRequest(id: string, newFolder: string | null, userId: string): Promise<RequestItem> {
+    const request = await this.findOne(id, userId);
+
+    if (request.collectionId) {
+      const role = await this.getShareRole(request.collectionId, userId);
+      if (role && !this.canEdit(role)) {
+        throw new ForbiddenException('You have view-only access to this collection.');
+      }
+    }
+
+    request.folder = newFolder || ('' as any);
+    const saved = await this.requestRepository.save(request);
+
+    try {
+      const user = await this.requestRepository.manager.getRepository('User').findOne({ where: { id: userId } });
+      await this.activityService.log({
+        userId,
+        userName: user?.name || user?.email?.split('@')[0] || 'User',
+        userEmail: user?.email || '',
+        action: 'UPDATED',
+        entityType: 'REQUEST',
+        entityId: saved.id,
+        entityName: `Moved "${saved.name}" to ${newFolder || 'root'}`,
+        collectionId: saved.collectionId,
+      });
+    } catch {}
+
+    return saved;
+  }
+
+  // Move an entire folder (and all its children) to a new parent folder
+  async moveFolder(
+    collectionId: string,
+    oldPath: string,
+    newPath: string,
+    userId: string,
+  ): Promise<{ updated: number }> {
+    // Verify permission
+    const role = await this.getShareRole(collectionId, userId);
+    if (role && !this.canEdit(role)) {
+      throw new ForbiddenException('You have view-only access to this collection.');
+    }
+
+    // Prevent moving a folder into itself
+    if (newPath === oldPath || newPath.startsWith(oldPath + '/')) {
+      throw new BadRequestException('Cannot move a folder into itself.');
+    }
+
+    // Find all requests in this folder and its subfolders
+    const requests = await this.requestRepository
+      .createQueryBuilder('req')
+      .where('req.collectionId = :collectionId', { collectionId })
+      .andWhere('(req.folder = :exact OR req.folder LIKE :prefix)', {
+        exact: oldPath,
+        prefix: `${oldPath}/%`,
+      })
+      .getMany();
+
+    for (const req of requests) {
+      if (req.folder === oldPath) {
+        req.folder = newPath;
+      } else {
+        // Replace prefix: "oldPath/sub" → "newPath/sub"
+        req.folder = newPath + req.folder.substring(oldPath.length);
+      }
+    }
+
+    if (requests.length > 0) {
+      await this.requestRepository.save(requests);
+    }
+
+    return { updated: requests.length };
+  }
 }

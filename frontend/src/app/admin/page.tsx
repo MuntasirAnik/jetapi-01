@@ -1043,6 +1043,14 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
     }));
   };
 
+  const handlePriceChange = (planId: string, key: string, dollarValue: string) => {
+    const cents = Math.round((parseFloat(dollarValue) || 0) * 100);
+    setEditing((prev) => ({
+      ...prev,
+      [planId]: { ...(prev[planId] || {}), [key]: cents },
+    }));
+  };
+
   const handleBoolChange = (planId: string, key: string, value: boolean) => {
     setEditing((prev) => ({
       ...prev,
@@ -1095,12 +1103,15 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">Plan Configuration</h1>
-      <p className="text-[var(--muted)] text-sm mb-5">Edit plan limits — changes apply to all users on that plan instantly</p>
+      <p className="text-[var(--muted)] text-sm mb-5">Edit plan limits and pricing — changes apply to all users on that plan instantly</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {plans.map((plan) => {
           const edits = editing[plan.id] || {};
           const hasEdits = Object.keys(edits).length > 0;
+
+          const currentMonthly = edits.priceMonthly !== undefined ? edits.priceMonthly : plan.priceMonthly;
+          const currentYearly = edits.priceYearly !== undefined ? edits.priceYearly : plan.priceYearly;
 
           return (
             <div key={plan.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 flex flex-col">
@@ -1115,6 +1126,48 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
                 </div>
                 {plan.hasOverride && (
                   <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold">MODIFIED</span>
+                )}
+              </div>
+
+              {/* Pricing Section */}
+              <div className="mb-4 pb-4 border-b border-[var(--border)]">
+                <div className="text-[10px] text-[var(--muted)] font-bold uppercase tracking-wider mb-2">Pricing</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-[var(--muted)] font-medium mb-0.5 block">Monthly</label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)] font-bold">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={(edits.priceMonthly !== undefined ? edits.priceMonthly / 100 : plan.priceMonthly / 100).toFixed(2)}
+                        onChange={(e) => handlePriceChange(plan.id, "priceMonthly", e.target.value)}
+                        className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded px-3 py-1.5 pl-6 text-sm font-mono focus:outline-none focus:border-[var(--color-brand-500)]"
+                        disabled={plan.id === "FREE"}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--muted)] font-medium mb-0.5 block">Yearly</label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)] font-bold">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={(edits.priceYearly !== undefined ? edits.priceYearly / 100 : plan.priceYearly / 100).toFixed(2)}
+                        onChange={(e) => handlePriceChange(plan.id, "priceYearly", e.target.value)}
+                        className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded px-3 py-1.5 pl-6 text-sm font-mono focus:outline-none focus:border-[var(--color-brand-500)]"
+                        disabled={plan.id === "FREE"}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {plan.id !== "FREE" && (
+                  <p className="text-[10px] text-[var(--muted)] mt-1.5">
+                    Effective: ${(currentMonthly / 100).toFixed(0)}/mo · ${(currentYearly / 100).toFixed(0)}/yr (~${(currentYearly / 1200).toFixed(0)}/mo)
+                  </p>
                 )}
               </div>
 
@@ -1328,6 +1381,37 @@ function BannersTab({ banners, onReload }: { banners: any[]; onReload: () => voi
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [globalEnabled, setGlobalEnabled] = useState(true);
+  const [togglingGlobal, setTogglingGlobal] = useState(false);
+
+  // Load global announcements flag state
+  useEffect(() => {
+    apiFetch("/admin/feature-flags")
+      .then(res => res.ok ? res.json() : [])
+      .then((flags: any[]) => {
+        const flag = flags.find((f: any) => f.key === "show_announcements");
+        if (flag) setGlobalEnabled(flag.enabled);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleGlobalToggle = async () => {
+    setTogglingGlobal(true);
+    try {
+      const res = await apiFetch("/admin/feature-flags/show_announcements", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !globalEnabled }),
+      });
+      if (res.ok) {
+        setGlobalEnabled(!globalEnabled);
+        toast.success(`Announcements ${!globalEnabled ? "enabled" : "disabled"} globally`);
+      } else {
+        toast.error("Failed to update");
+      }
+    } catch { toast.error("Failed to update"); }
+    setTogglingGlobal(false);
+  };
 
   const reloadAndNotify = () => {
     onReload();
@@ -1404,8 +1488,44 @@ function BannersTab({ banners, onReload }: { banners: any[]; onReload: () => voi
       <h2 className="text-2xl font-bold mb-1">Announcement Management</h2>
       <p className="text-sm text-[var(--muted)] mb-6">Control the announcement ticker shown to all users below the top bar.</p>
 
+      {/* Global Toggle */}
+      <div className={`flex items-center justify-between px-5 py-4 rounded-xl border mb-6 transition-all ${
+        globalEnabled
+          ? "border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5"
+          : "border-red-500/30 bg-gradient-to-r from-red-500/10 to-red-500/5"
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            globalEnabled ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"
+          }`}>
+            <Megaphone className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="font-semibold text-sm">Announcements Ticker</p>
+            <p className="text-[11px] text-[var(--muted)] mt-0.5">
+              {globalEnabled
+                ? "The ticker is visible to all users. Individual banners can still be toggled."
+                : "The ticker is hidden for all users. Turn on to display announcements."
+              }
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleGlobalToggle}
+          disabled={togglingGlobal}
+          className={`relative rounded-full transition-all duration-300 flex-shrink-0 ${
+            globalEnabled ? "bg-emerald-500 shadow-lg shadow-emerald-500/30" : "bg-[var(--border)]"
+          } ${togglingGlobal ? "opacity-50 cursor-wait" : "cursor-pointer hover:opacity-90"}`}
+          style={{ width: 48, height: 26 }}
+        >
+          <div className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
+            globalEnabled ? "translate-x-[25px]" : "translate-x-[3px]"
+          }`} />
+        </button>
+      </div>
+
       {/* Add new banner */}
-      <div className="flex gap-3 mb-6">
+      <div className={`flex gap-3 mb-6 transition-opacity ${!globalEnabled ? "opacity-50 pointer-events-none" : ""}`}>
         <input
           type="text"
           value={newText}
@@ -1413,10 +1533,11 @@ function BannersTab({ banners, onReload }: { banners: any[]; onReload: () => voi
           placeholder="Enter new announcement text (supports emojis 🚀)..."
           className="flex-1 bg-[var(--sidebar)] border border-[var(--border)] px-4 py-2.5 rounded-lg text-sm outline-none focus:border-[var(--color-brand-500)] transition-colors"
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+          disabled={!globalEnabled}
         />
         <button
           onClick={handleCreate}
-          disabled={saving || !newText.trim()}
+          disabled={saving || !newText.trim() || !globalEnabled}
           className="flex items-center gap-2 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
         >
           <Plus className="w-4 h-4" /> Add Announcement
@@ -1536,8 +1657,9 @@ function BannersTab({ banners, onReload }: { banners: any[]; onReload: () => voi
 
       <div className="mt-6 p-4 bg-[var(--sidebar)] rounded-lg border border-[var(--border)]">
         <p className="text-xs text-[var(--muted)]">
-          <strong className="text-[var(--foreground)]">How it works:</strong> Active banners are displayed in the scrolling ticker below the top bar for all users.
-          Users can individually hide the ticker from their Profile → Preferences. Toggle the <Eye className="w-3 h-3 inline" /> icon to show/hide specific banners.
+          <strong className="text-[var(--foreground)]">How it works:</strong> Use the global toggle above to enable or disable the entire announcement ticker for all users.
+          When enabled, active banners are displayed in the scrolling ticker below the top bar.
+          Toggle the <Eye className="w-3 h-3 inline" /> icon to show/hide individual banners. Users can also individually hide the ticker from their Profile → Preferences.
         </p>
       </div>
     </div>
@@ -2074,6 +2196,7 @@ function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }
     require_email_verification: <Shield className="w-4 h-4" />,
     allow_collection_upload: <Download className="w-4 h-4" />,
     allow_variable_upload: <Download className="w-4 h-4" />,
+    show_announcements: <Megaphone className="w-4 h-4" />,
   };
 
   return (

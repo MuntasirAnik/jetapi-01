@@ -144,13 +144,14 @@ function PaymentPageInner() {
     );
   }
 
-  const plan = subscription?.plan || { id: "FREE", name: "Free" };
+  const plan = subscription?.plan || { id: "FREE", name: "Free", priceMonthly: 0, priceYearly: 0 };
   const planIcon = plan.id === "TEAM" ? <Crown className="w-5 h-5 text-amber-400" /> :
                    plan.id === "PRO" ? <Rocket className="w-5 h-5 text-violet-400" /> :
                    <Zap className="w-5 h-5 text-gray-400" />;
 
-  const price = plan.id === "PRO" ? "$12" : plan.id === "TEAM" ? "$29" : "$0";
   const interval = subscription?.subscription?.billingInterval || "monthly";
+  const priceInCents = interval === "yearly" ? (plan.priceYearly || 0) : (plan.priceMonthly || 0);
+  const price = priceInCents === 0 ? "$0" : `$${(priceInCents / 100).toFixed(0)}`;
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">

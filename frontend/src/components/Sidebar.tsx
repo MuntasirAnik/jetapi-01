@@ -611,6 +611,130 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     );
   };
 
+  // ── Drag & Drop State ──
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const dragDataRef = useRef<{
+    type: 'request' | 'folder';
+    id: string;
+    collectionId: string;
+    folder: string;
+    name: string;
+  } | null>(null);
+
+  const handleDragStart = (
+    e: React.DragEvent,
+    type: 'request' | 'folder',
+    id: string,
+    collectionId: string,
+    folder: string,
+    name: string,
+  ) => {
+    dragDataRef.current = { type, id, collectionId, folder, name };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+    // Add a subtle ghost opacity
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.4';
+    }
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    dragDataRef.current = null;
+    setDragOverTarget(null);
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1';
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverTarget(targetKey);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+  };
+
+  const handleDrop = async (
+    e: React.DragEvent,
+    targetCollectionId: string,
+    targetFolderPath: string | null, // null = collection root
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverTarget(null);
+
+    const drag = dragDataRef.current;
+    if (!drag) return;
+    dragDataRef.current = null;
+
+    // Can't drop across collections
+    if (drag.collectionId !== targetCollectionId) {
+      toast.error("Cannot move items between collections");
+      return;
+    }
+
+    const targetPath = targetFolderPath || '';
+
+    if (drag.type === 'request') {
+      // Don't move if already in the target folder
+      if ((drag.folder || '') === targetPath) return;
+
+      try {
+        const res = await apiFetch('/requests/move', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId: drag.id, newFolder: targetPath || null }),
+        });
+        if (res.ok) {
+          toast.success(`Moved "${drag.name}" to ${targetPath || 'root'}`);
+          window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+        } else {
+          toast.error('Failed to move request');
+        }
+      } catch {
+        toast.error('Failed to move request');
+      }
+    } else if (drag.type === 'folder') {
+      const oldPath = drag.folder;
+      // Compute new path: if dropping into root, just the folder name; otherwise targetPath/folderName
+      const folderName = oldPath.split('/').pop() || oldPath;
+      const newPath = targetPath ? `${targetPath}/${folderName}` : folderName;
+
+      if (newPath === oldPath) return;
+
+      // Can't drop folder into itself
+      if (newPath.startsWith(oldPath + '/') || newPath === oldPath) {
+        toast.error("Cannot move a folder into itself");
+        return;
+      }
+
+      try {
+        const res = await apiFetch('/requests/move-folder', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionId: targetCollectionId,
+            oldPath,
+            newPath,
+          }),
+        });
+        if (res.ok) {
+          toast.success(`Moved folder "${folderName}" to ${targetPath || 'root'}`);
+          window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toast.error(err.message || 'Failed to move folder');
+        }
+      } catch {
+        toast.error('Failed to move folder');
+      }
+    }
+  };
+
   const renderTree = (collectionId: string, collectionName: string, requests: any[]) => {
     if (!requests || requests.length === 0) return <div className="text-xs text-[var(--muted)] p-1.5 italic">Empty</div>;
 
@@ -638,11 +762,19 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
           {Object.values(node.children).map((child: any) => {
             const folderId = `${collectionId}-${child.path}`;
             const isExpanded = searchQuery ? true : expandedFolders[folderId];
+            const isDragOver = dragOverTarget === `folder-${collectionId}-${child.path}`;
             return (
               <div key={folderId} className="mb-0.5">
                 <div 
-                  className="flex items-center gap-2 p-1 hover:bg-[var(--card)] rounded cursor-pointer group text-[var(--muted)]"
+                  className={`flex items-center gap-2 p-1 hover:bg-[var(--card)] rounded cursor-pointer group text-[var(--muted)] transition-all
+                    ${isDragOver ? 'ring-2 ring-[var(--color-brand-500)] bg-[var(--color-brand-500)]/10' : ''}`}
                   onClick={() => toggleFolder(folderId)}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, 'folder', collectionId, collectionId, child.path, child.name)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => handleDragOver(e, `folder-${collectionId}-${child.path}`)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, collectionId, child.path)}
                 >
                   {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   <Folder className="w-3.5 h-3.5" />
@@ -696,6 +828,9 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
               })}
               className={`flex items-center gap-2 p-1 hover:bg-[var(--card)] rounded cursor-pointer group text-xs
                 ${activeRequestId === req.id ? 'bg-[var(--card)] text-[var(--color-brand-500)] font-medium' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+              draggable
+              onDragStart={(e) => handleDragStart(e, 'request', req.id, collectionId, req.folder || '', req.name)}
+              onDragEnd={handleDragEnd}
             >
               <span className={`font-mono font-bold ${
                 req.method === 'GET' ? 'text-green-500' : 
@@ -1110,7 +1245,13 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
             </div>
             
             {isExpanded && (
-              <div className="ml-6 mt-1 border-l border-[var(--border)] pl-2">
+              <div
+                className={`ml-6 mt-1 border-l border-[var(--border)] pl-2 min-h-[20px] transition-all
+                  ${dragOverTarget === `root-${col.id}` ? 'ring-2 ring-[var(--color-brand-500)] ring-inset bg-[var(--color-brand-500)]/5 rounded' : ''}`}
+                onDragOver={(e) => handleDragOver(e, `root-${col.id}`)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, col.id, null)}
+              >
                 {renderTree(col.id, col.name, filteredRequests)}
               </div>
             )}

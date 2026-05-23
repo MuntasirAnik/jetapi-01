@@ -12,10 +12,14 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 export default function AnnouncementTicker() {
+  const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(true);
   const [hovered, setHovered] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const flags = useFeatureFlags();
+
+  // Hydration guard — always render placeholder on server/first client render
+  useEffect(() => { setMounted(true); }, []);
 
   // Build messages for disabled features
   const disabledMessages = useMemo(() => {
@@ -65,6 +69,12 @@ export default function AnnouncementTicker() {
   }, []);
 
   const allMessages = [...disabledMessages, ...announcements];
+
+  // Before hydration completes, render stable placeholder to avoid mismatch
+  if (!mounted) return <div className="h-7 shrink-0" />;
+
+  // Global admin toggle — if announcements are disabled globally, hide the ticker
+  if (flags.show_announcements === false) return <div className="h-7 shrink-0" />;
 
   if (!visible || allMessages.length === 0) return <div className="h-7 shrink-0" />;
 

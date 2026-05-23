@@ -247,7 +247,16 @@ export default function PricingPage() {
               </button>
               <span className={`text-sm ${interval === "yearly" ? "text-[var(--foreground)]" : "text-[var(--muted)]"}`}>
                 Yearly
-                <span className="ml-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full">SAVE 17%</span>
+                {(() => {
+                  const paidPlans = plans.filter(p => p.priceMonthly > 0);
+                  if (paidPlans.length === 0) return null;
+                  const bestSaving = Math.max(...paidPlans.map(p => {
+                    const monthlyTotal = p.priceMonthly * 12;
+                    return monthlyTotal > 0 ? Math.round(((monthlyTotal - p.priceYearly) / monthlyTotal) * 100) : 0;
+                  }));
+                  if (bestSaving <= 0) return null;
+                  return <span className="ml-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full">SAVE {bestSaving}%</span>;
+                })()}
               </span>
             </div>
           </div>
@@ -257,6 +266,9 @@ export default function PricingPage() {
           {plans.map((plan) => {
             const isCurrentPlan = currentPlan === plan.id;
             const price = interval === "monthly" ? plan.priceMonthly : Math.round(plan.priceYearly / 12);
+            const yearlySaving = plan.priceMonthly > 0
+              ? Math.round(((plan.priceMonthly * 12 - plan.priceYearly) / (plan.priceMonthly * 12)) * 100)
+              : 0;
 
             return (
               <div
@@ -287,6 +299,9 @@ export default function PricingPage() {
                       {price === 0 ? "Free" : `$${(price / 100).toFixed(0)}`}
                     </span>
                     {price > 0 && <span className="text-sm text-gray-500">/month</span>}
+                    {price > 0 && interval === "yearly" && yearlySaving > 0 && (
+                      <span className="ml-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full">-{yearlySaving}%</span>
+                    )}
                   </div>
                   {price > 0 && interval === "yearly" && (
                     <p className="text-xs text-gray-600 mt-1">

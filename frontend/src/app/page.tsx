@@ -624,6 +624,7 @@ export default function Home() {
                     setOpenRequests(newOpen);
                     if (activeRequestId === req.id) {
                       setActiveRequestId(newOpen.length > 0 ? newOpen[newOpen.length - 1].id : null);
+                      if (newOpen.length === 0) setResponseData(null);
                     }
                   }}
                   title="Close Tab"
@@ -675,6 +676,7 @@ export default function Home() {
                   if (String(req.id).startsWith('new') || req._isNew) {
                     setOpenRequests(prev => prev.filter(r => r.id !== req.id));
                     setActiveRequestId(null);
+                    setResponseData(null);
                     return;
                   }
                   if (!(await confirmDialog("Are you sure you want to delete this Request? This cannot be undone."))) return;
@@ -684,6 +686,7 @@ export default function Home() {
                     toast.success("Request deleted successfully");
                     setOpenRequests(prev => prev.filter(r => r.id !== req.id));
                     setActiveRequestId(null);
+                    setResponseData(null);
                     window.dispatchEvent(new Event('postclone-refresh-sidebar'));
                   } catch (e) {
                     toast.error("Failed to delete request.");

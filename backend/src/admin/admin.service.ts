@@ -286,6 +286,8 @@ export class AdminService {
     return Object.values(PLANS).map((plan) => {
       const override = overrideMap[plan.id];
       const mergedLimits = { ...plan.limits };
+      let mergedPriceMonthly = plan.priceMonthly;
+      let mergedPriceYearly = plan.priceYearly;
 
       if (override) {
         if (override.maxCollections !== null) mergedLimits.maxCollections = override.maxCollections;
@@ -296,14 +298,16 @@ export class AdminService {
         if (override.historyDays !== null) mergedLimits.historyDays = override.historyDays;
         if (override.maxUploadMb !== null) mergedLimits.maxUploadMb = override.maxUploadMb;
         if (override.analyticsAccess !== null) mergedLimits.analyticsAccess = override.analyticsAccess;
+        if (override.priceMonthly !== null) mergedPriceMonthly = override.priceMonthly;
+        if (override.priceYearly !== null) mergedPriceYearly = override.priceYearly;
       }
 
       return {
         id: plan.id,
         name: plan.name,
         description: plan.description,
-        priceMonthly: plan.priceMonthly,
-        priceYearly: plan.priceYearly,
+        priceMonthly: mergedPriceMonthly,
+        priceYearly: mergedPriceYearly,
         limits: mergedLimits,
         hasOverride: !!override,
       };
@@ -816,6 +820,7 @@ export class AdminService {
     require_email_verification: { enabled: false, label: 'Email Verification', description: 'Require email verification for new accounts' },
     allow_collection_upload: { enabled: true, label: 'Collection Upload', description: 'Allow users to import/upload collection JSON files' },
     allow_variable_upload: { enabled: true, label: 'Variable Upload', description: 'Allow users to import/upload environment variable files' },
+    show_announcements: { enabled: true, label: 'Announcements Ticker', description: 'Show the scrolling announcement ticker bar to all users' },
   };
 
   async getFeatureFlags() {

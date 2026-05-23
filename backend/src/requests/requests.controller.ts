@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Patch, UseGuards, Request } from '@nestjs/common';
 import { RequestsService } from './requests.service';
 import { RequestItem } from './request.entity';
 import { AuthGuard } from '../auth/auth.guard';
@@ -13,6 +13,16 @@ export class RequestsController {
   @Post()
   async create(@Body() data: Partial<RequestItem>, @Request() req: any) {
     return this.requestsService.create(data, req.user.sub);
+  }
+
+  @Patch('move')
+  async moveRequest(@Body() body: { requestId: string; newFolder: string | null }, @Request() req: any) {
+    return this.requestsService.moveRequest(body.requestId, body.newFolder, req.user.sub);
+  }
+
+  @Patch('move-folder')
+  async moveFolder(@Body() body: { collectionId: string; oldPath: string; newPath: string }, @Request() req: any) {
+    return this.requestsService.moveFolder(body.collectionId, body.oldPath, body.newPath, req.user.sub);
   }
 
   @Get()

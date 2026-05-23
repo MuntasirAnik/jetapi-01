@@ -10,6 +10,7 @@ type FeatureFlags = {
   require_email_verification: boolean;
   allow_collection_upload: boolean;
   allow_variable_upload: boolean;
+  show_announcements: boolean;
   [key: string]: boolean;
 };
 
@@ -21,6 +22,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   require_email_verification: false,
   allow_collection_upload: true,
   allow_variable_upload: true,
+  show_announcements: true,
 };
 
 const FeatureFlagContext = createContext<FeatureFlags>(DEFAULT_FLAGS);

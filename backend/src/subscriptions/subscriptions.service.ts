@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import { Subscription } from './subscription.entity';
 import { Payment } from './payment.entity';
 import { User } from '../users/user.entity';
+import { PlanOverride } from '../admin/plan-override.entity';
 import { PLANS, PlanId } from './plans.config';
 
 @Injectable()
@@ -31,6 +32,8 @@ export class SubscriptionsService {
     private userRepo: Repository<User>,
     @InjectRepository(Payment)
     private paymentRepo: Repository<Payment>,
+    @InjectRepository(PlanOverride)
+    private overrideRepo: Repository<PlanOverride>,
     private configService: ConfigService,
   ) {
     const stripeKey = this.configService.get<string>('STRIPE_SECRET_KEY');
@@ -41,17 +44,24 @@ export class SubscriptionsService {
 
   // ── Plan info ──
 
-  getPlans() {
-    return Object.values(PLANS).map(plan => ({
-      id: plan.id,
-      name: plan.name,
-      description: plan.description,
-      priceMonthly: plan.priceMonthly,
-      priceYearly: plan.priceYearly,
-      limits: plan.limits,
-      features: plan.features,
-      popular: plan.popular || false,
-    }));
+  async getPlans() {
+    const overrides = await this.overrideRepo.find();
+    const overrideMap: Record<string, PlanOverride> = {};
+    overrides.forEach((o) => (overrideMap[o.planId] = o));
+
+    return Object.values(PLANS).map(plan => {
+      const override = overrideMap[plan.id];
+      return {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        priceMonthly: override?.priceMonthly ?? plan.priceMonthly,
+        priceYearly: override?.priceYearly ?? plan.priceYearly,
+        limits: plan.limits,
+        features: plan.features,
+        popular: plan.popular || false,
+      };
+    });
   }
 
   async getCurrentSubscription(userId: string) {
@@ -63,12 +73,17 @@ export class SubscriptionsService {
     const planId = (sub?.plan as PlanId) || 'FREE';
     const plan = PLANS[planId] || PLANS.FREE;
 
+    // Get price overrides
+    const override = await this.overrideRepo.findOne({ where: { planId } });
+
     return {
       subscription: sub,
       plan: {
         id: plan.id,
         name: plan.name,
         limits: plan.limits,
+        priceMonthly: override?.priceMonthly ?? plan.priceMonthly,
+        priceYearly: override?.priceYearly ?? plan.priceYearly,
       },
       status: sub?.status || 'active',
       currentPeriodStart: sub?.currentPeriodStart,
@@ -118,6 +133,14 @@ export class SubscriptionsService {
 
     const frontendUrl = origin || this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
+    // Check for price overrides
+    const override = await this.overrideRepo.findOne({ where: { planId } });
+    const overriddenMonthly = override?.priceMonthly ?? null;
+    const overriddenYearly = override?.priceYearly ?? null;
+    const hasOverriddenPrice = interval === 'yearly'
+      ? overriddenYearly !== null
+      : overriddenMonthly !== null;
+
     // When Stripe is not configured, create a pending subscription (payment required within 10 days)
     if (!this.stripe) {
       this.logger.warn(`Stripe not configured — creating pending subscription for ${planId} plan for user ${userId}`);
@@ -142,7 +165,7 @@ export class SubscriptionsService {
     }
 
     const priceId = interval === 'yearly' ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
-    if (!priceId) {
+    if (!priceId && !hasOverriddenPrice) {
       throw new BadRequestException('Stripe price not configured for this plan');
     }
 
@@ -161,12 +184,34 @@ export class SubscriptionsService {
       stripeCustomerId = customer.id;
     }
 
+    // Build line_items: use inline price_data when admin has overridden the price,
+    // otherwise use the pre-created Stripe Price ID
+    let lineItems: any[];
+    if (hasOverriddenPrice) {
+      const unitAmount = interval === 'yearly' ? overriddenYearly! : overriddenMonthly!;
+      lineItems = [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `${plan.name} Plan`,
+            description: plan.description,
+          },
+          unit_amount: unitAmount,
+          recurring: {
+            interval: interval === 'yearly' ? 'year' : 'month',
+          },
+        },
+        quantity: 1,
+      }];
+    } else {
+      lineItems = [{ price: priceId, quantity: 1 }];
+    }
 
     const session = await this.stripe.checkout.sessions.create({
       customer: stripeCustomerId,
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: lineItems,
       success_url: `${frontendUrl}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}/pricing?canceled=true`,
       metadata: { userId, planId, interval },
@@ -199,8 +244,14 @@ export class SubscriptionsService {
     const plan = PLANS[planId];
     if (!plan) throw new BadRequestException('Invalid plan');
 
+    // Check for price overrides
+    const override = await this.overrideRepo.findOne({ where: { planId } });
+    const overriddenPrice = interval === 'yearly'
+      ? (override?.priceYearly ?? null)
+      : (override?.priceMonthly ?? null);
+
     const priceId = interval === 'yearly' ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
-    if (!priceId) throw new BadRequestException('Stripe price not configured for this plan');
+    if (!priceId && overriddenPrice === null) throw new BadRequestException('Stripe price not configured for this plan');
 
     if (!this.stripe) throw new BadRequestException('Stripe is not configured');
 
@@ -212,12 +263,28 @@ export class SubscriptionsService {
       throw new BadRequestException('Could not find subscription item to update');
     }
 
+    // Build subscription item update: use inline price when overridden
+    let itemUpdate: any;
+    let newPriceId = priceId;
+    if (overriddenPrice !== null) {
+      // Create inline price via Stripe API for the overridden amount
+      const stripePrice = await this.stripe.prices.create({
+        currency: 'usd',
+        unit_amount: overriddenPrice,
+        recurring: { interval: interval === 'yearly' ? 'year' : 'month' },
+        product_data: {
+          name: `${plan.name} Plan`,
+        },
+      });
+      newPriceId = stripePrice.id;
+      itemUpdate = { id: currentItemId, price: stripePrice.id };
+    } else {
+      itemUpdate = { id: currentItemId, price: priceId };
+    }
+
     // Update the subscription with the new price (Stripe handles proration automatically)
     const updatedSubscription = await this.stripe.subscriptions.update(sub.stripeSubscriptionId, {
-      items: [{
-        id: currentItemId,
-        price: priceId,
-      }],
+      items: [itemUpdate],
       proration_behavior: 'create_prorations',
       metadata: { userId, planId },
     });
@@ -225,7 +292,7 @@ export class SubscriptionsService {
     // Update local record
     sub.plan = planId;
     sub.billingInterval = interval;
-    sub.stripePriceId = priceId;
+    sub.stripePriceId = newPriceId;
     sub.currentPeriodStart = this.parseStripeDate(updatedSubscription.current_period_start);
     sub.currentPeriodEnd = this.parseStripeDate(updatedSubscription.current_period_end);
     sub.canceledAt = null as any;
@@ -321,11 +388,14 @@ export class SubscriptionsService {
     // Get user info for payment record
     const user = await this.userRepo.findOne({ where: { id: userId } });
 
-    // Determine price
+    // Determine price (with admin overrides)
     const plan = PLANS[sub.plan as PlanId];
+    const override = await this.overrideRepo.findOne({ where: { planId: sub.plan } });
+    const monthlyPrice = override?.priceMonthly ?? plan?.priceMonthly ?? 0;
+    const yearlyPrice = override?.priceYearly ?? plan?.priceYearly ?? 0;
     const price = sub.billingInterval === 'yearly'
-      ? `$${plan?.priceYearly || 0}`
-      : `$${plan?.priceMonthly || 0}`;
+      ? `$${yearlyPrice}`
+      : `$${monthlyPrice}`;
 
     // Save payment record
     const payment = this.paymentRepo.create({

@@ -29,6 +29,12 @@ export class PlanOverride {
   @Column({ type: 'boolean', nullable: true })
   analyticsAccess: boolean | null;
 
+  @Column({ type: 'int', nullable: true })
+  priceMonthly: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  priceYearly: number | null;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }
