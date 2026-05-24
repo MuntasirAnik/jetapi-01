@@ -14,14 +14,15 @@ import {
   Activity, LogIn, Power, AlertTriangle, Clock, TrendingUp, BarChart3,
   Download, Settings, ToggleLeft, ToggleRight, Filter, CheckSquare, Square,
   Lock, Unlock, KeyRound, Globe, ShieldCheck, LogOut, RefreshCw, ChevronDown, Check,
+  FileText, Bell, Palette, Send, Webhook, ExternalLink, Loader2, X,
 } from "lucide-react";
 
-type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security";
+type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog";
 
 export default function AdminPage() {
   const router = useRouter();
   const { confirmDialog } = useDialog();
-  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security"];
+  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog"];
   const [tab, setTabState] = useState<Tab>("overview");
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -286,6 +287,7 @@ export default function AdminPage() {
     { id: "audit-log", label: "Audit Log", icon: <Activity className="w-4 h-4" /> },
     { id: "reports", label: "Reports", icon: <BarChart3 className="w-4 h-4" /> },
     { id: "security", label: "Security", icon: <ShieldCheck className="w-4 h-4" /> },
+    { id: "changelog", label: "Changelog", icon: <FileText className="w-4 h-4" /> },
     { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
   ];
 
@@ -355,6 +357,7 @@ export default function AdminPage() {
           {tab === "reports" && <ReportsTab />}
           {tab === "settings" && <SettingsTab flags={featureFlags} onReload={loadTabData} />}
           {tab === "security" && <SecurityTab />}
+          {tab === "changelog" && <ChangelogTab />}
         </div>
       </div>
     </div>
@@ -364,8 +367,20 @@ export default function AdminPage() {
 // ─── Overview Tab ────────────────────────────────────
 function OverviewTab({ stats, growthData, maintenance, onMaintenanceChange }: { stats: any; growthData: any; maintenance: any; onMaintenanceChange: (enabled: boolean, msg: string) => void }) {
   const [maintMsg, setMaintMsg] = useState(maintenance?.message || '');
+  const [platformVersion, setPlatformVersion] = useState('v2.0.0');
 
   useEffect(() => { setMaintMsg(maintenance?.message || ''); }, [maintenance]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/admin/changelog');
+        if (res.ok) {
+          const entries = await res.json();
+          if (entries.length > 0 && entries[0].version) setPlatformVersion(entries[0].version);
+        }
+      } catch {}
+    })();
+  }, []);
 
   if (!stats) return null;
 
@@ -524,10 +539,112 @@ function OverviewTab({ stats, growthData, maintenance, onMaintenanceChange }: { 
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-sm text-[var(--muted)]">Platform Version</span>
-              <span className="text-xs font-mono bg-[var(--sidebar)] px-2.5 py-1 rounded-full">v2.0.0</span>
+              <span className="text-xs font-mono bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] px-2.5 py-1 rounded-full font-bold">{platformVersion}</span>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Activity Heatmap */}
+      <ActivityHeatmap />
+    </div>
+  );
+}
+
+function ActivityHeatmap() {
+  const [data, setData] = useState<{ date: string; count: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch("/admin/stats/activity-heatmap");
+        if (res.ok) setData(await res.json());
+      } catch {}
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) return null;
+
+  // Build 52-week grid
+  const countMap: Record<string, number> = {};
+  let maxCount = 1;
+  data.forEach(d => { countMap[d.date] = d.count; if (d.count > maxCount) maxCount = d.count; });
+
+  const today = new Date();
+  const weeks: { date: Date; count: number }[][] = [];
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 364);
+  // Align to Sunday
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+
+  let currentWeek: { date: Date; count: number }[] = [];
+  const d = new Date(startDate);
+  while (d <= today) {
+    const key = d.toISOString().split("T")[0];
+    currentWeek.push({ date: new Date(d), count: countMap[key] || 0 });
+    if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+    d.setDate(d.getDate() + 1);
+  }
+  if (currentWeek.length > 0) weeks.push(currentWeek);
+
+  const getColor = (count: number) => {
+    if (count === 0) return "bg-[var(--border)]/50";
+    const ratio = count / maxCount;
+    if (ratio < 0.25) return "bg-green-900/60";
+    if (ratio < 0.5) return "bg-green-700/70";
+    if (ratio < 0.75) return "bg-green-500";
+    return "bg-green-400";
+  };
+
+  const totalEvents = data.reduce((s, d) => s + d.count, 0);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  return (
+    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-6 mt-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold">Platform Activity</h3>
+        <span className="text-xs text-[var(--muted)]">{totalEvents.toLocaleString()} events in the last year</span>
+      </div>
+      <div className="overflow-x-auto">
+        {/* Month labels */}
+        <div className="flex gap-[3px] mb-1 ml-8">
+          {weeks.map((w, i) => {
+            const firstDay = w[0]?.date;
+            if (firstDay && firstDay.getDate() <= 7 && i > 0) {
+              return <span key={i} className="text-[9px] text-[var(--muted)] w-[11px] text-center">{months[firstDay.getMonth()]}</span>;
+            }
+            return <span key={i} className="w-[11px]" />;
+          })}
+        </div>
+        <div className="flex gap-[1px]">
+          {/* Day labels */}
+          <div className="flex flex-col gap-[3px] mr-1 text-[9px] text-[var(--muted)] w-6">
+            <span className="h-[11px]" /><span className="h-[11px] flex items-center">Mon</span>
+            <span className="h-[11px]" /><span className="h-[11px] flex items-center">Wed</span>
+            <span className="h-[11px]" /><span className="h-[11px] flex items-center">Fri</span>
+            <span className="h-[11px]" />
+          </div>
+          {weeks.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-[3px]">
+              {week.map((day, di) => (
+                <div key={di} className={`w-[11px] h-[11px] rounded-sm ${getColor(day.count)} transition-colors`}
+                  title={`${day.date.toLocaleDateString()}: ${day.count} events`} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-2 mt-3 justify-end text-[10px] text-[var(--muted)]">
+        <span>Less</span>
+        <div className="w-[11px] h-[11px] rounded-sm bg-[var(--border)]/50" />
+        <div className="w-[11px] h-[11px] rounded-sm bg-green-900/60" />
+        <div className="w-[11px] h-[11px] rounded-sm bg-green-700/70" />
+        <div className="w-[11px] h-[11px] rounded-sm bg-green-500" />
+        <div className="w-[11px] h-[11px] rounded-sm bg-green-400" />
+        <span>More</span>
       </div>
     </div>
   );
@@ -705,11 +822,16 @@ function UsersTab({
     setBulkLoading(false);
   };
 
-  const exportCSV = () => {
-    const rows = ["Name,Email,Role,Status,Plan,Joined", ...users.map(u =>
-      `"${u.name || ""}","${u.email}","${u.role}","${u.isActive !== false ? "Active" : "Inactive"}","${u.plan || "FREE"}","${new Date(u.createdAt).toLocaleDateString()}"`)].join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([rows], { type: "text/csv" }));
-    a.download = `users_${new Date().toISOString().split("T")[0]}.csv`; a.click(); toast.success("Users exported as CSV");
+  const exportCSV = async () => {
+    try {
+      const res = await apiFetch("/admin/users/export");
+      if (res.ok) {
+        const csv = await res.text();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        a.download = `jetapi-users_${new Date().toISOString().split("T")[0]}.csv`; a.click();
+        toast.success(`All users exported as CSV`);
+      } else { toast.error("Export failed"); }
+    } catch { toast.error("Export failed"); }
   };
 
   const handleCreateAdmin = async () => {
@@ -2564,6 +2686,136 @@ function SecurityTab() {
         </div>
 
       </div>
+    </div>
+  );
+}
+
+// ─── Changelog Tab ────────────────────────────────────
+function ChangelogTab() {
+  const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState({ title: "", content: "", version: "" });
+  const [saving, setSaving] = useState(false);
+  const [nextVersion, setNextVersion] = useState("v2.0.0");
+
+  const load = async () => {
+    setLoading(true);
+    try { const res = await apiFetch("/admin/changelog"); if (res.ok) setEntries(await res.json()); } catch {}
+    try { const res = await apiFetch("/admin/changelog/next-version"); if (res.ok) { const d = await res.json(); setNextVersion(d.version); } } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleSave = async () => {
+    if (!form.title.trim() || !form.content.trim()) { toast.error("Title and content are required"); return; }
+    setSaving(true);
+    try {
+      const url = editId ? `/admin/changelog/${editId}` : "/admin/changelog";
+      const method = editId ? "PUT" : "POST";
+      const payload = editId ? form : { title: form.title, content: form.content };
+      const res = await apiFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) { toast.success(editId ? "Updated" : "Created"); setShowForm(false); setEditId(null); setForm({ title: "", content: "", version: "" }); load(); }
+      else { const d = await res.json().catch(() => ({})); toast.error(d.message || "Failed"); }
+    } catch { toast.error("Failed"); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    try { const res = await apiFetch(`/admin/changelog/${id}`, { method: "DELETE" }); if (res.ok) { toast.success("Deleted"); load(); } } catch {}
+  };
+
+  const togglePublish = async (e: any) => {
+    try {
+      await apiFetch(`/admin/changelog/${e.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isPublished: !e.isPublished }) });
+      toast.success(e.isPublished ? "Unpublished" : "Published"); load();
+    } catch {}
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Changelog</h1>
+          <p className="text-[var(--muted)] text-sm">Manage release notes · {entries.length} entries</p>
+        </div>
+        <button onClick={() => { setShowForm(true); setEditId(null); setForm({ title: "", content: "", version: "" }); }}
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white rounded-lg text-sm font-semibold transition-colors">
+          <Plus className="w-4 h-4" /> New Entry
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">{editId ? "Edit Entry" : "New Entry"}</h2>
+          <div className="flex gap-4 mb-4">
+            <div className="flex-1">
+              <label className="text-xs text-[var(--muted)] mb-1 block">Title</label>
+              <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                className="w-full bg-[var(--background)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-500)]" placeholder="New Features & Improvements" />
+            </div>
+            <div className="w-36">
+              <label className="text-xs text-[var(--muted)] mb-1 block">Version</label>
+              {editId ? (
+                <div className="bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--muted)]">{form.version || "—"}</div>
+              ) : (
+                <div className="bg-[var(--color-brand-500)]/10 border border-[var(--color-brand-500)]/30 rounded-lg px-3 py-2 text-sm font-mono text-[var(--color-brand-500)] font-bold">
+                  {nextVersion}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="mb-4">
+            <label className="text-xs text-[var(--muted)] mb-1 block">Content (Markdown)</label>
+            <textarea value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
+              className="w-full bg-[var(--background)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-500)] min-h-[160px] resize-y font-mono"
+              placeholder="## What's New&#10;- Feature 1&#10;- Bug fix 2" />
+          </div>
+          <div className="flex gap-3">
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white rounded-lg text-sm font-semibold disabled:opacity-50">
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} {editId ? "Update" : "Create"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-[var(--muted)] hover:text-[var(--foreground)]">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-[var(--muted)]" /></div>
+      ) : entries.length === 0 ? (
+        <div className="text-center py-16 text-[var(--muted)]">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+          <p className="text-sm">No changelog entries yet</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {entries.map((e: any) => (
+            <div key={e.id} className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 hover:border-[var(--color-brand-500)]/30 transition-colors">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-semibold text-sm">{e.title}</h3>
+                  {e.version && <span className="text-[10px] bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] px-2 py-0.5 rounded-full font-mono font-bold">{e.version}</span>}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${e.isPublished ? "bg-green-500/10 text-green-500" : "bg-yellow-500/10 text-yellow-500"}`}>
+                    {e.isPublished ? "Published" : "Draft"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => togglePublish(e)} className="p-1.5 rounded hover:bg-[var(--border)] transition-colors" title={e.isPublished ? "Unpublish" : "Publish"}>
+                    {e.isPublished ? <EyeOff className="w-3.5 h-3.5 text-[var(--muted)]" /> : <Eye className="w-3.5 h-3.5 text-green-500" />}
+                  </button>
+                  <button onClick={() => { setShowForm(true); setEditId(e.id); setForm({ title: e.title, content: e.content, version: e.version || "" }); }}
+                    className="p-1.5 rounded hover:bg-[var(--border)] transition-colors"><Pencil className="w-3.5 h-3.5 text-[var(--muted)]" /></button>
+                  <button onClick={() => handleDelete(e.id)} className="p-1.5 rounded hover:bg-red-500/10 transition-colors"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
+                </div>
+              </div>
+              <p className="text-xs text-[var(--muted)] line-clamp-2 mb-2 font-mono">{e.content?.substring(0, 200)}</p>
+              <span className="text-[10px] text-[var(--muted)] opacity-60">{new Date(e.createdAt).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

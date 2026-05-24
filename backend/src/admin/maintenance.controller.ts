@@ -20,3 +20,13 @@ export class FeatureFlagsController {
     return this.adminService.getPublicFeatureFlags();
   }
 }
+
+@Controller('api/changelog')
+export class ChangelogController {
+  constructor(private adminService: AdminService) {}
+
+  @Get()
+  getPublicChangelogs() {
+    return this.adminService.getPublicChangelogs();
+  }
+}

@@ -143,6 +143,20 @@ export default function ResponsePanel({ response, loading, request, testResults 
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   const [collapsedLines, setCollapsedLines] = useState<Set<number>>(new Set());
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ⌘F to focus search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const toggleLine = useCallback((lineIndex: number) => {
     setCollapsedLines(prev => {
@@ -774,8 +788,9 @@ export default function ResponsePanel({ response, loading, request, testResults 
             <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded px-2 focus-within:border-[var(--color-brand-500)] transition-colors" title="Search text in response">
               <Search className="w-3 h-3 opacity-70" />
               <input 
+                ref={searchInputRef}
                 type="text" 
-                placeholder="Search..." 
+                placeholder="Search... (⌘F)" 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="bg-transparent border-none outline-none w-24 px-2 py-1 text-xs text-[var(--foreground)]"

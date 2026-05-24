@@ -2,8 +2,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, getApiError } from "@/lib/api";
-import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2 } from "lucide-react";
+import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2, Pin, PinOff } from "lucide-react";
 import dynamic from "next/dynamic";
+import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 import Sidebar from "@/components/Sidebar";
 import RequestPanel from "@/components/RequestPanel";
 import ResponsePanel from "@/components/ResponsePanel";
@@ -85,6 +86,9 @@ export default function Home() {
 
   // Command Palette
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pinnedTabs, setPinnedTabs] = useState<string[]>([]);
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; reqId: string } | null>(null);
   const sidebarTabRef = useRef<((tab: string) => void) | null>(null);
 
   // Save Modal States
@@ -273,17 +277,74 @@ export default function Home() {
     globalVariables,
   } = useAppContext();
 
-  // ⌘+K Command Palette shortcut
+  // Load pinned tabs from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jetapi_pinned_tabs');
+      if (saved) setPinnedTabs(JSON.parse(saved));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('jetapi_pinned_tabs', JSON.stringify(pinnedTabs));
+  }, [pinnedTabs]);
+
+  // Close tab context menu on click
+  useEffect(() => {
+    const handler = () => setTabContextMenu(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
+
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      const meta = e.metaKey || e.ctrlKey;
+      // ⌘K — Command Palette
+      if (meta && e.key === 'k' && !e.shiftKey) {
         e.preventDefault();
         setCommandPaletteOpen(prev => !prev);
       }
+      // ⌘⇧K — Keyboard Shortcuts
+      if (meta && e.shiftKey && e.key === 'K') {
+        e.preventDefault();
+        setShortcutsOpen(prev => !prev);
+      }
+      // ⌘N — New Tab
+      if (meta && e.key === 'n' && !e.shiftKey) {
+        e.preventDefault();
+        const newId = `new-${Date.now()}`;
+        setOpenRequests(prev => [...prev, { id: newId, name: 'Untitled Request', method: 'GET', url: '', headers: [], params: [], body: '', _isNew: true }]);
+        setActiveRequestId(newId);
+      }
+      // ⌘W — Close Active Tab (skip pinned)
+      if (meta && e.key === 'w' && !e.shiftKey) {
+        e.preventDefault();
+        if (activeRequestId && !pinnedTabs.includes(activeRequestId)) {
+          const newOpen = openRequests.filter(r => r.id !== activeRequestId);
+          setOpenRequests(newOpen);
+          setActiveRequestId(newOpen.length > 0 ? newOpen[newOpen.length - 1].id : null);
+          if (newOpen.length === 0) setResponseData(null);
+        }
+      }
+      // ⌘[ / ⌘] — Previous/Next Tab
+      if (meta && (e.key === '[' || e.key === ']') && !e.shiftKey) {
+        e.preventDefault();
+        if (openRequests.length > 1 && activeRequestId) {
+          const idx = openRequests.findIndex(r => r.id === activeRequestId);
+          const next = e.key === ']' ? (idx + 1) % openRequests.length : (idx - 1 + openRequests.length) % openRequests.length;
+          setActiveRequestId(openRequests[next].id);
+        }
+      }
+      // ⌘1-9 — Switch to tab by index
+      if (meta && e.key >= '1' && e.key <= '9' && !e.shiftKey) {
+        e.preventDefault();
+        const idx = parseInt(e.key) - 1;
+        if (openRequests[idx]) setActiveRequestId(openRequests[idx].id);
+      }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeRequestId, openRequests, pinnedTabs]);
 
   // Horizontal Resizable Sidebar Logic
   const [sidebarWidth, setSidebarWidth] = useState(320); // Default 320px
@@ -591,17 +652,34 @@ export default function Home() {
         <div className="flex flex-1 flex-col overflow-hidden" ref={containerRef}>
           {/* Tab Bar */}
           <div className="flex items-center overflow-x-auto bg-[var(--sidebar)] border-b border-[var(--border)] custom-scrollbar shrink-0 h-10 w-full">
-            {openRequests.map(req => (
+            {/* Pinned tabs come first, then regular tabs */}
+            {[...openRequests].sort((a, b) => {
+              const aPin = pinnedTabs.includes(a.id) ? 0 : 1;
+              const bPin = pinnedTabs.includes(b.id) ? 0 : 1;
+              return aPin - bPin;
+            }).map(req => {
+              const isPinned = pinnedTabs.includes(req.id);
+              return (
               <div
                 key={req.id}
-                className={`group flex flex-shrink-0 items-center h-full border-r border-[var(--border)] pl-3 pr-2 min-w-[120px] max-w-[220px] cursor-pointer transition-colors relative select-none ${activeRequestId === req.id ? 'bg-[var(--card)] tab-active-glow' : 'bg-transparent hover:bg-[var(--card)]/50'
+                className={`group flex flex-shrink-0 items-center h-full border-r border-[var(--border)] pl-3 pr-2 ${isPinned ? 'min-w-[80px] max-w-[160px]' : 'min-w-[120px] max-w-[220px]'} cursor-pointer transition-colors relative select-none ${activeRequestId === req.id ? 'bg-[var(--card)] tab-active-glow' : 'bg-transparent hover:bg-[var(--card)]/50'
                   }`}
                 onClick={() => setActiveRequestId(req.id)}
-                title={`${req.method || 'GET'} ${req.name || 'Untitled'}\n${req.url || ''}\nLast modified: ${req.updatedAt ? new Date(req.updatedAt).toLocaleString() : 'never'}`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTabContextMenu({ x: e.clientX, y: e.clientY, reqId: req.id });
+                }}
+                title={`${req.method || 'GET'} ${req.name || 'Untitled'}${isPinned ? ' (Pinned)' : ''}\n${req.url || ''}\nLast modified: ${req.updatedAt ? new Date(req.updatedAt).toLocaleString() : 'never'}`}
               >
                 {/* Active Indicator Bar */}
                 {activeRequestId === req.id && (
                   <div className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--color-brand-500)]" />
+                )}
+
+                {/* Pinned indicator */}
+                {isPinned && (
+                  <Pin className="w-2.5 h-2.5 text-[var(--color-brand-500)] mr-1.5 shrink-0 -rotate-45" />
                 )}
 
                 <div className="flex-1 text-xs font-medium flex items-center gap-2 overflow-hidden">
@@ -616,23 +694,27 @@ export default function Home() {
                   </span>
                 </div>
 
-                <button
-                  className={`ml-1.5 p-1 rounded-md hover:bg-[var(--border)] transition-opacity ${activeRequestId === req.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const newOpen = openRequests.filter(r => r.id !== req.id);
-                    setOpenRequests(newOpen);
-                    if (activeRequestId === req.id) {
-                      setActiveRequestId(newOpen.length > 0 ? newOpen[newOpen.length - 1].id : null);
-                      if (newOpen.length === 0) setResponseData(null);
-                    }
-                  }}
-                  title="Close Tab"
-                >
-                  <X className="w-3.5 h-3.5 text-[var(--muted)] hover:text-[var(--foreground)]" />
-                </button>
+                {/* Close button — hidden for pinned tabs */}
+                {!isPinned && (
+                  <button
+                    className={`ml-1.5 p-1 rounded-md hover:bg-[var(--border)] transition-opacity ${activeRequestId === req.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const newOpen = openRequests.filter(r => r.id !== req.id);
+                      setOpenRequests(newOpen);
+                      if (activeRequestId === req.id) {
+                        setActiveRequestId(newOpen.length > 0 ? newOpen[newOpen.length - 1].id : null);
+                        if (newOpen.length === 0) setResponseData(null);
+                      }
+                    }}
+                    title="Close Tab"
+                  >
+                    <X className="w-3.5 h-3.5 text-[var(--muted)] hover:text-[var(--foreground)]" />
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
             {openRequests.length === 0 && (
               <div className="text-xs text-[var(--muted)] px-4">No open tabs</div>
             )}
@@ -1300,6 +1382,7 @@ export default function Home() {
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         workspaces={workspaces}
+        onShowShortcuts={() => setShortcutsOpen(true)}
         onSelectRequest={async (req: any) => {
           const existing = openRequests.find(p => p.id === req.id);
           if (existing) {
@@ -1330,6 +1413,96 @@ export default function Home() {
           setRightPanelOpen(null);
         }}
       />
+
+      {/* Tab Context Menu */}
+      {tabContextMenu && (
+        <div
+          className="fixed bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-[200] text-xs font-medium min-w-[180px] dropdown-enter"
+          style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Pin / Unpin */}
+          <button
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)]"
+            onClick={() => {
+              const id = tabContextMenu.reqId;
+              setPinnedTabs(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+              setTabContextMenu(null);
+            }}
+          >
+            {pinnedTabs.includes(tabContextMenu.reqId) ? <PinOff className="w-3.5 h-3.5 opacity-70" /> : <Pin className="w-3.5 h-3.5 opacity-70 -rotate-45" />}
+            {pinnedTabs.includes(tabContextMenu.reqId) ? 'Unpin Tab' : 'Pin Tab'}
+          </button>
+          <div className="border-t border-[var(--border)] my-1" />
+          {/* Close */}
+          <button
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] disabled:opacity-30"
+            disabled={pinnedTabs.includes(tabContextMenu.reqId)}
+            onClick={() => {
+              const id = tabContextMenu.reqId;
+              const newOpen = openRequests.filter(r => r.id !== id);
+              setOpenRequests(newOpen);
+              if (activeRequestId === id) {
+                setActiveRequestId(newOpen.length > 0 ? newOpen[newOpen.length - 1].id : null);
+                if (newOpen.length === 0) setResponseData(null);
+              }
+              setTabContextMenu(null);
+            }}
+          >
+            <X className="w-3.5 h-3.5 opacity-70" />
+            Close
+            <span className="ml-auto text-[10px] opacity-50 font-mono">⌘W</span>
+          </button>
+          {/* Close Others */}
+          <button
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)]"
+            onClick={() => {
+              const id = tabContextMenu.reqId;
+              const newOpen = openRequests.filter(r => r.id === id || pinnedTabs.includes(r.id));
+              setOpenRequests(newOpen);
+              setActiveRequestId(id);
+              setTabContextMenu(null);
+            }}
+          >
+            <X className="w-3.5 h-3.5 opacity-70" />
+            Close Others
+          </button>
+          {/* Close All */}
+          <button
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)]"
+            onClick={() => {
+              const pinned = openRequests.filter(r => pinnedTabs.includes(r.id));
+              setOpenRequests(pinned);
+              setActiveRequestId(pinned.length > 0 ? pinned[0].id : null);
+              if (pinned.length === 0) setResponseData(null);
+              setTabContextMenu(null);
+            }}
+          >
+            <X className="w-3.5 h-3.5 opacity-70" />
+            Close All
+          </button>
+          {/* Close to the Right */}
+          <button
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)]"
+            onClick={() => {
+              const id = tabContextMenu.reqId;
+              const idx = openRequests.findIndex(r => r.id === id);
+              const newOpen = openRequests.filter((r, i) => i <= idx || pinnedTabs.includes(r.id));
+              setOpenRequests(newOpen);
+              if (!newOpen.find(r => r.id === activeRequestId)) {
+                setActiveRequestId(newOpen.length > 0 ? newOpen[newOpen.length - 1].id : null);
+              }
+              setTabContextMenu(null);
+            }}
+          >
+            <ChevronRight className="w-3.5 h-3.5 opacity-70" />
+            Close to the Right
+          </button>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
     </div>
   );

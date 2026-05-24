@@ -12,6 +12,7 @@ import { Payment } from '../subscriptions/payment.entity';
 import { Banner } from './banner.entity';
 import { AuditLog } from './audit-log.entity';
 import { SystemSetting } from './system-setting.entity';
+import { Changelog } from './changelog.entity';
 import { PLANS, PlanId } from '../subscriptions/plans.config';
 import * as bcrypt from 'bcryptjs';
 
@@ -38,6 +39,8 @@ export class AdminService {
     private auditRepo: Repository<AuditLog>,
     @InjectRepository(SystemSetting)
     private settingRepo: Repository<SystemSetting>,
+    @InjectRepository(Changelog)
+    private changelogRepo: Repository<Changelog>,
     private jwtService: JwtService,
   ) {
     this.seedDefaultBanners();
@@ -1030,5 +1033,150 @@ export class AdminService {
         .getMany(),
     ]);
     return { totalUsers, activeUsers, inactiveUsers, failedAttemptUsers, recentSecurityEvents };
+  }
+
+  // ══════════════════════════════════════════════
+  // ── BATCH 1: New Features ──
+  // ══════════════════════════════════════════════
+
+  // ── 1. Export Users CSV ──
+
+  async exportUsersCsv(): Promise<string> {
+    const users = await this.userRepo.find({ order: { createdAt: 'DESC' } });
+    const subs = await this.subRepo.find();
+    const subMap: Record<string, any> = {};
+    subs.forEach(s => { subMap[s.userId] = s; });
+
+    const header = 'Name,Email,Role,Plan,Status,Signup Date,Last Active';
+    const rows = users.map(u => {
+      const sub = subMap[u.id];
+      return [
+        `"${(u.name || '').replace(/"/g, '""')}"`,
+        u.email,
+        u.role,
+        sub?.plan || 'FREE',
+        u.isActive ? 'Active' : 'Inactive',
+        u.createdAt?.toISOString()?.split('T')[0] || '',
+        u.updatedAt?.toISOString()?.split('T')[0] || '',
+      ].join(',');
+    });
+    return [header, ...rows].join('\n');
+  }
+
+  // ── 2. Changelog ──
+
+  async getChangelogs(): Promise<Changelog[]> {
+    return this.changelogRepo.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async getPublicChangelogs(): Promise<Changelog[]> {
+    return this.changelogRepo.find({ where: { isPublished: true }, order: { createdAt: 'DESC' }, take: 20 });
+  }
+
+  async getNextVersion(): Promise<string> {
+    const latest = await this.changelogRepo.createQueryBuilder('c').orderBy('c.createdAt', 'DESC').getOne();
+    if (latest?.version) {
+      const match = latest.version.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
+      if (match) return `v${match[1]}.${match[2]}.${parseInt(match[3]) + 1}`;
+    }
+    return 'v2.0.0';
+  }
+
+  async createChangelog(data: { title: string; content: string; version?: string }, adminId: string): Promise<Changelog> {
+    if (!data.version) {
+      data.version = await this.getNextVersion();
+    }
+    const entry = this.changelogRepo.create(data);
+    const saved = await this.changelogRepo.save(entry);
+    await this.logAction({ action: 'changelog.created', targetType: 'changelog', targetId: saved.id, targetLabel: saved.title, performedBy: adminId }).catch(() => {});
+    return saved;
+  }
+
+  async updateChangelog(id: string, data: Partial<Changelog>, adminId: string): Promise<Changelog> {
+    const entry = await this.changelogRepo.findOneBy({ id });
+    if (!entry) throw new NotFoundException('Changelog entry not found');
+    Object.assign(entry, data);
+    const saved = await this.changelogRepo.save(entry);
+    await this.logAction({ action: 'changelog.updated', targetType: 'changelog', targetId: saved.id, targetLabel: saved.title, performedBy: adminId }).catch(() => {});
+    return saved;
+  }
+
+  async deleteChangelog(id: string, adminId: string): Promise<void> {
+    const entry = await this.changelogRepo.findOneBy({ id });
+    if (!entry) throw new NotFoundException('Changelog entry not found');
+    await this.changelogRepo.remove(entry);
+    await this.logAction({ action: 'changelog.deleted', targetType: 'changelog', targetId: id, targetLabel: entry.title, performedBy: adminId }).catch(() => {});
+  }
+
+  // ── 3. Activity Heatmap ──
+
+  async getActivityHeatmap(): Promise<{ date: string; count: number }[]> {
+    const result = await this.auditRepo.createQueryBuilder('log')
+      .select("TO_CHAR(log.createdAt, 'YYYY-MM-DD')", 'date')
+      .addSelect('COUNT(*)', 'count')
+      .where("log.createdAt > NOW() - INTERVAL '365 days'")
+      .groupBy("TO_CHAR(log.createdAt, 'YYYY-MM-DD')")
+      .orderBy('date', 'ASC')
+      .getRawMany();
+    return result.map(r => ({ date: r.date, count: parseInt(r.count) }));
+  }
+
+  // ── 4. Branding ──
+
+  async getBranding(): Promise<any> {
+    const keys = ['branding_app_name', 'branding_logo_url', 'branding_accent_color', 'branding_favicon_url'];
+    const settings = await this.settingRepo.findBy(keys.map(k => ({ key: k })));
+    const result: any = {};
+    settings.forEach(s => { result[s.key.replace('branding_', '')] = s.value; });
+    return result;
+  }
+
+  async updateBranding(data: Record<string, string>, adminId: string): Promise<any> {
+    const allowedKeys = ['app_name', 'logo_url', 'accent_color', 'favicon_url'];
+    for (const [key, value] of Object.entries(data)) {
+      if (!allowedKeys.includes(key)) continue;
+      await this.settingRepo.upsert({ key: `branding_${key}`, value: value || '' }, ['key']);
+    }
+    await this.logAction({ action: 'branding.updated', targetType: 'system', targetId: 'branding', targetLabel: 'Branding', performedBy: adminId, details: data }).catch(() => {});
+    return this.getBranding();
+  }
+
+  // ── 5. Webhooks ──
+
+  async getWebhookConfig(): Promise<any> {
+    const setting = await this.settingRepo.findOneBy({ key: 'webhook_config' });
+    if (!setting?.value) return { url: '', events: [], enabled: false };
+    try { return JSON.parse(setting.value); } catch { return { url: '', events: [], enabled: false }; }
+  }
+
+  async updateWebhookConfig(config: { url: string; events: string[]; enabled: boolean }, adminId: string): Promise<any> {
+    await this.settingRepo.upsert({ key: 'webhook_config', value: JSON.stringify(config) }, ['key']);
+    await this.logAction({ action: 'webhook.updated', targetType: 'system', targetId: 'webhook_config', targetLabel: 'Webhook Config', performedBy: adminId, details: config }).catch(() => {});
+    return config;
+  }
+
+  async fireWebhook(event: string, payload: any): Promise<void> {
+    try {
+      const config = await this.getWebhookConfig();
+      if (!config.enabled || !config.url || !config.events.includes(event)) return;
+      fetch(config.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-JetAPI-Event': event },
+        body: JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload }),
+      }).catch(() => {});
+    } catch {}
+  }
+
+  async testWebhook(url: string): Promise<{ success: boolean; status?: number; error?: string }> {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-JetAPI-Event': 'test' },
+        body: JSON.stringify({ event: 'test', timestamp: new Date().toISOString(), data: { message: 'Test webhook from JetAPI' } }),
+      });
+      return { success: res.ok, status: res.status };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   }
 }

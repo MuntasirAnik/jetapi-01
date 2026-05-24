@@ -264,4 +264,77 @@ export class AdminController {
   getSecurityOverview() {
     return this.adminService.getSecurityOverview();
   }
+
+  // ── Export Users CSV ──
+
+  @Get('users/export')
+  async exportUsers(@Res() res: any) {
+    const csv = await this.adminService.exportUsersCsv();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=jetapi-users.csv');
+    res.send(csv);
+  }
+
+  // ── Changelog ──
+
+  @Get('changelog')
+  getChangelogs() {
+    return this.adminService.getChangelogs();
+  }
+
+  @Get('changelog/next-version')
+  getNextVersion() {
+    return this.adminService.getNextVersion().then(v => ({ version: v }));
+  }
+
+  @Post('changelog')
+  createChangelog(@Body() body: { title: string; content: string; version?: string }, @Req() req: any) {
+    return this.adminService.createChangelog(body, req.user.sub);
+  }
+
+  @Put('changelog/:id')
+  updateChangelog(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    return this.adminService.updateChangelog(id, body, req.user.sub);
+  }
+
+  @Delete('changelog/:id')
+  deleteChangelog(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteChangelog(id, req.user.sub);
+  }
+
+  // ── Activity Heatmap ──
+
+  @Get('stats/activity-heatmap')
+  getActivityHeatmap() {
+    return this.adminService.getActivityHeatmap();
+  }
+
+  // ── Branding ──
+
+  @Get('branding')
+  getBranding() {
+    return this.adminService.getBranding();
+  }
+
+  @Put('branding')
+  updateBranding(@Body() body: any, @Req() req: any) {
+    return this.adminService.updateBranding(body, req.user.sub);
+  }
+
+  // ── Webhooks ──
+
+  @Get('webhooks')
+  getWebhookConfig() {
+    return this.adminService.getWebhookConfig();
+  }
+
+  @Put('webhooks')
+  updateWebhookConfig(@Body() body: { url: string; events: string[]; enabled: boolean }, @Req() req: any) {
+    return this.adminService.updateWebhookConfig(body, req.user.sub);
+  }
+
+  @Post('webhooks/test')
+  testWebhook(@Body() body: { url: string }) {
+    return this.adminService.testWebhook(body.url);
+  }
 }

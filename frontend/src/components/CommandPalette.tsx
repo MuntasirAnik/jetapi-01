@@ -18,12 +18,14 @@ export default function CommandPalette({
   workspaces = [],
   onSelectRequest,
   onSwitchTab,
+  onShowShortcuts,
 }: {
   isOpen: boolean;
   onClose: () => void;
   workspaces: any[];
   onSelectRequest: (req: any) => void;
   onSwitchTab?: (tab: string) => void;
+  onShowShortcuts?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,7 +115,7 @@ export default function CommandPalette({
       description: "View all keyboard shortcuts",
       icon: <Keyboard className="w-4 h-4" />,
       category: "Actions",
-      action: () => { onClose(); },
+      action: () => { onClose(); onShowShortcuts?.(); },
       keywords: "keyboard shortcuts hotkeys",
     });
 

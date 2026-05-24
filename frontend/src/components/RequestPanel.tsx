@@ -3,6 +3,7 @@ import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, L
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
+import GraphQLEditor from "./GraphQLEditor";
 import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, onCancel, isSaving, envVariables = [] }: any) {
@@ -919,24 +920,14 @@ const getMethodColor = (method: string) => {
           )}
 
           {bodyState.mode === 'graphql' && (
-            <div className="flex h-full w-full divide-x divide-[var(--border)]">
-               <div className="p-3 flex-1 flex flex-col">
-                 <div className="text-[10px] text-[var(--color-brand-500)] mb-1 uppercase font-bold tracking-widest">QUERY</div>
-                 <textarea 
-                   value={bodyState.graphql.query || ""}
-                   onChange={e => updateBodyObj({ graphql: { ...bodyState.graphql, query: e.target.value } })}
-                   className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded p-3 text-xs font-mono outline-none focus:border-[var(--color-brand-500)] resize-none leading-relaxed"
-                   placeholder="query {&#10;  user(id: 1) {&#10;    name&#10;    email&#10;  }&#10;}" />
-               </div>
-               <div className="p-3 w-1/3 flex flex-col bg-[var(--card)]">
-                 <div className="text-[10px] text-[var(--muted)] mb-1 uppercase font-bold tracking-widest">GRAPHQL VARIABLES</div>
-                 <textarea 
-                   value={bodyState.graphql.variables || ""}
-                   onChange={e => updateBodyObj({ graphql: { ...bodyState.graphql, variables: e.target.value } })}
-                   className="w-full flex-1 bg-[var(--background)] border border-[var(--border)] rounded p-2 text-[11px] font-mono outline-none focus:border-[var(--color-brand-500)] resize-none"
-                   placeholder="{&#10;  &#34;id&#34;: 1&#10;}" />
-               </div>
-            </div>
+            <GraphQLEditor
+              query={bodyState.graphql?.query || ""}
+              variables={bodyState.graphql?.variables || ""}
+              onQueryChange={(q) => updateBodyObj({ graphql: { ...bodyState.graphql, query: q } })}
+              onVariablesChange={(v) => updateBodyObj({ graphql: { ...bodyState.graphql, variables: v } })}
+              requestUrl={request.url || ""}
+              envVariables={envVariables}
+            />
           )}
         </div>
       </div>
