@@ -70,13 +70,13 @@ export default function AnnouncementTicker() {
 
   const allMessages = [...disabledMessages, ...announcements];
 
-  // Before hydration completes, render stable placeholder to avoid mismatch
-  if (!mounted) return <div className="h-7 shrink-0" />;
+  // Before hydration completes, render nothing to avoid layout shift
+  if (!mounted) return null;
 
   // Global admin toggle — if announcements are disabled globally, hide the ticker
-  if (flags.show_announcements === false) return <div className="h-7 shrink-0" />;
+  if (flags.show_announcements === false) return null;
 
-  if (!visible || allMessages.length === 0) return <div className="h-7 shrink-0" />;
+  if (!visible || allMessages.length === 0) return null;
 
   const tickerText = allMessages.join("     •     ");
 
