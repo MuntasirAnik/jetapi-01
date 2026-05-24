@@ -1031,7 +1031,7 @@ const getMethodColor = (method: string) => {
         <div className="flex items-center justify-between">
           <input 
             type="text"
-            value={request.name || "Untitled Request"}
+            value={request.name ?? ""}
             onChange={e => onChange({...request, name: e.target.value})}
             className="bg-transparent text-[18px] font-medium outline-none focus:border-b border-[var(--color-brand-500)] w-3/4 py-0.5"
             placeholder="Request Name"

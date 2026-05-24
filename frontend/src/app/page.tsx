@@ -752,7 +752,7 @@ export default function Home() {
                 request={activeRequest}
                 isSaving={isSavingEndpoint}
                 onChange={(updatedReq: any) => {
-                  setOpenRequests(openRequests.map(r => r.id === updatedReq.id ? updatedReq : r));
+                  setOpenRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
                 }}
                 onDelete={async (req: any) => {
                   if (String(req.id).startsWith('new') || req._isNew) {
@@ -790,9 +790,9 @@ export default function Home() {
                       const errData = await res.json().catch(() => ({}));
                       throw new Error(errData.message || 'Failed to save');
                     }
-                    // update active request with saved data
+                    // update active request with saved data, preserving frontend-only props
                     const saved = await res.json();
-                    setOpenRequests(prev => prev.map(r => r.id === saved.id ? saved : r));
+                    setOpenRequests(prev => prev.map(r => r.id === saved.id ? { ...saved, _breadcrumb: r._breadcrumb } : r));
                   } catch (e: any) {
                     toast.error("Error saving request: " + e.message);
                   } finally {
