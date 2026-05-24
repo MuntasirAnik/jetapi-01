@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2, Eye, EyeOff, Wand2, XCircle } from "lucide-react";
+import { Play, Save, ChevronDown, Check, Trash2, Plus, GripVertical, Download, Lock, Send, Share2, Link2, Loader2, Eye, EyeOff, Wand2, XCircle, Globe, Monitor } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
 import GraphQLEditor from "./GraphQLEditor";
 import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
-export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, onCancel, isSaving, envVariables = [] }: any) {
+export default function RequestPanel({ request, onChange, onSend, onSave, onSaveAs, onDelete, loading, onCancel, isSaving, envVariables = [], browserMode = false, onToggleBrowserMode }: any) {
   const flags = useFeatureFlags();
   const [activeTab, setActiveTab] = useState("Params");
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
@@ -1176,6 +1176,17 @@ const getMethodColor = (method: string) => {
             {renderVarSuggest('url-input', request.url || '', handleUrlChange)}
           </div>
           
+          <button 
+            onClick={() => onToggleBrowserMode?.()}
+            className={`p-1.5 rounded text-xs font-bold flex items-center gap-1 transition-all border ${
+              browserMode 
+                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20' 
+                : 'bg-[var(--sidebar)] text-[var(--muted)] border-[var(--border)] hover:text-[var(--foreground)] hover:border-[var(--foreground)]/30'
+            }`}
+            title={browserMode ? 'Browser Mode: Requests run from your browser (can reach localhost)' : 'Cloud Mode: Requests run from the server (better for CORS)'}
+          >
+            {browserMode ? <Monitor className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+          </button>
           <button 
             onClick={() => {
               if (!flags.allow_api_execution && !loading) {

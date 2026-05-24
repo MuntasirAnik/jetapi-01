@@ -671,29 +671,34 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     if (!drag) return;
     dragDataRef.current = null;
 
-    // Can't drop across collections
-    if (drag.collectionId !== targetCollectionId) {
-      toast.error("Cannot move items between collections");
-      return;
-    }
-
     const targetPath = targetFolderPath || '';
+    const isCrossCollection = drag.collectionId !== targetCollectionId;
 
     if (drag.type === 'request') {
-      // Don't move if already in the target folder
-      if ((drag.folder || '') === targetPath) return;
+      // Don't move if already in the same spot
+      if (!isCrossCollection && (drag.folder || '') === targetPath) return;
 
       try {
         const res = await apiFetch('/requests/move', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId: drag.id, newFolder: targetPath || null }),
+          body: JSON.stringify({
+            requestId: drag.id,
+            newFolder: targetPath || null,
+            ...(isCrossCollection ? { newCollectionId: targetCollectionId } : {}),
+          }),
         });
         if (res.ok) {
-          toast.success(`Moved "${drag.name}" to ${targetPath || 'root'}`);
+          const targetCol = workspaces.flatMap((w: any) => w.collections || []).find((c: any) => c.id === targetCollectionId);
+          const targetName = targetCol?.name || 'collection';
+          toast.success(isCrossCollection
+            ? `Moved "${drag.name}" to ${targetName}${targetPath ? '/' + targetPath : ''}`
+            : `Moved "${drag.name}" to ${targetPath || 'root'}`
+          );
           window.dispatchEvent(new Event('postclone-refresh-sidebar'));
         } else {
-          toast.error('Failed to move request');
+          const err = await res.json().catch(() => ({}));
+          toast.error(err.message || 'Failed to move request');
         }
       } catch {
         toast.error('Failed to move request');
@@ -704,10 +709,8 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
       const folderName = oldPath.split('/').pop() || oldPath;
       const newPath = targetPath ? `${targetPath}/${folderName}` : folderName;
 
-      if (newPath === oldPath) return;
-
-      // Can't drop folder into itself
-      if (newPath.startsWith(oldPath + '/') || newPath === oldPath) {
+      // Can't drop folder into itself (only within same collection)
+      if (!isCrossCollection && (newPath === oldPath || newPath.startsWith(oldPath + '/'))) {
         toast.error("Cannot move a folder into itself");
         return;
       }
@@ -717,13 +720,19 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            collectionId: targetCollectionId,
+            collectionId: drag.collectionId,
             oldPath,
             newPath,
+            ...(isCrossCollection ? { targetCollectionId } : {}),
           }),
         });
         if (res.ok) {
-          toast.success(`Moved folder "${folderName}" to ${targetPath || 'root'}`);
+          const targetCol = workspaces.flatMap((w: any) => w.collections || []).find((c: any) => c.id === targetCollectionId);
+          const targetName = targetCol?.name || 'collection';
+          toast.success(isCrossCollection
+            ? `Moved folder "${folderName}" to ${targetName}${targetPath ? '/' + targetPath : ''}`
+            : `Moved folder "${folderName}" to ${targetPath || 'root'}`
+          );
           window.dispatchEvent(new Event('postclone-refresh-sidebar'));
         } else {
           const err = await res.json().catch(() => ({}));

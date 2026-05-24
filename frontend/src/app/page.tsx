@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, getApiError } from "@/lib/api";
-import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2, Pin, PinOff } from "lucide-react";
+import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, Loader2, Pin, PinOff, Globe, Monitor } from "lucide-react";
 import dynamic from "next/dynamic";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 import Sidebar from "@/components/Sidebar";
@@ -80,6 +80,17 @@ export default function Home() {
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(false); // Global States
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Browser Mode: execute requests directly from the browser instead of through the server proxy
+  const [browserMode, setBrowserMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('jetapi_browser_mode') === 'true';
+    }
+    return false;
+  });
+  useEffect(() => {
+    localStorage.setItem('jetapi_browser_mode', String(browserMode));
+  }, [browserMode]);
 
   // Right Context Menu State
   const [rightPanelOpen, setRightPanelOpen] = useState<string | null>(null);
@@ -899,26 +910,92 @@ export default function Home() {
                       }
                     }
 
-                    const payload = {
-                      ...reqData,
-                      url: cleanUrl,
-                      body: payloadData,
-                      headers: Object.keys(finalHeaders).reduce((acc: any, key: string) => {
+                    const interpolatedHeaders = Object.keys(finalHeaders).reduce((acc: any, key: string) => {
                         acc[key] = typeof finalHeaders[key] === 'string' ? interpolate(finalHeaders[key]) : finalHeaders[key];
                         return acc;
-                      }, {}),
-                      params: undefined
-                    };
+                      }, {});
 
-                    // API Call to our NestJS proxy
-                    const res = await apiFetch("/proxy/execute", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(payload),
-                      signal: controller.signal,
-                    });
+                    let data: any;
 
-                    const data = await res.json();
+                    if (browserMode) {
+                      // ── BROWSER MODE: execute directly via fetch() ──
+                      const startTime = performance.now();
+                      try {
+                        // Build fetch options
+                        const fetchOpts: RequestInit = {
+                          method: reqData.method || 'GET',
+                          headers: interpolatedHeaders,
+                          signal: controller.signal,
+                        };
+
+                        // Attach body for non-GET/HEAD methods
+                        if (reqData.method !== 'GET' && reqData.method !== 'HEAD' && payloadData !== undefined) {
+                          if (typeof payloadData === 'object' && payloadData._isFormData) {
+                            const formData = new FormData();
+                            (payloadData.items || []).forEach((item: any) => {
+                              if (item.key && item.enabled !== false) formData.append(item.key, item.value || '');
+                            });
+                            fetchOpts.body = formData;
+                            // Let browser set Content-Type with boundary
+                            delete (fetchOpts.headers as any)['Content-Type'];
+                          } else {
+                            fetchOpts.body = typeof payloadData === 'string' ? payloadData : JSON.stringify(payloadData);
+                          }
+                        }
+
+                        const browserRes = await fetch(cleanUrl, fetchOpts);
+                        const totalMs = Math.round(performance.now() - startTime);
+                        const resText = await browserRes.text();
+                        let resData: any = resText;
+                        try { resData = JSON.parse(resText); } catch {}
+
+                        // Convert headers to plain object
+                        const resHeaders: any = {};
+                        browserRes.headers.forEach((v, k) => { resHeaders[k] = v; });
+
+                        data = {
+                          status: browserRes.status,
+                          statusText: browserRes.statusText,
+                          headers: resHeaders,
+                          data: resData,
+                          timeMs: totalMs,
+                          timing: { dnsMs: 0, tcpMs: 0, tlsMs: 0, ttfbMs: 0, downloadMs: 0, totalMs },
+                          size: resText.length,
+                        };
+                      } catch (fetchErr: any) {
+                        const totalMs = Math.round(performance.now() - startTime);
+                        if (fetchErr.name === 'AbortError') throw fetchErr;
+                        data = {
+                          status: 0,
+                          statusText: 'Browser Error',
+                          headers: {},
+                          data: fetchErr.message.includes('Failed to fetch')
+                            ? `Browser blocked this request. This is likely a CORS issue — the target server doesn't allow requests from this origin. Try Cloud Mode instead.`
+                            : fetchErr.message,
+                          timeMs: totalMs,
+                          timing: { dnsMs: 0, tcpMs: 0, tlsMs: 0, ttfbMs: 0, downloadMs: 0, totalMs },
+                          size: 0,
+                        };
+                      }
+                    } else {
+                      // ── CLOUD MODE: execute via server proxy ──
+                      const payload = {
+                        ...reqData,
+                        url: cleanUrl,
+                        body: payloadData,
+                        headers: interpolatedHeaders,
+                        params: undefined
+                      };
+
+                      const res = await apiFetch("/proxy/execute", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal,
+                      });
+
+                      data = await res.json();
+                    }
                     setResponseData(data);
 
                     // Execute test scripts if present
@@ -977,6 +1054,8 @@ export default function Home() {
                   }
                 }}
                 envVariables={[...envVariables, ...globalVariables]}
+                browserMode={browserMode}
+                onToggleBrowserMode={() => setBrowserMode(prev => !prev)}
               />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-[var(--muted)] bg-[var(--card)]/30">

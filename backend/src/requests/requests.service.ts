@@ -234,15 +234,32 @@ export class RequestsService {
     await this.requestRepository.remove(request);
   }
 
-  // Move a single request to a different folder (within same collection)
-  async moveRequest(id: string, newFolder: string | null, userId: string): Promise<RequestItem> {
+  // Move a single request to a different folder, optionally across collections
+  async moveRequest(id: string, newFolder: string | null, userId: string, newCollectionId?: string): Promise<RequestItem> {
     const request = await this.findOne(id, userId);
 
+    // Check edit access on source collection
     if (request.collectionId) {
       const role = await this.getShareRole(request.collectionId, userId);
       if (role && !this.canEdit(role)) {
-        throw new ForbiddenException('You have view-only access to this collection.');
+        throw new ForbiddenException('You have view-only access to the source collection.');
       }
+    }
+
+    // If moving to a different collection, check edit access on target collection
+    if (newCollectionId && newCollectionId !== request.collectionId) {
+      const targetRole = await this.getShareRole(newCollectionId, userId);
+      if (targetRole && !this.canEdit(targetRole)) {
+        throw new ForbiddenException('You have view-only access to the target collection.');
+      }
+      // Check for duplicate name in target collection
+      const existing = await this.requestRepository.findOne({
+        where: { name: request.name, collectionId: newCollectionId },
+      });
+      if (existing) {
+        throw new BadRequestException(`A request named "${request.name}" already exists in the target collection.`);
+      }
+      request.collectionId = newCollectionId;
     }
 
     request.folder = newFolder || ('' as any);
@@ -257,7 +274,7 @@ export class RequestsService {
         action: 'UPDATED',
         entityType: 'REQUEST',
         entityId: saved.id,
-        entityName: `Moved "${saved.name}" to ${newFolder || 'root'}`,
+        entityName: `Moved "${saved.name}" to ${newFolder || 'root'}${newCollectionId && newCollectionId !== request.collectionId ? ' (cross-collection)' : ''}`,
         collectionId: saved.collectionId,
       });
     } catch {}
@@ -265,21 +282,32 @@ export class RequestsService {
     return saved;
   }
 
-  // Move an entire folder (and all its children) to a new parent folder
+  // Move an entire folder (and all its children) to a new parent folder, optionally across collections
   async moveFolder(
     collectionId: string,
     oldPath: string,
     newPath: string,
     userId: string,
+    targetCollectionId?: string,
   ): Promise<{ updated: number }> {
-    // Verify permission
+    // Verify permission on source collection
     const role = await this.getShareRole(collectionId, userId);
     if (role && !this.canEdit(role)) {
-      throw new ForbiddenException('You have view-only access to this collection.');
+      throw new ForbiddenException('You have view-only access to the source collection.');
     }
 
-    // Prevent moving a folder into itself
-    if (newPath === oldPath || newPath.startsWith(oldPath + '/')) {
+    const isCrossCollection = targetCollectionId && targetCollectionId !== collectionId;
+
+    // Verify permission on target collection if cross-collection
+    if (isCrossCollection) {
+      const targetRole = await this.getShareRole(targetCollectionId, userId);
+      if (targetRole && !this.canEdit(targetRole)) {
+        throw new ForbiddenException('You have view-only access to the target collection.');
+      }
+    }
+
+    // Prevent moving a folder into itself (only relevant within same collection)
+    if (!isCrossCollection && (newPath === oldPath || newPath.startsWith(oldPath + '/'))) {
       throw new BadRequestException('Cannot move a folder into itself.');
     }
 
@@ -299,6 +327,10 @@ export class RequestsService {
       } else {
         // Replace prefix: "oldPath/sub" → "newPath/sub"
         req.folder = newPath + req.folder.substring(oldPath.length);
+      }
+      // Update collectionId if cross-collection
+      if (isCrossCollection) {
+        req.collectionId = targetCollectionId;
       }
     }
 

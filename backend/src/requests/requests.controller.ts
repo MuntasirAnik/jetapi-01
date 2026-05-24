@@ -16,13 +16,13 @@ export class RequestsController {
   }
 
   @Patch('move')
-  async moveRequest(@Body() body: { requestId: string; newFolder: string | null }, @Request() req: any) {
-    return this.requestsService.moveRequest(body.requestId, body.newFolder, req.user.sub);
+  async moveRequest(@Body() body: { requestId: string; newFolder: string | null; newCollectionId?: string }, @Request() req: any) {
+    return this.requestsService.moveRequest(body.requestId, body.newFolder, req.user.sub, body.newCollectionId);
   }
 
   @Patch('move-folder')
-  async moveFolder(@Body() body: { collectionId: string; oldPath: string; newPath: string }, @Request() req: any) {
-    return this.requestsService.moveFolder(body.collectionId, body.oldPath, body.newPath, req.user.sub);
+  async moveFolder(@Body() body: { collectionId: string; oldPath: string; newPath: string; targetCollectionId?: string }, @Request() req: any) {
+    return this.requestsService.moveFolder(body.collectionId, body.oldPath, body.newPath, req.user.sub, body.targetCollectionId);
   }
 
   @Get()
