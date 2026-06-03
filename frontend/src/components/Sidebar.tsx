@@ -221,6 +221,54 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     });
   };
 
+  const handleNewFolderFromContext = async () => {
+    if (!contextMenu) return;
+    const folderName = await promptDialog("Enter new folder name:");
+    if (!folderName || !folderName.trim()) return;
+    const trimmedName = folderName.trim();
+
+    const col = workspaces.flatMap((w:any)=>w.collections||[]).find((c:any) => c.id === contextMenu.id);
+    const colName = col?.name || "Unknown";
+    let newFolderPath: string;
+    const breadcrumb = [colName];
+
+    if (contextMenu.type === 'folder' && contextMenu.folderPath) {
+      // Creating subfolder inside an existing folder
+      newFolderPath = `${contextMenu.folderPath}/${trimmedName}`;
+      breadcrumb.push(...contextMenu.folderPath.split('/'), trimmedName);
+    } else {
+      // Creating folder at collection root
+      newFolderPath = trimmedName;
+      breadcrumb.push(trimmedName);
+    }
+
+    // Expand the collection and new folder path in the sidebar
+    setExpandedCollections((prev: any) => ({ ...prev, [contextMenu.id]: true }));
+    const pathParts = newFolderPath.split('/');
+    const newFolders: Record<string, boolean> = {};
+    let currentPath = '';
+    for (const part of pathParts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      newFolders[`${contextMenu.id}-${currentPath}`] = true;
+    }
+    setExpandedFolders((prev: any) => ({ ...prev, ...newFolders }));
+
+    // Open a new request editor pre-set into the new folder
+    onSelectRequest({ 
+      id: `new-${Date.now()}`, 
+      collectionId: contextMenu.id,
+      folder: newFolderPath,
+      name: 'Untitled Request', 
+      method: 'GET', 
+      url: '',
+      headers: [],
+      params: [],
+      body: '',
+      _isNew: true,
+      _breadcrumb: breadcrumb
+    });
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
@@ -811,6 +859,40 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                     >
                       <FilePlus className="w-3.5 h-3.5" />
                     </button>
+                    <button
+                      onClick={async (e) => {
+                         e.stopPropagation();
+                         const folderName = await promptDialog("Enter new folder name:");
+                         if (!folderName || !folderName.trim()) return;
+                         const newFolderPath = `${child.path}/${folderName.trim()}`;
+                         // Expand the new folder path
+                         const pathParts = newFolderPath.split('/');
+                         const newFolders: Record<string, boolean> = {};
+                         let currentPath = '';
+                         for (const part of pathParts) {
+                           currentPath = currentPath ? `${currentPath}/${part}` : part;
+                           newFolders[`${collectionId}-${currentPath}`] = true;
+                         }
+                         setExpandedFolders((prev: any) => ({ ...prev, ...newFolders }));
+                         onSelectRequest({ 
+                           id: `new-${Date.now()}`, 
+                           collectionId: collectionId,
+                           folder: newFolderPath,
+                           name: 'Untitled Request', 
+                           method: 'GET', 
+                           url: '',
+                           headers: [],
+                           params: [],
+                           body: '',
+                           _isNew: true,
+                           _breadcrumb: [collectionName, ...newFolderPath.split('/')]
+                         });
+                      }}
+                      className="hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded mr-0.5 transition-colors cursor-pointer"
+                      title="New Folder"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                    </button>
                     <button 
                       onClick={(e) => handleContextMenuClick(e, 'folder', collectionId, child.name, child.path)}
                       className="hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded transition-colors cursor-pointer"
@@ -882,6 +964,9 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
           <div className="w-[200px]">
             <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={() => { handleAddRequestFromContext(); setContextMenu(null); }}>
               <div className="flex items-center gap-2"><FilePlus className="w-3.5 h-3.5 opacity-70" /> Add Request</div>
+            </button>
+            <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={() => { handleNewFolderFromContext(); setContextMenu(null); }}>
+              <div className="flex items-center gap-2"><FolderPlus className="w-3.5 h-3.5 opacity-70" /> New Folder</div>
             </button>
 
             {contextMenu.type === 'collection' && (

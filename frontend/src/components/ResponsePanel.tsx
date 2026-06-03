@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Search, Copy, Check, Globe, MoreHorizontal, AlignLeft, Filter, Link2, Download, History, Code2, PlaySquare, Eye, Bookmark, CheckCircle2, XCircle, FlaskConical, ChevronsDownUp, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, Copy, Check, Globe, MoreHorizontal, AlignLeft, Filter, Link2, Download, History, Code2, PlaySquare, Eye, Bookmark, CheckCircle2, XCircle, FlaskConical, ChevronsDownUp, ChevronsUpDown, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "react-toastify";
 import { copyToClipboard } from "@/lib/api";
 import StyledSelect from "./StyledSelect";
@@ -49,6 +49,7 @@ function getVisibleLines(lines: string[], foldRegions: Map<number, number>, coll
 // Syntax highlight a single JSON line
 function highlightJsonLine(line: string): string {
   let html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Syntax highlighting
   const regex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g;
   html = html.replace(regex, (match) => {
     let cls = 'json-bracket';
@@ -63,6 +64,24 @@ function highlightJsonLine(line: string): string {
     }
     return `<span class="${cls}">${match}</span>`;
   });
+
+  // Handle indentation guides (vertical lines for spacing)
+  const spaceMatch = html.match(/^(\s+)/);
+  if (spaceMatch) {
+    const spaces = spaceMatch[1];
+    let indentHtml = '';
+    // Use chunks of 4 spaces for the guides
+    for (let i = 0; i < spaces.length; i += 4) {
+      const chunk = spaces.substring(i, i + 4);
+      if (chunk.length === 4) {
+        indentHtml += `<span class="indent-guide">${chunk}</span>`;
+      } else {
+        indentHtml += chunk;
+      }
+    }
+    html = indentHtml + html.substring(spaces.length);
+  }
+
   return html;
 }
 
@@ -338,21 +357,35 @@ export default function ResponsePanel({ response, loading, request, testResults 
   };
 
   const filteredData = activeTab === 'Body' ? applyJsonFilter(data, filterQuery) : data;
-  
+
+  // If data is a string that looks like valid JSON, parse it for beautification
+  let parsedData = filteredData;
+  if (typeof filteredData === 'string' && filteredData.trim()) {
+    const trimmed = filteredData.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        parsedData = JSON.parse(filteredData);
+      } catch {}
+    }
+  }
+
   let effectiveType = responseType;
   if (effectiveType === 'Auto') {
-    effectiveType = typeof filteredData === 'object' ? 'JSON' : 'Text';
-    if (typeof filteredData === 'string' && filteredData.trim().startsWith('<')) {
+    if (typeof parsedData === 'object' && parsedData !== null) {
+      effectiveType = 'JSON';
+    } else if (typeof filteredData === 'string' && filteredData.trim().startsWith('<')) {
       effectiveType = filteredData.toLowerCase().includes('<html') ? 'HTML' : 'XML';
+    } else {
+      effectiveType = 'Text';
     }
   }
 
   const getFormattedData = () => {
-    if (filteredData === undefined || filteredData === null) return "";
+    if (parsedData === undefined || parsedData === null) return "";
     
     let rawStr = '';
     
-    if ((effectiveType === 'XML' || effectiveType === 'HTML') && typeof filteredData === 'object') {
+    if ((effectiveType === 'XML' || effectiveType === 'HTML') && typeof parsedData === 'object') {
        // Convert JSON object to basic XML structure for display purposes
        const jsonToXml = (obj: any): string => {
          if (obj === null) return 'null';
@@ -369,9 +402,9 @@ export default function ResponsePanel({ response, loading, request, testResults 
          }
          return xml;
        };
-       rawStr = `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n${jsonToXml(filteredData)}\n</root>`;
+       rawStr = `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n${jsonToXml(parsedData)}\n</root>`;
     } else {
-       rawStr = typeof filteredData === 'object' ? JSON.stringify(filteredData, null, 2) : String(filteredData);
+       rawStr = typeof parsedData === 'object' ? JSON.stringify(parsedData, null, 4) : String(parsedData);
     }
     
     if (effectiveType === 'Hex') {
@@ -731,7 +764,7 @@ export default function ResponsePanel({ response, loading, request, testResults 
                <>
                  <button 
                    onClick={() => { 
-                     const lines = JSON.stringify(filteredData, null, 2).split('\n');
+                     const lines = JSON.stringify(parsedData, null, 4).split('\n');
                      const regions = buildFoldRegions(lines);
                      setCollapsedLines(collectAllFoldLines(regions)); 
                    }}
@@ -821,24 +854,25 @@ export default function ResponsePanel({ response, loading, request, testResults 
       {/* 3. Response Panel Display */}
       {activeTab === 'Body' ? (
         <div className="flex-1 relative overflow-hidden">
-          <div className="h-full overflow-auto bg-[var(--sidebar)] py-3 text-xs font-mono text-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30" ref={bodyScrollRef}>
-            <div className="text-[var(--foreground)]" ref={responseHtmlRef}>
-              {effectiveType === 'JSON' && typeof filteredData === 'object' && !searchQuery.trim() ? (() => {
-                const jsonStr = JSON.stringify(filteredData, null, 2);
+          <div className="h-full overflow-auto bg-[#1e1e1e] py-3 font-mono text-[#d4d4d4] selection:bg-[var(--color-brand-500)]/30 font-medium" ref={bodyScrollRef} style={{ fontSize: '13.5px', lineHeight: '1.5' }}>
+            <div className="text-[#d4d4d4]" ref={responseHtmlRef}>
+              {effectiveType === 'JSON' && typeof parsedData === 'object' && parsedData !== null && !searchQuery.trim() ? (() => {
+                const jsonStr = JSON.stringify(parsedData, null, 4);
                 const lines = jsonStr.split('\n');
                 const foldRegions = buildFoldRegions(lines);
                 const visibleLines = getVisibleLines(lines, foldRegions, collapsedLines);
 
                 return visibleLines.map((line, displayIdx) => (
-                  <div key={`${line.originalIndex}-${displayIdx}`} className="flex resp-line-hover">
-                    <span className="w-10 shrink-0 text-right pr-3 resp-line-num select-none border-r resp-line-border mr-2 inline-block">{displayIdx + 1}</span>
+                  <div key={`${line.originalIndex}-${displayIdx}`} className="flex resp-line-hover px-2">
+                    <span className="w-12 shrink-0 text-right pr-3 resp-line-num select-none border-r resp-line-border mr-3 inline-block" style={{ fontSize: '11px' }}>{displayIdx + 1}</span>
                     {line.isFoldable ? (
                       <span className="flex items-center flex-1 whitespace-pre-wrap break-words">
                         <button 
                           onClick={() => toggleLine(line.originalIndex)} 
-                          className="text-[var(--muted)] hover:text-[var(--foreground)] mr-1 shrink-0 transition-colors w-4 text-center"
+                          className="text-[var(--muted)] hover:text-[var(--foreground)] mr-1 shrink-0 transition-colors flex items-center justify-center"
+                          style={{ width: '16px', height: '16px' }}
                         >
-                          {line.isCollapsed ? '▶' : '▼'}
+                          {line.isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
                         <span dangerouslySetInnerHTML={{ __html: highlightJsonLine(line.content) }} />
                         {line.isCollapsed && (

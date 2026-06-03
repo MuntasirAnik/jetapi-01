@@ -457,9 +457,28 @@ select:hover {
 }
 
 /* Response panel code viewer — theme-aware line styles */
-.resp-line-hover:hover { background-color: var(--card); }
-.resp-line-num { color: var(--muted); opacity: 0.6; }
-.resp-line-border { border-color: var(--border); }
+.resp-line-hover { 
+  transition: background-color 0.1s ease;
+  min-height: 22px;
+}
+.resp-line-hover:hover { 
+  background-color: var(--card);
+}
+.resp-line-num { 
+  color: var(--muted); 
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+.resp-line-border { border-color: var(--border); opacity: 0.5; }
+
+/* Indentation guides for JSON viewer */
+.indent-guide {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: inline-block;
+}
+[data-theme='light'] .indent-guide {
+  border-left-color: rgba(0, 0, 0, 0.08);
+}
 
 /* Floating label animation */
 @keyframes floatLabel {
@@ -481,14 +500,21 @@ select:hover {
   box-shadow: 0 0 8px rgba(255, 108, 55, 0.3);
 }
 
-/* Request body editor syntax highlights */
-.json-key { color: #82aaff; }
-.json-string { color: #c3e88d; }
-.json-number { color: #f78c6c; }
-.json-bool { color: #c792ea; }
-.json-null { color: #89ddff; }
-.json-bracket { color: #89ddff; opacity: 0.7; }
+/* Request body editor syntax highlights — Postman Exact */
+.json-key { color: #9cdcfe; }
+.json-string { color: #ce9178; }
+.json-number { color: #b5cea8; }
+.json-bool { color: #569cd6; }
+.json-null { color: #569cd6; }
+.json-bracket { color: #d4d4d4; }
 
+/* Indentation guides for JSON viewer */
+.indent-guide {
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+[data-theme='light'] .indent-guide {
+  border-left-color: rgba(0, 0, 0, 0.15);
+}
 [data-theme='light'] .json-key { color: #0550ae; }
 [data-theme='light'] .json-string { color: #0a3069; }
 [data-theme='light'] .json-number { color: #cf222e; }

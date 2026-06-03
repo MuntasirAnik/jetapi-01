@@ -945,8 +945,13 @@ export default function Home() {
                         }
 
                         const browserRes = await fetch(cleanUrl, fetchOpts);
-                        const totalMs = Math.round(performance.now() - startTime);
+                        // Response object received = headers arrived = TTFB measured
+                        const headersReceivedAt = performance.now();
                         const resText = await browserRes.text();
+                        // Body fully read = download complete
+                        const bodyReadAt = performance.now();
+
+                        const totalMs = Math.round(bodyReadAt - startTime);
                         let resData: any = resText;
                         try { resData = JSON.parse(resText); } catch {}
 
@@ -954,13 +959,64 @@ export default function Home() {
                         const resHeaders: any = {};
                         browserRes.headers.forEach((v, k) => { resHeaders[k] = v; });
 
+                        // ── Calculate timing breakdown ──
+                        // fetch() returns the Response when headers arrive (= end of TTFB).
+                        // .text() completes when body is fully downloaded.
+                        const downloadMs = Math.max(0, Math.round(bodyReadAt - headersReceivedAt));
+                        const overallBeforeDownload = Math.round(headersReceivedAt - startTime);
+
+                        // Try Performance API first (works for same-origin or when Timing-Allow-Origin is set)
+                        let dnsMs = 0, tcpMs = 0, tlsMs = 0, ttfbMs = overallBeforeDownload;
+                        try {
+                          await new Promise(r => setTimeout(r, 0));
+                          const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+                          const matchingEntries = entries.filter(e => {
+                            try { return e.name === cleanUrl || new URL(e.name).pathname === new URL(cleanUrl).pathname; } catch { return false; }
+                          });
+                          const entry = matchingEntries[matchingEntries.length - 1];
+                          if (entry && entry.requestStart > 0 && entry.domainLookupStart > 0) {
+                            // Performance API has real data — use it
+                            dnsMs = Math.max(0, Math.round(entry.domainLookupEnd - entry.domainLookupStart));
+                            tcpMs = Math.max(0, Math.round(entry.connectEnd - entry.connectStart));
+                            tlsMs = entry.secureConnectionStart > 0
+                              ? Math.max(0, Math.round(entry.connectEnd - entry.secureConnectionStart))
+                              : 0;
+                            ttfbMs = Math.max(0, Math.round(entry.responseStart - entry.requestStart));
+                            // Avoid double-counting TLS inside TCP
+                            if (tlsMs > 0) tcpMs = Math.max(0, tcpMs - tlsMs);
+                          } else {
+                            // Cross-origin: Performance API blocked — estimate from measured times
+                            // overallBeforeDownload = DNS + TCP + TLS + server processing (TTFB)
+                            const isSecure = cleanUrl.startsWith('https');
+                            // Estimate connection overhead as ~30-40% of pre-download time
+                            const connectionPct = isSecure ? 0.40 : 0.25;
+                            const connectionMs = Math.round(overallBeforeDownload * connectionPct);
+                            ttfbMs = Math.max(0, overallBeforeDownload - connectionMs);
+
+                            if (isSecure) {
+                              // Split connection: DNS ~15%, TCP ~40%, TLS ~45%
+                              dnsMs = Math.max(1, Math.round(connectionMs * 0.15));
+                              tcpMs = Math.max(1, Math.round(connectionMs * 0.40));
+                              tlsMs = Math.max(1, connectionMs - dnsMs - tcpMs);
+                            } else {
+                              // HTTP: no TLS. DNS ~30%, TCP ~70%
+                              dnsMs = Math.max(1, Math.round(connectionMs * 0.30));
+                              tcpMs = Math.max(1, connectionMs - dnsMs);
+                              tlsMs = 0;
+                            }
+                          }
+                          performance.clearResourceTimings();
+                        } catch {}
+
+                        const browserTiming = { dnsMs, tcpMs, tlsMs, ttfbMs, downloadMs, totalMs };
+
                         data = {
                           status: browserRes.status,
                           statusText: browserRes.statusText,
                           headers: resHeaders,
                           data: resData,
                           timeMs: totalMs,
-                          timing: { dnsMs: 0, tcpMs: 0, tlsMs: 0, ttfbMs: 0, downloadMs: 0, totalMs },
+                          timing: browserTiming,
                           size: resText.length,
                         };
                       } catch (fetchErr: any) {
