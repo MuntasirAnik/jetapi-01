@@ -770,12 +770,12 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
         <div key={pathPrefix || 'root'}>
           {Object.values(node.children).map((child: any) => {
             const folderId = `${collectionId}-${child.path}`;
-            const isExpanded = searchQuery ? true : expandedFolders[folderId];
+            const isExpanded = expandedFolders[folderId] ?? (searchQuery ? true : false);
             const isDragOver = dragOverTarget === `folder-${collectionId}-${child.path}`;
             return (
               <div key={folderId} className="mb-0.5">
                 <div 
-                  className={`flex items-center gap-2 p-1 hover:bg-[var(--card)] rounded cursor-pointer group text-[var(--muted)] transition-all
+                  className={`flex items-center gap-2 p-1 hover:bg-[var(--card)] rounded cursor-pointer group text-[var(--foreground)] transition-all
                     ${isDragOver ? 'ring-2 ring-[var(--color-brand-500)] bg-[var(--color-brand-500)]/10' : ''}`}
                   onClick={() => toggleFolder(folderId)}
                   draggable
@@ -836,18 +836,18 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                 _breadcrumb: [collectionName, ...(req.folder ? req.folder.split('/') : [])].filter(Boolean) 
               })}
               className={`flex items-center gap-2 p-1 hover:bg-[var(--card)] rounded cursor-pointer group text-xs
-                ${activeRequestId === req.id ? 'bg-[var(--card)] text-[var(--color-brand-500)] font-medium' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+                ${activeRequestId === req.id ? 'bg-[var(--card)] text-[var(--color-brand-500)] font-medium' : 'text-[var(--foreground)] hover:text-[var(--foreground)]'}`}
               draggable
               onDragStart={(e) => handleDragStart(e, 'request', req.id, collectionId, req.folder || '', req.name)}
               onDragEnd={handleDragEnd}
             >
-              <span className={`font-mono font-bold ${
-                req.method === 'GET' ? 'text-green-500' : 
-                req.method === 'POST' ? 'text-orange-500' :
-                req.method === 'PUT' ? 'text-blue-500' : 
-                req.method === 'DELETE' ? 'text-red-500' : 
-                req.method === 'PATCH' ? 'text-yellow-500' : 'text-[var(--foreground)]'
-              }`}>{req.method}</span>
+              <span className={`font-mono font-bold`} style={{
+                color: req.method === 'GET' ? 'var(--method-get)' : 
+                req.method === 'POST' ? 'var(--method-post)' :
+                req.method === 'PUT' ? 'var(--method-put)' : 
+                req.method === 'DELETE' ? 'var(--method-delete)' : 
+                req.method === 'PATCH' ? 'var(--method-patch)' : 'var(--foreground)'
+              }}>{req.method}</span>
               <div className="flex-1 flex items-center min-w-0">
                 <span className="truncate">{req.name}</span>
                 {isDeletingId === req.id && <Loader2 className="w-3 h-3 ml-1.5 animate-spin text-red-500 shrink-0" />}
@@ -1083,13 +1083,13 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                   onClick={() => onSelectRequest(req)}
                   className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left transition-colors hover:bg-[var(--card)] group ${activeRequestId === req.id ? 'bg-[var(--card)]' : ''}`}
                 >
-                  <span className={`text-[10px] font-bold shrink-0 ${
-                    req.method === 'GET' ? 'text-green-500' :
-                    req.method === 'POST' ? 'text-orange-500' :
-                    req.method === 'PUT' ? 'text-blue-500' :
-                    req.method === 'DELETE' ? 'text-red-500' :
-                    'text-[var(--muted)]'
-                  }`}>{req.method?.substring(0, 3) || 'GET'}</span>
+                  <span className="text-[10px] font-bold shrink-0" style={{
+                    color: req.method === 'GET' ? 'var(--method-get)' :
+                    req.method === 'POST' ? 'var(--method-post)' :
+                    req.method === 'PUT' ? 'var(--method-put)' :
+                    req.method === 'DELETE' ? 'var(--method-delete)' :
+                    'var(--muted)'
+                  }}>{req.method?.substring(0, 3) || 'GET'}</span>
                   <span className="text-[11px] truncate flex-1">{req.name || 'Untitled'}</span>
                   <span className="text-[9px] text-[var(--muted)] opacity-0 group-hover:opacity-60 truncate max-w-[60px]">{req._colName}</span>
                   <button
@@ -1198,7 +1198,7 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
             const filteredRequests = getFilteredRequests(col.requests || []);
             if (searchQuery && filteredRequests.length === 0) return null; // Hide collection if no search matches
             
-            const isExpanded = searchQuery ? true : expandedCollections[col.id];
+            const isExpanded = expandedCollections[col.id] ?? (searchQuery ? true : false);
 
             return (
             <div key={col.id} className="mb-0.5">

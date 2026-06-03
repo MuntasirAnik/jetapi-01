@@ -694,12 +694,13 @@ export default function Home() {
                 )}
 
                 <div className="flex-1 text-xs font-medium flex items-center gap-2 overflow-hidden">
-                  <span className={`font-mono text-[10px] font-bold ${req.method === 'GET' ? 'text-green-500' :
-                    req.method === 'POST' ? 'text-orange-500' :
-                      req.method === 'PUT' ? 'text-blue-500' :
-                        req.method === 'DELETE' ? 'text-red-500' :
-                          req.method === 'PATCH' ? 'text-yellow-500' : 'text-[var(--foreground)]'
-                    }`}>{req.method?.substring(0, 3)}</span>
+                  <span className="font-mono text-[10px] font-bold" style={{
+                    color: req.method === 'GET' ? 'var(--method-get)' :
+                      req.method === 'POST' ? 'var(--method-post)' :
+                        req.method === 'PUT' ? 'var(--method-put)' :
+                          req.method === 'DELETE' ? 'var(--method-delete)' :
+                            req.method === 'PATCH' ? 'var(--method-patch)' : 'var(--foreground)'
+                    }}>{req.method?.substring(0, 3)}</span>
                   <span className={`truncate ${activeRequestId === req.id ? 'text-[var(--foreground)]' : 'text-[var(--muted)] group-hover:text-[var(--foreground)]'}`}>
                     {req.name || 'Untitled'}
                   </span>

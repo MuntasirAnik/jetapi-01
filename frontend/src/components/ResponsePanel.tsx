@@ -51,15 +51,15 @@ function highlightJsonLine(line: string): string {
   let html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const regex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g;
   html = html.replace(regex, (match) => {
-    let cls = 'text-[#d4d4d4]';
+    let cls = 'json-bracket';
     if (/^"/.test(match)) {
-      cls = /:$/.test(match) ? 'text-[#9CDCFE]' : 'text-[#D69D85]';
+      cls = /:$/.test(match) ? 'json-key' : 'json-string';
     } else if (/true|false/.test(match)) {
-      cls = 'text-[#569CD6] font-semibold';
+      cls = 'json-bool';
     } else if (/null/.test(match)) {
-      cls = 'text-[#569CD6] italic';
+      cls = 'json-null';
     } else {
-      cls = 'text-[#B5CEA8]';
+      cls = 'json-number';
     }
     return `<span class="${cls}">${match}</span>`;
   });
@@ -527,63 +527,53 @@ export default function ResponsePanel({ response, loading, request, testResults 
     let htmlContent = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     
     if (effectiveType === 'JSON') {
-      // JSON syntax highlighter
       const htmlRegex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
       htmlContent = htmlContent.replace(htmlRegex, (match) => {
-        let cls = 'text-[#d4d4d4]';
+        let cls = 'json-bracket';
         if (/^"/.test(match)) {
-          if (/:$/.test(match)) {
-            cls = 'text-[#9CDCFE]'; // Key
-          } else {
-            cls = 'text-[#D69D85]'; // String
-          }
+          cls = /:$/.test(match) ? 'json-key' : 'json-string';
         } else if (/true|false/.test(match)) {
-          cls = 'text-[#569CD6] font-semibold';
+          cls = 'json-bool';
         } else if (/null/.test(match)) {
-          cls = 'text-[#569CD6] italic';
+          cls = 'json-null';
         } else {
-          cls = 'text-[#B5CEA8]'; // Number
+          cls = 'json-number';
         }
         return `<span class="${cls}">${match}</span>`;
       });
     } else if (effectiveType === 'JavaScript') {
-      // JavaScript syntax highlighter
       const jsRegex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"|'(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\'])*'|\b(function|return|var|let|const|if|else|for|while|break|switch|case|default|class|extends|new|this|super|import|export|from|try|catch|finally|throw|typeof|instanceof|void|delete|in|async|await|yield)\b|\b(true|false|null|undefined)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|\b([a-zA-Z_$][a-zA-Z0-9_$]*)(?=\s*\())/g;
       htmlContent = htmlContent.replace(jsRegex, (match, _, __, ___, keyword, boolean, funcName) => {
-        let cls = 'text-[#d4d4d4]';
+        let cls = 'json-bracket';
         if (/^['"]/.test(match)) {
-           cls = 'text-[#D69D85]'; // String
+           cls = 'json-string';
         } else if (keyword) {
-           cls = 'text-[#C586C0]'; // Keyword purple
+           cls = 'json-null';
         } else if (boolean) {
-           cls = 'text-[#569CD6] font-semibold'; // Boolean blue
+           cls = 'json-bool';
         } else if (funcName) {
-           cls = 'text-[#DCDCAA]'; // Function yellow
+           cls = 'json-key';
         } else if (/^[-\d]/.test(match)) {
-           cls = 'text-[#B5CEA8]'; // Number green
+           cls = 'json-number';
         }
         return `<span class="${cls}">${match}</span>`;
       });
     } else if (effectiveType === 'XML' || effectiveType === 'HTML') {
-      // XML/HTML syntax highlighter
-      // Colors: Tags (Dark blue/cyan), Attributes (Light blue), Strings (Orange), Comments (Green)
-      htmlContent = htmlContent.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="text-[#6A9955]">$1</span>'); // Comments
-      htmlContent = htmlContent.replace(/(&lt;[\/?!?]+[a-zA-Z0-9:-]+)/gi, '<span class="text-[#569CD6]">$1</span>'); // Start of tag with ? or !
-      htmlContent = htmlContent.replace(/(&lt;[a-zA-Z0-9:-]+)/gi, '<span class="text-[#569CD6]">$1</span>'); // Normal start tag
-      htmlContent = htmlContent.replace(/([\/?!?]*&gt;)/gi, '<span class="text-[#569CD6]">$1</span>'); // End of tag
-      htmlContent = htmlContent.replace(/([a-zA-Z0-9:-]+)=(&quot;.*?&quot;|'.*?')/gi, '<span class="text-[#9CDCFE]">$1</span>=<span class="text-[#D69D85]">$2</span>'); // Attributes
+      htmlContent = htmlContent.replace(/(\&lt;!--[\s\S]*?--\&gt;)/g, '<span class="json-string">$1</span>');
+      htmlContent = htmlContent.replace(/(\&lt;[\/?!?]+[a-zA-Z0-9:-]+)/gi, '<span class="json-key">$1</span>');
+      htmlContent = htmlContent.replace(/(\&lt;[a-zA-Z0-9:-]+)/gi, '<span class="json-key">$1</span>');
+      htmlContent = htmlContent.replace(/([\/?!?]*\&gt;)/gi, '<span class="json-key">$1</span>');
+      htmlContent = htmlContent.replace(/([a-zA-Z0-9:-]+)=(\&quot;.*?\&quot;|'.*?')/gi, '<span class="json-null">$1</span>=<span class="json-string">$2</span>');
     }
 
     if (highlight.trim()) {
-      // Escape for regex, but we must protect HTML tags from being matched if the user searches for e.g., "span"
       const escapedQuery = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Negative lookahead to avoid matching inside <...> tags
       const regex = new RegExp(`(${escapedQuery})(?![^<]*>)`, "gi");
-      htmlContent = htmlContent.replace(regex, `<mark class="bg-[#ffb000] text-black rounded px-0.5 font-bold shadow-sm shadow-[#ffb000]/50">$&</mark>`);
+      htmlContent = htmlContent.replace(regex, `<mark class="bg-amber-400 text-black rounded px-0.5 font-bold shadow-sm shadow-amber-400/50">$&</mark>`);
     }
 
     const numberedHtml = htmlContent.split('\n').map((line, i) => {
-      return `<div class="flex hover:bg-[#2a2a2a]"><span class="w-10 shrink-0 text-right pr-3 text-[#6e7681] select-none border-r border-[#333] mr-4">${i + 1}</span><span class="flex-1 whitespace-pre-wrap break-words">${line || ' '}</span></div>`;
+      return `<div class="flex resp-line-hover"><span class="w-10 shrink-0 text-right pr-3 resp-line-num select-none border-r resp-line-border mr-4">${i + 1}</span><span class="flex-1 whitespace-pre-wrap break-words">${line || ' '}</span></div>`;
     }).join('');
 
     return <div dangerouslySetInnerHTML={{ __html: numberedHtml }} />;
@@ -831,8 +821,8 @@ export default function ResponsePanel({ response, loading, request, testResults 
       {/* 3. Response Panel Display */}
       {activeTab === 'Body' ? (
         <div className="flex-1 relative overflow-hidden">
-          <div className="h-full overflow-auto bg-[#1a1a1a] py-3 text-xs font-mono text-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30" ref={bodyScrollRef}>
-            <div className="text-[#d4d4d4]" ref={responseHtmlRef}>
+          <div className="h-full overflow-auto bg-[var(--sidebar)] py-3 text-xs font-mono text-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30" ref={bodyScrollRef}>
+            <div className="text-[var(--foreground)]" ref={responseHtmlRef}>
               {effectiveType === 'JSON' && typeof filteredData === 'object' && !searchQuery.trim() ? (() => {
                 const jsonStr = JSON.stringify(filteredData, null, 2);
                 const lines = jsonStr.split('\n');
@@ -840,20 +830,20 @@ export default function ResponsePanel({ response, loading, request, testResults 
                 const visibleLines = getVisibleLines(lines, foldRegions, collapsedLines);
 
                 return visibleLines.map((line, displayIdx) => (
-                  <div key={`${line.originalIndex}-${displayIdx}`} className="flex hover:bg-[#2a2a2a]">
-                    <span className="w-10 shrink-0 text-right pr-3 text-[#6e7681] select-none border-r border-[#333] mr-2 inline-block">{displayIdx + 1}</span>
+                  <div key={`${line.originalIndex}-${displayIdx}`} className="flex resp-line-hover">
+                    <span className="w-10 shrink-0 text-right pr-3 resp-line-num select-none border-r resp-line-border mr-2 inline-block">{displayIdx + 1}</span>
                     {line.isFoldable ? (
                       <span className="flex items-center flex-1 whitespace-pre-wrap break-words">
                         <button 
                           onClick={() => toggleLine(line.originalIndex)} 
-                          className="text-[#6e7681] hover:text-[#d4d4d4] mr-1 shrink-0 transition-colors w-4 text-center"
+                          className="text-[var(--muted)] hover:text-[var(--foreground)] mr-1 shrink-0 transition-colors w-4 text-center"
                         >
                           {line.isCollapsed ? '▶' : '▼'}
                         </button>
                         <span dangerouslySetInnerHTML={{ __html: highlightJsonLine(line.content) }} />
                         {line.isCollapsed && (
                           <span 
-                            className="text-[#6e7681] cursor-pointer hover:text-[#d4d4d4] px-1.5 text-[10px] bg-[#333] rounded mx-1"
+                            className="text-[var(--muted)] cursor-pointer hover:text-[var(--foreground)] px-1.5 text-[10px] bg-[var(--border)] rounded mx-1"
                             onClick={() => toggleLine(line.originalIndex)}
                           >
                             {line.collapsedCount} lines
@@ -964,7 +954,7 @@ export default function ResponsePanel({ response, loading, request, testResults 
               <div className="flex gap-2">
                 <button 
                   onClick={() => { copyToClipboard(exportModalContent); toast.success("Copied to clipboard!"); }}
-                  className="px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] border border-[var(--border)] rounded text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 bg-[var(--sidebar)] hover:bg-[var(--border)] border border-[var(--border)] rounded text-xs font-semibold flex items-center gap-1.5 transition-colors"
                 >
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </button>
@@ -976,8 +966,8 @@ export default function ResponsePanel({ response, loading, request, testResults 
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto bg-[#1e1e1e] p-4 custom-scrollbar">
-              <pre className="font-mono text-xs text-[#d4d4d4] whitespace-pre-wrap word-break">
+            <div className="flex-1 overflow-auto bg-[var(--sidebar)] p-4 custom-scrollbar">
+              <pre className="font-mono text-xs text-[var(--foreground)] whitespace-pre-wrap word-break">
                 {exportModalContent}
               </pre>
             </div>

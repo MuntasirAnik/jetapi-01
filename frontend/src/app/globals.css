@@ -6,11 +6,16 @@
     --color-brand-500: #ff6c37;
     --color-brand-600: #e85d2b;
     --background: #212121;
-    --foreground: #ededed;
+    --foreground: #ffffff;
     --sidebar: #2b2b2b;
     --border: #3b3b3b;
     --card: #212121;
     --muted: #a6a6a6;
+    --method-get: #22c55e;
+    --method-post: #f97316;
+    --method-put: #3b82f6;
+    --method-delete: #ef4444;
+    --method-patch: #eab308;
   }
 
   :root[data-theme='light'] {
@@ -20,7 +25,12 @@
     --sidebar: #f0f2f5;
     --border: #dfe3e8;
     --card: #ffffff;
-    --muted: #8993a4;
+    --muted: #5f6b7a;
+    --method-get: #0d7d3f;
+    --method-post: #c05600;
+    --method-put: #2563eb;
+    --method-delete: #dc2626;
+    --method-patch: #9a6700;
   }
 
   :root[data-theme='nord'] {
@@ -445,6 +455,11 @@ select:hover {
   border-radius: 6px;
   backdrop-filter: blur(4px);
 }
+
+/* Response panel code viewer — theme-aware line styles */
+.resp-line-hover:hover { background-color: var(--card); }
+.resp-line-num { color: var(--muted); opacity: 0.6; }
+.resp-line-border { border-color: var(--border); }
 
 /* Floating label animation */
 @keyframes floatLabel {
