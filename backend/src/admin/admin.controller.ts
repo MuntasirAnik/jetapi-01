@@ -2,11 +2,15 @@ import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Req,
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
+import { RateLimitGuard } from './rate-limit.guard';
 
 @Controller('admin')
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminController {
-  constructor(private adminService: AdminService) {}
+  constructor(
+    private adminService: AdminService,
+    private rateLimitGuard: RateLimitGuard,
+  ) {}
 
   // ── Stats ──
 
@@ -336,5 +340,85 @@ export class AdminController {
   @Post('webhooks/test')
   testWebhook(@Body() body: { url: string }) {
     return this.adminService.testWebhook(body.url);
+  }
+
+  // ── Tickets ──
+
+  @Get('tickets')
+  getTickets(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('priority') priority?: string,
+  ) {
+    return this.adminService.getTickets({
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+      search,
+      status,
+      type,
+      priority,
+    });
+  }
+
+  @Get('tickets/stats')
+  getTicketStats() {
+    return this.adminService.getTicketStats();
+  }
+
+  @Get('tickets/:id')
+  getTicket(@Param('id') id: string) {
+    return this.adminService.getTicketById(id);
+  }
+
+  @Put('tickets/:id')
+  updateTicket(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    return this.adminService.updateTicket(id, body, req.user.sub);
+  }
+
+  @Put('tickets/:id/reply')
+  replyToTicket(@Param('id') id: string, @Body() body: { reply: string }, @Req() req: any) {
+    return this.adminService.replyToTicket(id, body.reply, req.user.sub);
+  }
+
+  @Delete('tickets/:id')
+  deleteTicket(@Param('id') id: string, @Req() req: any) {
+    return this.adminService.deleteTicket(id, req.user.sub);
+  }
+
+  // ── Rate Limits ──
+
+  @Get('rate-limits')
+  getRateLimitConfig() {
+    return this.adminService.getRateLimitConfig();
+  }
+
+  @Put('rate-limits')
+  async setRateLimitConfig(@Body() body: any, @Req() req: any) {
+    const result = await this.adminService.setRateLimitConfig(body, req.user.sub);
+    this.rateLimitGuard.invalidateCache();
+    return result;
+  }
+
+  @Get('rate-limits/usage')
+  async getRateLimitUsage() {
+    const rawUsage = this.rateLimitGuard.getUsageStats();
+    return this.adminService.getRateLimitUsage(rawUsage);
+  }
+
+  @Put('rate-limits/user/:userId')
+  async setUserRateLimit(@Param('id') id: string, @Body() body: { limit: number }, @Req() req: any, @Param('userId') userId: string) {
+    const result = await this.adminService.setUserRateLimit(userId, body.limit, req.user.sub);
+    this.rateLimitGuard.invalidateCache();
+    return result;
+  }
+
+  @Delete('rate-limits/user/:userId')
+  async removeUserRateLimit(@Param('userId') userId: string, @Req() req: any) {
+    const result = await this.adminService.removeUserRateLimit(userId, req.user.sub);
+    this.rateLimitGuard.invalidateCache();
+    return result;
   }
 }

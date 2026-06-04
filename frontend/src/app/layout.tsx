@@ -16,6 +16,7 @@ import { AppProvider } from '@/lib/AppContext';
 import GlobalTopBar from '@/components/GlobalTopBar';
 const AnnouncementTicker = dynamic(() => import('@/components/AnnouncementTicker'));
 const FooterTerminal = dynamic(() => import('@/components/FooterTerminal'));
+const FeedbackWidget = dynamic(() => import('@/components/FeedbackWidget'));
 import MaintenanceGuard from '@/components/MaintenanceGuard';
 import { FeatureFlagProvider } from '@/lib/FeatureFlagContext';
 
@@ -71,6 +72,7 @@ export default function RootLayout({
                 <FooterTerminal />
               </div>
             </MaintenanceGuard>
+            <FeedbackWidget />
           </DialogProvider>
           </FeatureFlagProvider>
         </AppProvider>

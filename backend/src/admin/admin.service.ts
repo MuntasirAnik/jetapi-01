@@ -13,6 +13,7 @@ import { Banner } from './banner.entity';
 import { AuditLog } from './audit-log.entity';
 import { SystemSetting } from './system-setting.entity';
 import { Changelog } from './changelog.entity';
+import { FeedbackTicket } from './feedback-ticket.entity';
 import { PLANS, PlanId } from '../subscriptions/plans.config';
 import * as bcrypt from 'bcryptjs';
 
@@ -41,6 +42,8 @@ export class AdminService {
     private settingRepo: Repository<SystemSetting>,
     @InjectRepository(Changelog)
     private changelogRepo: Repository<Changelog>,
+    @InjectRepository(FeedbackTicket)
+    private ticketRepo: Repository<FeedbackTicket>,
     private jwtService: JwtService,
   ) {
     this.seedDefaultBanners();
@@ -1178,5 +1181,202 @@ export class AdminService {
     } catch (e: any) {
       return { success: false, error: e.message };
     }
+  }
+
+  // ── Feedback Tickets ──
+
+  async createTicket(data: { subject: string; description: string; type?: string; priority?: string; tags?: string }, userId: string) {
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'name'] });
+    const ticket = this.ticketRepo.create({
+      subject: data.subject,
+      description: data.description,
+      type: data.type || 'feedback',
+      priority: data.priority || 'medium',
+      tags: data.tags || undefined,
+      userId,
+      userEmail: user?.email || 'Unknown',
+      userName: user?.name || '',
+      status: 'open',
+    });
+    return this.ticketRepo.save(ticket);
+  }
+
+  async getUserTickets(userId: string) {
+    return this.ticketRepo.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      select: ['id', 'subject', 'type', 'priority', 'status', 'adminReply', 'repliedAt', 'resolvedAt', 'createdAt', 'updatedAt'],
+    });
+  }
+
+  async getTickets(params: { page?: number; limit?: number; search?: string; status?: string; type?: string; priority?: string }) {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 20, 100);
+    const query = this.ticketRepo.createQueryBuilder('ticket');
+
+    if (params.search) {
+      query.andWhere(
+        '(ticket.subject ILIKE :s OR ticket.description ILIKE :s OR ticket.userEmail ILIKE :s OR ticket.userName ILIKE :s)',
+        { s: `%${params.search}%` },
+      );
+    }
+    if (params.status && params.status !== 'all') {
+      query.andWhere('ticket.status = :status', { status: params.status });
+    }
+    if (params.type && params.type !== 'all') {
+      query.andWhere('ticket.type = :type', { type: params.type });
+    }
+    if (params.priority && params.priority !== 'all') {
+      query.andWhere('ticket.priority = :priority', { priority: params.priority });
+    }
+
+    query.orderBy('ticket.createdAt', 'DESC');
+    const total = await query.getCount();
+    const tickets = await query.skip((page - 1) * limit).take(limit).getMany();
+
+    return { tickets, total, page, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getTicketStats() {
+    const [total, open, inProgress, resolved, closed] = await Promise.all([
+      this.ticketRepo.count(),
+      this.ticketRepo.count({ where: { status: 'open' } }),
+      this.ticketRepo.count({ where: { status: 'in_progress' } }),
+      this.ticketRepo.count({ where: { status: 'resolved' } }),
+      this.ticketRepo.count({ where: { status: 'closed' } }),
+    ]);
+    return { total, open, inProgress, resolved, closed };
+  }
+
+  async getTicketById(id: string) {
+    const ticket = await this.ticketRepo.findOne({ where: { id } });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+    return ticket;
+  }
+
+  async updateTicket(id: string, data: { status?: string; priority?: string; assignedTo?: string; assignedName?: string; adminNotes?: string; tags?: string }, adminId: string) {
+    const ticket = await this.ticketRepo.findOne({ where: { id } });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+
+    if (data.status) ticket.status = data.status;
+    if (data.priority) ticket.priority = data.priority;
+    if (data.assignedTo !== undefined) ticket.assignedTo = data.assignedTo;
+    if (data.assignedName !== undefined) ticket.assignedName = data.assignedName;
+    if (data.adminNotes !== undefined) ticket.adminNotes = data.adminNotes;
+    if (data.tags !== undefined) ticket.tags = data.tags;
+    if (data.status === 'resolved' && !ticket.resolvedAt) ticket.resolvedAt = new Date();
+
+    const saved = await this.ticketRepo.save(ticket);
+    await this.logAction({ action: 'ticket.updated', targetType: 'ticket', targetId: id, targetLabel: ticket.subject, performedBy: adminId, details: data }).catch(() => {});
+    return saved;
+  }
+
+  async replyToTicket(id: string, reply: string, adminId: string) {
+    const ticket = await this.ticketRepo.findOne({ where: { id } });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+
+    ticket.adminReply = reply;
+    ticket.repliedAt = new Date();
+    if (ticket.status === 'open') ticket.status = 'in_progress';
+
+    const saved = await this.ticketRepo.save(ticket);
+    await this.logAction({ action: 'ticket.replied', targetType: 'ticket', targetId: id, targetLabel: ticket.subject, performedBy: adminId, details: { reply } }).catch(() => {});
+    return saved;
+  }
+
+  async deleteTicket(id: string, adminId: string) {
+    const ticket = await this.ticketRepo.findOne({ where: { id } });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+    await this.ticketRepo.remove(ticket);
+    await this.logAction({ action: 'ticket.deleted', targetType: 'ticket', targetId: id, targetLabel: ticket.subject, performedBy: adminId }).catch(() => {});
+    return { deleted: true };
+  }
+
+  // ── Rate Limiting ──
+
+  async getRateLimitConfig() {
+    const setting = await this.settingRepo.findOne({ where: { key: 'rate_limit_config' } });
+    if (!setting) {
+      return { enabled: false, windowMs: 3600000, limits: { FREE: 100, PRO: 1000, TEAM: 5000 }, overrides: {} };
+    }
+    try {
+      return JSON.parse(setting.value);
+    } catch {
+      return { enabled: false, windowMs: 3600000, limits: { FREE: 100, PRO: 1000, TEAM: 5000 }, overrides: {} };
+    }
+  }
+
+  async setRateLimitConfig(config: any, adminId: string) {
+    await this.settingRepo.upsert({ key: 'rate_limit_config', value: JSON.stringify(config) }, ['key']);
+    await this.logAction({
+      action: 'rate_limit.config_updated',
+      targetType: 'system',
+      targetLabel: 'Rate Limit Config',
+      performedBy: adminId,
+      details: config,
+    }).catch(() => {});
+    return config;
+  }
+
+  async getRateLimitUsage(usageData: Array<{ userId: string; count: number; windowStart: number }>) {
+    // Enrich with user info
+    const enriched = await Promise.all(
+      usageData.map(async (entry) => {
+        const user = await this.userRepo.findOne({
+          where: { id: entry.userId },
+          select: ['id', 'email', 'name', 'role'],
+        });
+        const sub = await this.subRepo.findOne({
+          where: { userId: entry.userId, status: 'active' },
+          order: { createdAt: 'DESC' },
+          select: ['plan'],
+        });
+        return {
+          userId: entry.userId,
+          email: user?.email || 'Unknown',
+          name: user?.name || '',
+          role: user?.role || 'USER',
+          plan: sub?.plan || 'FREE',
+          count: entry.count,
+          windowStart: entry.windowStart,
+        };
+      }),
+    );
+
+    return enriched.sort((a, b) => b.count - a.count);
+  }
+
+  async setUserRateLimit(userId: string, limit: number, adminId: string) {
+    const config = await this.getRateLimitConfig();
+    if (!config.overrides) config.overrides = {};
+    config.overrides[userId] = limit;
+    await this.settingRepo.upsert({ key: 'rate_limit_config', value: JSON.stringify(config) }, ['key']);
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['email'] });
+    await this.logAction({
+      action: 'rate_limit.user_override',
+      targetType: 'user',
+      targetId: userId,
+      targetLabel: user?.email || userId,
+      performedBy: adminId,
+      details: { limit },
+    }).catch(() => {});
+    return config;
+  }
+
+  async removeUserRateLimit(userId: string, adminId: string) {
+    const config = await this.getRateLimitConfig();
+    if (config.overrides) {
+      delete config.overrides[userId];
+    }
+    await this.settingRepo.upsert({ key: 'rate_limit_config', value: JSON.stringify(config) }, ['key']);
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['email'] });
+    await this.logAction({
+      action: 'rate_limit.user_override_removed',
+      targetType: 'user',
+      targetId: userId,
+      targetLabel: user?.email || userId,
+      performedBy: adminId,
+    }).catch(() => {});
+    return config;
   }
 }

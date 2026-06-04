@@ -15,14 +15,15 @@ import {
   Download, Settings, ToggleLeft, ToggleRight, Filter, CheckSquare, Square,
   Lock, Unlock, KeyRound, Globe, ShieldCheck, LogOut, RefreshCw, ChevronDown, Check,
   FileText, Bell, Palette, Send, Webhook, ExternalLink, Loader2, X,
+  MessageSquare, Tag, User, ArrowUpDown, Gauge,
 } from "lucide-react";
 
-type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog";
+type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog" | "tickets" | "rate-limits";
 
 export default function AdminPage() {
   const router = useRouter();
   const { confirmDialog } = useDialog();
-  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog"];
+  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog", "tickets", "rate-limits"];
   const [tab, setTabState] = useState<Tab>("overview");
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -288,6 +289,8 @@ export default function AdminPage() {
     { id: "reports", label: "Reports", icon: <BarChart3 className="w-4 h-4" /> },
     { id: "security", label: "Security", icon: <ShieldCheck className="w-4 h-4" /> },
     { id: "changelog", label: "Changelog", icon: <FileText className="w-4 h-4" /> },
+    { id: "tickets", label: "Tickets", icon: <MessageSquare className="w-4 h-4" /> },
+    { id: "rate-limits", label: "Rate Limits", icon: <Gauge className="w-4 h-4" /> },
     { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
   ];
 
@@ -358,6 +361,8 @@ export default function AdminPage() {
           {tab === "settings" && <SettingsTab flags={featureFlags} onReload={loadTabData} />}
           {tab === "security" && <SecurityTab />}
           {tab === "changelog" && <ChangelogTab />}
+          {tab === "tickets" && <TicketsTab />}
+          {tab === "rate-limits" && <RateLimitsTab />}
         </div>
       </div>
     </div>
@@ -2291,6 +2296,22 @@ function ReportsTab() {
 // ─── Settings Tab (Feature Flags) ────────────────────
 function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }) {
   const [toggling, setToggling] = useState<string | null>(null);
+  const [rateLimitEnabled, setRateLimitEnabled] = useState(false);
+  const [rlLoading, setRlLoading] = useState(true);
+
+  // Load rate limit config
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch("/admin/rate-limits");
+        if (res.ok) {
+          const d = await res.json();
+          setRateLimitEnabled(d.enabled || false);
+        }
+      } catch {}
+      setRlLoading(false);
+    })();
+  }, []);
 
   const handleToggle = async (key: string, currentEnabled: boolean) => {
     setToggling(key);
@@ -2307,6 +2328,28 @@ function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }
         toast.error("Failed to update flag");
       }
     } catch { toast.error("Failed to update flag"); }
+    setToggling(null);
+  };
+
+  const handleRateLimitToggle = async () => {
+    setToggling("rate_limiting");
+    try {
+      // Fetch current config, toggle enabled, save back
+      const getRes = await apiFetch("/admin/rate-limits");
+      if (getRes.ok) {
+        const config = await getRes.json();
+        config.enabled = !rateLimitEnabled;
+        const res = await apiFetch("/admin/rate-limits", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(config),
+        });
+        if (res.ok) {
+          setRateLimitEnabled(!rateLimitEnabled);
+          toast.success(`Rate limiting ${!rateLimitEnabled ? "enabled" : "disabled"}`);
+        }
+      }
+    } catch { toast.error("Failed to toggle rate limiting"); }
     setToggling(null);
   };
 
@@ -2349,7 +2392,7 @@ function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }
             <button
               onClick={() => handleToggle(flag.key, flag.enabled)}
               disabled={toggling === flag.key}
-              className={`relative w-10 h-5.5 rounded-full transition-all duration-200 flex-shrink-0 ${
+              className={`relative rounded-full transition-all duration-200 flex-shrink-0 ${
                 flag.enabled ? "bg-emerald-500" : "bg-[var(--border)]"
               } ${toggling === flag.key ? "opacity-50" : ""}`}
               style={{ width: 40, height: 22 }}
@@ -2360,6 +2403,39 @@ function SettingsTab({ flags, onReload }: { flags: any[]; onReload: () => void }
             </button>
           </div>
         ))}
+
+        {/* Rate Limiting Toggle */}
+        {!rlLoading && (
+          <div className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all ${
+            rateLimitEnabled
+              ? "border-emerald-500/20 bg-emerald-500/5"
+              : "border-[var(--border)] bg-[var(--sidebar)]"
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-md flex items-center justify-center ${
+                rateLimitEnabled ? "bg-emerald-500/20 text-emerald-400" : "bg-[var(--border)] text-[var(--muted)]"
+              }`}>
+                <Gauge className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="font-semibold text-xs">Rate Limiting</p>
+                <p className="text-[10px] text-[var(--muted)] mt-0.5 leading-tight">Enforce per-user API request rate limits by plan</p>
+              </div>
+            </div>
+            <button
+              onClick={handleRateLimitToggle}
+              disabled={toggling === "rate_limiting"}
+              className={`relative rounded-full transition-all duration-200 flex-shrink-0 ${
+                rateLimitEnabled ? "bg-emerald-500" : "bg-[var(--border)]"
+              } ${toggling === "rate_limiting" ? "opacity-50" : ""}`}
+              style={{ width: 40, height: 22 }}
+            >
+              <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                rateLimitEnabled ? "translate-x-[21px]" : "translate-x-[3px]"
+              }`} />
+            </button>
+          </div>
+        )}
 
         {flags.length === 0 && (
           <div className="text-center py-8 text-[var(--muted)]">
@@ -2815,6 +2891,493 @@ function ChangelogTab() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tickets Tab ──
+
+function TicketsTab() {
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({ total: 0, open: 0, inProgress: 0, resolved: 0, closed: 0 });
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [selectedTicket, setSelectedTicket] = useState<any>(null);
+  const [replyText, setReplyText] = useState("");
+  const [replying, setReplying] = useState(false);
+
+  const loadTickets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: "20" });
+      if (search) params.set("search", search);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (typeFilter !== "all") params.set("type", typeFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
+      const res = await apiFetch(`/admin/tickets?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTickets(data.tickets || []);
+        setTotalPages(data.totalPages || 1);
+      }
+    } catch {} finally { setLoading(false); }
+  }, [page, search, statusFilter, typeFilter, priorityFilter]);
+
+  const loadStats = async () => {
+    try {
+      const res = await apiFetch("/admin/tickets/stats");
+      if (res.ok) setStats(await res.json());
+    } catch {}
+  };
+
+  useEffect(() => { loadTickets(); loadStats(); }, [loadTickets]);
+
+  const handleUpdateStatus = async (id: string, status: string) => {
+    try {
+      const res = await apiFetch(`/admin/tickets/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        toast.success(`Status → ${status.replace("_", " ")}`);
+        loadTickets(); loadStats();
+        if (selectedTicket?.id === id) setSelectedTicket((prev: any) => ({ ...prev, status }));
+      }
+    } catch { toast.error("Failed to update"); }
+  };
+
+  const handleReply = async () => {
+    if (!replyText.trim() || !selectedTicket) return;
+    setReplying(true);
+    try {
+      const res = await apiFetch(`/admin/tickets/${selectedTicket.id}/reply`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reply: replyText }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSelectedTicket(updated);
+        setReplyText("");
+        toast.success("Reply sent!");
+        loadTickets(); loadStats();
+      }
+    } catch { toast.error("Failed to reply"); }
+    finally { setReplying(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await apiFetch(`/admin/tickets/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Ticket deleted");
+        setSelectedTicket(null);
+        loadTickets(); loadStats();
+      }
+    } catch { toast.error("Failed to delete"); }
+  };
+
+  const statusBadge = (s: string) => {
+    const m: Record<string, string> = {
+      open: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+      in_progress: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+      resolved: "bg-green-500/10 text-green-400 border-green-500/20",
+      closed: "bg-[var(--muted)]/10 text-[var(--muted)] border-[var(--border)]",
+    };
+    return m[s] || m.open;
+  };
+  const priorityBadge = (p: string) => {
+    const m: Record<string, string> = { low: "bg-gray-500/10 text-gray-400", medium: "bg-blue-500/10 text-blue-400", high: "bg-orange-500/10 text-orange-400", critical: "bg-red-500/10 text-red-400" };
+    return m[p] || m.medium;
+  };
+  const typeBadge = (t: string) => {
+    const m: Record<string, string> = { bug: "bg-red-500/10 text-red-400", feature: "bg-purple-500/10 text-purple-400", feedback: "bg-cyan-500/10 text-cyan-400", other: "bg-gray-500/10 text-gray-400" };
+    return m[t] || m.feedback;
+  };
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2"><MessageSquare className="w-5 h-5 text-[var(--color-brand-500)]" /> Tickets & Feedback</h2>
+          <p className="text-xs text-[var(--muted)] mt-1">Manage user-submitted tickets and feedback</p>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-5 gap-3 mb-6">
+        {[
+          { label: "Total", value: stats.total, color: "text-[var(--foreground)]" },
+          { label: "Open", value: stats.open, color: "text-blue-400" },
+          { label: "In Progress", value: stats.inProgress, color: "text-yellow-400" },
+          { label: "Resolved", value: stats.resolved, color: "text-green-400" },
+          { label: "Closed", value: stats.closed, color: "text-[var(--muted)]" },
+        ].map((s) => (
+          <div key={s.label} className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 text-center">
+            <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+            <div className="text-[10px] text-[var(--muted)] uppercase tracking-wider mt-1">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 flex-1">
+          <Search className="w-4 h-4 text-[var(--muted)]" />
+          <input type="text" placeholder="Search tickets..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="bg-transparent border-none outline-none px-3 py-2 text-sm w-full text-[var(--foreground)]" />
+        </div>
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="text-xs bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--foreground)]">
+          <option value="all">All Status</option><option value="open">Open</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option>
+        </select>
+        <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+          className="text-xs bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--foreground)]">
+          <option value="all">All Types</option><option value="bug">Bug</option><option value="feature">Feature</option><option value="feedback">Feedback</option><option value="other">Other</option>
+        </select>
+        <select value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value); setPage(1); }}
+          className="text-xs bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--foreground)]">
+          <option value="all">All Priority</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
+        </select>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-[var(--muted)]"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...</div>
+      ) : tickets.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-[var(--muted)] gap-3">
+          <MessageSquare className="w-12 h-12 opacity-20" /><p className="text-sm">No tickets found</p>
+        </div>
+      ) : (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
+          <table className="w-full text-xs text-left">
+            <thead><tr className="border-b border-[var(--border)] text-[var(--muted)]">
+              <th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Priority</th><th className="px-4 py-3 font-medium">Subject</th>
+              <th className="px-4 py-3 font-medium">User</th><th className="px-4 py-3 font-medium">Type</th><th className="px-4 py-3 font-medium">Created</th><th className="px-4 py-3 font-medium">Actions</th>
+            </tr></thead>
+            <tbody>
+              {tickets.map((t: any) => (
+                <tr key={t.id} className="border-b border-[var(--border)] hover:bg-[var(--sidebar)] transition-colors cursor-pointer"
+                  onClick={() => { setSelectedTicket(t); setReplyText(t.adminReply || ""); }}>
+                  <td className="px-4 py-3"><span className={`text-[10px] px-2 py-1 rounded-full font-semibold border ${statusBadge(t.status)}`}>{t.status.replace("_", " ")}</span></td>
+                  <td className="px-4 py-3"><span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${priorityBadge(t.priority)}`}>{t.priority}</span></td>
+                  <td className="px-4 py-3 font-medium text-[var(--foreground)] max-w-[200px] truncate">{t.subject}</td>
+                  <td className="px-4 py-3"><div className="text-[var(--foreground)]">{t.userName || "—"}</div><div className="text-[10px] text-[var(--muted)]">{t.userEmail}</div></td>
+                  <td className="px-4 py-3"><span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${typeBadge(t.type)}`}>{t.type}</span></td>
+                  <td className="px-4 py-3 text-[var(--muted)]">{fmtDate(t.createdAt)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      {t.status !== "resolved" && <button onClick={(e) => { e.stopPropagation(); handleUpdateStatus(t.id, "resolved"); }} className="p-1 rounded hover:bg-green-500/10" title="Resolve"><CheckCircle className="w-3.5 h-3.5 text-green-500" /></button>}
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="p-1 rounded hover:bg-red-500/10" title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="px-3 py-1.5 text-xs rounded-md border border-[var(--border)] hover:bg-[var(--card)] disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
+          <span className="text-xs text-[var(--muted)]">Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-3 py-1.5 text-xs rounded-md border border-[var(--border)] hover:bg-[var(--card)] disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {selectedTicket && createPortal(
+        <div className="fixed inset-0 z-[999] flex items-center justify-center modal-backdrop" onClick={() => setSelectedTicket(null)}>
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-auto shadow-2xl modal-content p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-[10px] px-2 py-1 rounded-full font-semibold border ${statusBadge(selectedTicket.status)}`}>{selectedTicket.status.replace("_", " ")}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${priorityBadge(selectedTicket.priority)}`}>{selectedTicket.priority}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${typeBadge(selectedTicket.type)}`}>{selectedTicket.type}</span>
+                </div>
+                <h3 className="text-lg font-bold">{selectedTicket.subject}</h3>
+                <div className="flex items-center gap-3 mt-1 text-xs text-[var(--muted)]">
+                  <span>from <strong className="text-[var(--foreground)]">{selectedTicket.userName || selectedTicket.userEmail}</strong></span>
+                  <span>•</span><span>{fmtDate(selectedTicket.createdAt)}</span>
+                </div>
+              </div>
+              <button onClick={() => setSelectedTicket(null)} className="p-1 rounded hover:bg-[var(--border)]"><X className="w-4 h-4" /></button>
+            </div>
+
+            <div className="bg-[var(--sidebar)] border border-[var(--border)] rounded-lg p-4 mb-5 text-sm leading-relaxed whitespace-pre-wrap">{selectedTicket.description}</div>
+
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-xs text-[var(--muted)] mr-1">Status:</span>
+              {["open", "in_progress", "resolved", "closed"].map((s) => (
+                <button key={s} onClick={() => handleUpdateStatus(selectedTicket.id, s)}
+                  className={`text-[10px] px-3 py-1.5 rounded-full border transition-colors font-medium ${selectedTicket.status === s ? statusBadge(s) : "border-[var(--border)] text-[var(--muted)] hover:bg-[var(--sidebar)]"}`}
+                >{s.replace("_", " ")}</button>
+              ))}
+            </div>
+
+            {selectedTicket.adminReply && selectedTicket.repliedAt && (
+              <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Send className="w-3.5 h-3.5 text-green-500" /><span className="text-xs font-semibold text-green-400">Admin Reply</span>
+                  <span className="text-[10px] text-[var(--muted)]">• {fmtDate(selectedTicket.repliedAt)}</span>
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{selectedTicket.adminReply}</p>
+              </div>
+            )}
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <label className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wider mb-2 block">Reply to user</label>
+              <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Type your reply..." rows={4}
+                className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-4 py-3 text-sm text-[var(--foreground)] resize-none focus:border-[var(--color-brand-500)] outline-none" />
+              <div className="flex items-center justify-between mt-3">
+                <button onClick={() => handleDelete(selectedTicket.id)} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
+                <button onClick={handleReply} disabled={!replyText.trim() || replying}
+                  className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 disabled:opacity-50 btn-spring">
+                  {replying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  {replying ? "Sending..." : "Send Reply"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+
+// ── Rate Limits Tab ──
+
+function RateLimitsTab() {
+  const [config, setConfig] = useState<any>({ enabled: false, windowMs: 3600000, limits: { FREE: 100, PRO: 1000, TEAM: 5000 }, overrides: {} });
+  const [usage, setUsage] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const loadConfig = async () => {
+    try {
+      const res = await apiFetch("/admin/rate-limits");
+      if (res.ok) { const d = await res.json(); setConfig(d); }
+    } catch {} finally { setLoading(false); }
+  };
+
+  const loadUsage = async () => {
+    try {
+      const res = await apiFetch("/admin/rate-limits/usage");
+      if (res.ok) setUsage(await res.json());
+    } catch {}
+  };
+
+  useEffect(() => { loadConfig(); loadUsage(); }, []);
+
+  // Auto-refresh usage every 30s
+  useEffect(() => {
+    const interval = setInterval(loadUsage, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch("/admin/rate-limits", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      if (res.ok) { toast.success("Rate limit config saved"); setDirty(false); }
+    } catch { toast.error("Failed to save"); }
+    finally { setSaving(false); }
+  };
+
+  const updateConfig = (patch: any) => {
+    setConfig((prev: any) => ({ ...prev, ...patch }));
+    setDirty(true);
+  };
+
+  const updateLimit = (plan: string, value: number) => {
+    setConfig((prev: any) => ({ ...prev, limits: { ...prev.limits, [plan]: value } }));
+    setDirty(true);
+  };
+
+  const removeOverride = async (userId: string) => {
+    try {
+      const res = await apiFetch(`/admin/rate-limits/user/${userId}`, { method: "DELETE" });
+      if (res.ok) { toast.success("Override removed"); loadConfig(); }
+    } catch { toast.error("Failed to remove"); }
+  };
+
+  const windowLabel = (ms: number) => {
+    if (ms === 900000) return "15 min";
+    if (ms === 1800000) return "30 min";
+    if (ms === 3600000) return "1 hour";
+    return `${ms / 60000} min`;
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-20 text-[var(--muted)]"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...</div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2"><Gauge className="w-5 h-5 text-[var(--color-brand-500)]" /> Rate Limiting</h2>
+          <p className="text-xs text-[var(--muted)] mt-1">Control API request rate limits per plan</p>
+        </div>
+        {dirty && (
+          <button onClick={handleSave} disabled={saving}
+            className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 disabled:opacity-50 btn-spring">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        )}
+      </div>
+
+      {/* Global Config */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-bold">Rate Limiting</h3>
+              <p className="text-[10px] text-[var(--muted)] mt-0.5">Enable to enforce per-user request limits</p>
+            </div>
+            <button onClick={() => updateConfig({ enabled: !config.enabled })}
+              className={`relative rounded-full transition-all duration-200 flex-shrink-0 ${config.enabled ? "bg-emerald-500" : "bg-[var(--border)]"}`}
+              style={{ width: 40, height: 22 }}>
+              <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${config.enabled ? "translate-x-[21px]" : "translate-x-[3px]"}`} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${config.enabled ? "bg-green-500" : "bg-gray-500"}`} />
+            <span className="text-xs text-[var(--muted)]">{config.enabled ? "Active — requests are being rate-limited" : "Disabled — no limits enforced"}</span>
+          </div>
+        </div>
+
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
+          <h3 className="text-sm font-bold mb-1">Window Size</h3>
+          <p className="text-[10px] text-[var(--muted)] mb-3">Time window for counting requests</p>
+          <div className="flex gap-2">
+            {[{ ms: 900000, label: "15 min" }, { ms: 1800000, label: "30 min" }, { ms: 3600000, label: "1 hour" }].map((w) => (
+              <button key={w.ms} onClick={() => updateConfig({ windowMs: w.ms })}
+                className={`text-xs px-4 py-2 rounded-lg border transition-colors font-medium ${config.windowMs === w.ms ? "bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] border-[var(--color-brand-500)]/30" : "border-[var(--border)] text-[var(--muted)] hover:bg-[var(--sidebar)]"}`}
+              >{w.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Per-Plan Limits */}
+      <h3 className="text-sm font-bold mb-3">Per-Plan Limits <span className="text-[var(--muted)] font-normal">({windowLabel(config.windowMs)} window)</span></h3>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { plan: "FREE", color: "text-gray-400", bg: "bg-gray-500/10" },
+          { plan: "PRO", color: "text-blue-400", bg: "bg-blue-500/10" },
+          { plan: "TEAM", color: "text-purple-400", bg: "bg-purple-500/10" },
+        ].map((p) => (
+          <div key={p.plan} className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${p.bg} ${p.color}`}>{p.plan}</span>
+            </div>
+            <label className="text-[10px] text-[var(--muted)] uppercase tracking-wider font-semibold mb-1.5 block">Max requests / window</label>
+            <input type="number" value={config.limits?.[p.plan] || 0}
+              onChange={(e) => updateLimit(p.plan, parseInt(e.target.value) || 0)}
+              className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--color-brand-500)]" />
+          </div>
+        ))}
+      </div>
+
+      {/* Live Usage */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold">Live Usage</h3>
+        <button onClick={loadUsage} className="text-[10px] text-[var(--color-brand-500)] hover:underline flex items-center gap-1">
+          <RefreshCw className="w-3 h-3" /> Refresh
+        </button>
+      </div>
+
+      {usage.length === 0 ? (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-8 text-center text-[var(--muted)]">
+          <Gauge className="w-10 h-10 mx-auto mb-2 opacity-20" />
+          <p className="text-xs">No active request windows</p>
+          <p className="text-[10px] mt-1 opacity-60">Usage appears when users make API requests</p>
+        </div>
+      ) : (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden mb-6">
+          <table className="w-full text-xs text-left">
+            <thead><tr className="border-b border-[var(--border)] text-[var(--muted)]">
+              <th className="px-4 py-3 font-medium">User</th>
+              <th className="px-4 py-3 font-medium">Plan</th>
+              <th className="px-4 py-3 font-medium">Requests</th>
+              <th className="px-4 py-3 font-medium w-48">Usage</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+            </tr></thead>
+            <tbody>
+              {usage.map((u: any) => {
+                const limit = config.overrides?.[u.userId] || config.limits?.[u.plan] || config.limits?.FREE || 100;
+                const pct = Math.min(100, Math.round((u.count / limit) * 100));
+                const barColor = pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-yellow-500" : "bg-green-500";
+                const statusLabel = pct >= 100 ? "Throttled" : pct >= 80 ? "Near limit" : "OK";
+                const statusColor = pct >= 100 ? "text-red-400" : pct >= 80 ? "text-yellow-400" : "text-green-400";
+                return (
+                  <tr key={u.userId} className="border-b border-[var(--border)]">
+                    <td className="px-4 py-3">
+                      <div className="text-[var(--foreground)] font-medium">{u.name || "—"}</div>
+                      <div className="text-[10px] text-[var(--muted)]">{u.email}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${u.plan === "TEAM" ? "bg-purple-500/10 text-purple-400" : u.plan === "PRO" ? "bg-blue-500/10 text-blue-400" : "bg-gray-500/10 text-gray-400"}`}>{u.plan}</span>
+                    </td>
+                    <td className="px-4 py-3 font-mono">{u.count} <span className="text-[var(--muted)]">/ {limit}</span></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[10px] text-[var(--muted)] w-8 text-right">{pct}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] font-semibold ${statusColor}`}>{statusLabel}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Per-User Overrides */}
+      {config.overrides && Object.keys(config.overrides).length > 0 && (
+        <>
+          <h3 className="text-sm font-bold mb-3">Per-User Overrides</h3>
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
+            <table className="w-full text-xs text-left">
+              <thead><tr className="border-b border-[var(--border)] text-[var(--muted)]">
+                <th className="px-4 py-3 font-medium">User ID</th>
+                <th className="px-4 py-3 font-medium">Custom Limit</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
+              </tr></thead>
+              <tbody>
+                {Object.entries(config.overrides).map(([uid, limit]: [string, any]) => (
+                  <tr key={uid} className="border-b border-[var(--border)]">
+                    <td className="px-4 py-3 font-mono text-[10px]">{uid}</td>
+                    <td className="px-4 py-3 font-mono font-bold">{limit} req/window</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => removeOverride(uid)} className="p-1 rounded hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

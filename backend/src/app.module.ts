@@ -33,6 +33,7 @@ import { Banner } from './admin/banner.entity';
 import { AuditLog } from './admin/audit-log.entity';
 import { SystemSetting } from './admin/system-setting.entity';
 import { Changelog } from './admin/changelog.entity';
+import { FeedbackTicket } from './admin/feedback-ticket.entity';
 import { Subscription } from './subscriptions/subscription.entity';
 import { Payment } from './subscriptions/payment.entity';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -61,7 +62,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog],
+          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket],
           synchronize: true, // Use carefully in production
         };
       },

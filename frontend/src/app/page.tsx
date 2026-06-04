@@ -1051,7 +1051,35 @@ export default function Home() {
                         signal: controller.signal,
                       });
 
-                      data = await res.json();
+                      // Capture rate limit headers from backend
+                      const rlLimit = res.headers.get('X-RateLimit-Limit');
+                      const rlRemaining = res.headers.get('X-RateLimit-Remaining');
+                      const rlReset = res.headers.get('X-RateLimit-Reset');
+
+                      if (res.status === 429) {
+                        const errBody = await res.json();
+                        data = {
+                          status: 429,
+                          statusText: 'Too Many Requests',
+                          error: errBody.message || 'Rate limit exceeded',
+                          data: errBody,
+                          _rateLimit: {
+                            limit: parseInt(rlLimit || '0'),
+                            remaining: 0,
+                            reset: parseInt(rlReset || '0'),
+                          },
+                        };
+                        toast.warning(`Rate limited! Try again in ${res.headers.get('Retry-After') || '60'}s`);
+                      } else {
+                        data = await res.json();
+                        if (rlLimit) {
+                          data._rateLimit = {
+                            limit: parseInt(rlLimit),
+                            remaining: parseInt(rlRemaining || '0'),
+                            reset: parseInt(rlReset || '0'),
+                          };
+                        }
+                      }
                     }
                     setResponseData(data);
 

@@ -670,6 +670,23 @@ export default function ResponsePanel({ response, loading, request, testResults 
               <span className="text-[var(--muted)]">{timeMs} ms</span>
               <span className="text-[var(--muted)] opacity-50">•</span>
               <span className="text-[var(--muted)]">{formatSize(size || 0)}</span>
+              {response._rateLimit && (() => {
+                const rl = response._rateLimit;
+                const pct = rl.limit > 0 ? Math.round(((rl.limit - rl.remaining) / rl.limit) * 100) : 0;
+                const color = pct >= 90 ? "text-red-400" : pct >= 70 ? "text-yellow-400" : "text-[var(--muted)]";
+                const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-yellow-500" : "bg-green-500";
+                return (
+                  <>
+                    <span className="text-[var(--muted)] opacity-50">•</span>
+                    <span className={`flex items-center gap-1.5 ${color}`} title={`Rate limit: ${rl.remaining} of ${rl.limit} requests remaining. Resets at ${new Date(rl.reset * 1000).toLocaleTimeString()}`}>
+                      <div className="w-12 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      {rl.remaining}/{rl.limit}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
             
             <div className="flex items-center gap-3 text-[var(--muted)] pl-2 border-l border-[var(--border)]">
