@@ -15,15 +15,15 @@ import {
   Download, Settings, ToggleLeft, ToggleRight, Filter, CheckSquare, Square,
   Lock, Unlock, KeyRound, Globe, ShieldCheck, LogOut, RefreshCw, ChevronDown, Check,
   FileText, Bell, Palette, Send, Webhook, ExternalLink, Loader2, X,
-  MessageSquare, Tag, User, ArrowUpDown, Gauge,
+  MessageSquare, Tag, User, ArrowUpDown, Gauge, Plug,
 } from "lucide-react";
 
-type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog" | "tickets" | "rate-limits";
+type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog" | "tickets" | "rate-limits" | "plugins";
 
 export default function AdminPage() {
   const router = useRouter();
   const { confirmDialog } = useDialog();
-  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog", "tickets", "rate-limits"];
+  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog", "tickets", "rate-limits", "plugins"];
   const [tab, setTabState] = useState<Tab>("overview");
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -291,6 +291,7 @@ export default function AdminPage() {
     { id: "changelog", label: "Changelog", icon: <FileText className="w-4 h-4" /> },
     { id: "tickets", label: "Tickets", icon: <MessageSquare className="w-4 h-4" /> },
     { id: "rate-limits", label: "Rate Limits", icon: <Gauge className="w-4 h-4" /> },
+    { id: "plugins", label: "Plugins", icon: <Plug className="w-4 h-4" /> },
     { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
   ];
 
@@ -363,6 +364,7 @@ export default function AdminPage() {
           {tab === "changelog" && <ChangelogTab />}
           {tab === "tickets" && <TicketsTab />}
           {tab === "rate-limits" && <RateLimitsTab />}
+          {tab === "plugins" && <PluginsTab />}
         </div>
       </div>
     </div>
@@ -3378,6 +3380,285 @@ function RateLimitsTab() {
             </table>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Plugins Tab ──
+
+const ICON_MAP: Record<string, any> = {
+  MessageSquare, Globe, CheckSquare, Webhook, BarChart3, Bell, AlertTriangle, Download, Send, Plug, Settings, Shield,
+};
+
+const CATEGORY_COLORS: Record<string, { text: string; bg: string }> = {
+  notification: { text: "text-blue-400", bg: "bg-blue-500/10" },
+  "ci-cd": { text: "text-orange-400", bg: "bg-orange-500/10" },
+  monitoring: { text: "text-purple-400", bg: "bg-purple-500/10" },
+  automation: { text: "text-cyan-400", bg: "bg-cyan-500/10" },
+  storage: { text: "text-green-400", bg: "bg-green-500/10" },
+  "project-mgmt": { text: "text-pink-400", bg: "bg-pink-500/10" },
+  other: { text: "text-gray-400", bg: "bg-gray-500/10" },
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  notification: "Notification",
+  "ci-cd": "CI/CD",
+  monitoring: "Monitoring",
+  automation: "Automation",
+  storage: "Storage",
+  "project-mgmt": "Project Mgmt",
+  other: "Other",
+};
+
+function PluginsTab() {
+  const [plugins, setPlugins] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [configModal, setConfigModal] = useState<any | null>(null);
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const loadPlugins = async () => {
+    try {
+      const res = await apiFetch("/admin/plugins");
+      if (res.ok) setPlugins(await res.json());
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadPlugins(); }, []);
+
+  const handleToggle = async (slug: string, enabled: boolean) => {
+    try {
+      const res = await apiFetch(`/admin/plugins/${slug}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !enabled }),
+      });
+      if (res.ok) {
+        toast.success(`${slug} ${!enabled ? "enabled" : "disabled"}`);
+        loadPlugins();
+      }
+    } catch { toast.error("Failed to toggle plugin"); }
+  };
+
+  const openConfig = (plugin: any) => {
+    let config: Record<string, string> = {};
+    try { config = JSON.parse(plugin.config || "{}"); } catch {}
+    setConfigValues(config);
+    setConfigModal(plugin);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!configModal) return;
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/admin/plugins/${configModal.slug}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: configValues }),
+      });
+      if (res.ok) {
+        toast.success("Configuration saved");
+        setConfigModal(null);
+        loadPlugins();
+      }
+    } catch { toast.error("Failed to save"); }
+    finally { setSaving(false); }
+  };
+
+  const handleTestConnection = async () => {
+    if (!configModal) return;
+    setTesting(true);
+    try {
+      // Save first, then test
+      await apiFetch(`/admin/plugins/${configModal.slug}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: configValues }),
+      });
+      const res = await apiFetch(`/admin/plugins/${configModal.slug}/test`, { method: "POST" });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) toast.success(result.message);
+        else toast.error(result.message);
+      }
+    } catch { toast.error("Test failed"); }
+    finally { setTesting(false); }
+  };
+
+  const getPluginStatus = (plugin: any) => {
+    if (!plugin.enabled) return { label: "Disabled", color: "text-gray-400", dot: "bg-gray-500" };
+    let config: any = {};
+    try { config = JSON.parse(plugin.config || "{}"); } catch {}
+    const schema = JSON.parse(plugin.configSchema || "[]");
+    const hasConfig = schema.some((f: any) => config[f.key]);
+    if (hasConfig) return { label: "Connected", color: "text-green-400", dot: "bg-green-500" };
+    return { label: "Not Configured", color: "text-yellow-400", dot: "bg-yellow-500" };
+  };
+
+  // Get unique categories
+  const categories = ["all", ...Array.from(new Set(plugins.map((p: any) => p.category)))];
+
+  // Filter
+  const filtered = plugins.filter((p: any) => {
+    if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.description.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  if (loading) return <div className="flex items-center justify-center py-20 text-[var(--muted)]"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...</div>;
+
+  const configSchema = configModal ? JSON.parse(configModal.configSchema || "[]") : [];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2"><Plug className="w-5 h-5 text-[var(--color-brand-500)]" /> Plugins & Integrations</h2>
+          <p className="text-xs text-[var(--muted)] mt-1">Manage third-party service connections</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-[var(--muted)]">{plugins.filter((p: any) => p.enabled).length} active</span>
+          <span className="text-[10px] text-[var(--muted)]">•</span>
+          <span className="text-[10px] text-[var(--muted)]">{plugins.length} total</span>
+        </div>
+      </div>
+
+      {/* Search & Filter */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          <input type="text" placeholder="Search plugins..." value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg pl-9 pr-3 py-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--color-brand-500)]" />
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {categories.map(c => (
+            <button key={c} onClick={() => setCategoryFilter(c)}
+              className={`text-[10px] px-3 py-1.5 rounded-full font-medium transition-colors border ${categoryFilter === c
+                ? "bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] border-[var(--color-brand-500)]/30"
+                : "border-[var(--border)] text-[var(--muted)] hover:bg-[var(--sidebar)]"
+              }`}
+            >{c === "all" ? "All" : CATEGORY_LABELS[c] || c}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Plugin Grid */}
+      {filtered.length === 0 ? (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-12 text-center text-[var(--muted)]">
+          <Plug className="w-10 h-10 mx-auto mb-2 opacity-20" />
+          <p className="text-xs">No plugins match your search</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {filtered.map((plugin: any) => {
+            const IconComp = ICON_MAP[plugin.icon] || Plug;
+            const status = getPluginStatus(plugin);
+            const catColor = CATEGORY_COLORS[plugin.category] || CATEGORY_COLORS.other;
+            return (
+              <div key={plugin.slug} className={`bg-[var(--card)] border rounded-xl p-5 transition-all ${plugin.enabled ? "border-[var(--color-brand-500)]/20" : "border-[var(--border)]"}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${plugin.enabled ? "bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]" : "bg-[var(--border)] text-[var(--muted)]"}`}>
+                      <IconComp className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold">{plugin.name}</h3>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${catColor.bg} ${catColor.text}`}>
+                        {CATEGORY_LABELS[plugin.category] || plugin.category}
+                      </span>
+                    </div>
+                  </div>
+                  <button onClick={() => handleToggle(plugin.slug, plugin.enabled)}
+                    className={`relative rounded-full transition-all duration-200 flex-shrink-0 ${plugin.enabled ? "bg-emerald-500" : "bg-[var(--border)]"}`}
+                    style={{ width: 40, height: 22 }}>
+                    <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${plugin.enabled ? "translate-x-[21px]" : "translate-x-[3px]"}`} />
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-[var(--muted)] leading-relaxed mb-4">{plugin.description}</p>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                    <span className={`text-[10px] font-medium ${status.color}`}>{status.label}</span>
+                  </div>
+                  <button onClick={() => openConfig(plugin)}
+                    className="text-[10px] px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--sidebar)] hover:text-[var(--foreground)] transition-colors font-medium flex items-center gap-1">
+                    <Settings className="w-3 h-3" /> Configure
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Config Modal */}
+      {configModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setConfigModal(null)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-[var(--border)]">
+              <div className="flex items-center gap-3">
+                {(() => { const IC = ICON_MAP[configModal.icon] || Plug; return <div className="w-9 h-9 rounded-lg bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)] flex items-center justify-center"><IC className="w-4.5 h-4.5" /></div>; })()}
+                <div>
+                  <h3 className="text-sm font-bold">{configModal.name}</h3>
+                  <p className="text-[10px] text-[var(--muted)]">Configure integration</p>
+                </div>
+              </div>
+              <button onClick={() => setConfigModal(null)} className="p-1.5 rounded-lg hover:bg-[var(--sidebar)] text-[var(--muted)]"><X className="w-4 h-4" /></button>
+            </div>
+
+            {/* Config Form */}
+            <div className="p-5 space-y-4 max-h-[50vh] overflow-y-auto">
+              {configSchema.length === 0 ? (
+                <p className="text-xs text-[var(--muted)] text-center py-4">No configuration required for this plugin.</p>
+              ) : (
+                configSchema.map((field: any) => (
+                  <div key={field.key}>
+                    <label className="text-[10px] text-[var(--muted)] uppercase tracking-wider font-semibold mb-1.5 block">{field.label}</label>
+                    {field.type === "select" ? (
+                      <select value={configValues[field.key] || ""} onChange={e => setConfigValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-xs text-[var(--foreground)] outline-none focus:border-[var(--color-brand-500)]">
+                        <option value="">Select...</option>
+                        {(field.options || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type === "password" ? "password" : field.type === "number" ? "number" : "text"}
+                        value={configValues[field.key] || ""}
+                        onChange={e => setConfigValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder || ""}
+                        className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-xs text-[var(--foreground)] outline-none focus:border-[var(--color-brand-500)]"
+                      />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-5 border-t border-[var(--border)]">
+              <button onClick={handleTestConnection} disabled={testing}
+                className="text-[10px] px-3 py-2 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--sidebar)] transition-colors font-medium flex items-center gap-1.5 disabled:opacity-50">
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
+                {testing ? "Testing..." : "Test Connection"}
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setConfigModal(null)}
+                  className="text-[10px] px-4 py-2 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--sidebar)] transition-colors font-medium">Cancel</button>
+                <button onClick={handleSaveConfig} disabled={saving}
+                  className="text-[10px] px-4 py-2 rounded-lg bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white transition-colors font-semibold flex items-center gap-1.5 disabled:opacity-50">
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -34,6 +34,8 @@ import { AuditLog } from './admin/audit-log.entity';
 import { SystemSetting } from './admin/system-setting.entity';
 import { Changelog } from './admin/changelog.entity';
 import { FeedbackTicket } from './admin/feedback-ticket.entity';
+import { Plugin } from './admin/plugin.entity';
+import { UserPlugin } from './collections/user-plugin.entity';
 import { Subscription } from './subscriptions/subscription.entity';
 import { Payment } from './subscriptions/payment.entity';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -62,7 +64,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket],
+          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket, Plugin, UserPlugin],
           synchronize: true, // Use carefully in production
         };
       },

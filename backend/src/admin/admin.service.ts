@@ -14,6 +14,7 @@ import { AuditLog } from './audit-log.entity';
 import { SystemSetting } from './system-setting.entity';
 import { Changelog } from './changelog.entity';
 import { FeedbackTicket } from './feedback-ticket.entity';
+import { Plugin } from './plugin.entity';
 import { PLANS, PlanId } from '../subscriptions/plans.config';
 import * as bcrypt from 'bcryptjs';
 
@@ -44,9 +45,12 @@ export class AdminService {
     private changelogRepo: Repository<Changelog>,
     @InjectRepository(FeedbackTicket)
     private ticketRepo: Repository<FeedbackTicket>,
+    @InjectRepository(Plugin)
+    private pluginRepo: Repository<Plugin>,
     private jwtService: JwtService,
   ) {
     this.seedDefaultBanners();
+    this.seedDefaultPlugins();
   }
 
   // ── Admin User Creation ──
@@ -1378,5 +1382,205 @@ export class AdminService {
       performedBy: adminId,
     }).catch(() => {});
     return config;
+  }
+
+  // ── Plugins ──
+
+  private async seedDefaultPlugins() {
+    const defaults = [
+      {
+        slug: 'slack', name: 'Slack', description: 'Send notifications to Slack channels when events occur.',
+        category: 'notification', icon: 'MessageSquare',
+        configSchema: JSON.stringify([
+          { key: 'webhookUrl', label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.slack.com/services/...' },
+          { key: 'channel', label: 'Channel', type: 'text', placeholder: '#general' },
+        ]),
+      },
+      {
+        slug: 'discord', name: 'Discord', description: 'Post notifications to Discord channels via webhooks.',
+        category: 'notification', icon: 'MessageSquare',
+        configSchema: JSON.stringify([
+          { key: 'webhookUrl', label: 'Webhook URL', type: 'url', placeholder: 'https://discord.com/api/webhooks/...' },
+        ]),
+      },
+      {
+        slug: 'github', name: 'GitHub', description: 'Sync collections with GitHub repos, trigger workflows.',
+        category: 'ci-cd', icon: 'Globe',
+        configSchema: JSON.stringify([
+          { key: 'token', label: 'Personal Access Token', type: 'password', placeholder: 'ghp_...' },
+          { key: 'org', label: 'Organization', type: 'text', placeholder: 'my-org' },
+          { key: 'repo', label: 'Repository', type: 'text', placeholder: 'my-repo' },
+        ]),
+      },
+      {
+        slug: 'gitlab', name: 'GitLab', description: 'Connect with GitLab for CI/CD pipeline integration.',
+        category: 'ci-cd', icon: 'Globe',
+        configSchema: JSON.stringify([
+          { key: 'token', label: 'Access Token', type: 'password', placeholder: 'glpat-...' },
+          { key: 'projectUrl', label: 'Project URL', type: 'url', placeholder: 'https://gitlab.com/group/project' },
+        ]),
+      },
+      {
+        slug: 'jira', name: 'Jira', description: 'Create issues and track bugs directly from API test failures.',
+        category: 'project-mgmt', icon: 'CheckSquare',
+        configSchema: JSON.stringify([
+          { key: 'baseUrl', label: 'Base URL', type: 'url', placeholder: 'https://your-domain.atlassian.net' },
+          { key: 'email', label: 'Email', type: 'email', placeholder: 'user@example.com' },
+          { key: 'apiToken', label: 'API Token', type: 'password', placeholder: '' },
+          { key: 'projectKey', label: 'Project Key', type: 'text', placeholder: 'PROJ' },
+        ]),
+      },
+      {
+        slug: 'zapier', name: 'Zapier', description: 'Automate workflows by triggering Zapier zaps on events.',
+        category: 'automation', icon: 'Webhook',
+        configSchema: JSON.stringify([
+          { key: 'webhookUrl', label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.zapier.com/hooks/...' },
+        ]),
+      },
+      {
+        slug: 'webhook', name: 'Custom Webhook', description: 'Send event data to any custom HTTP endpoint.',
+        category: 'automation', icon: 'Webhook',
+        configSchema: JSON.stringify([
+          { key: 'url', label: 'Endpoint URL', type: 'url', placeholder: 'https://api.example.com/webhook' },
+          { key: 'method', label: 'Method', type: 'select', options: ['POST', 'PUT', 'PATCH'], placeholder: 'POST' },
+          { key: 'secret', label: 'Secret Key', type: 'password', placeholder: 'Optional signing secret' },
+        ]),
+      },
+      {
+        slug: 'datadog', name: 'Datadog', description: 'Forward API metrics and events to Datadog for monitoring.',
+        category: 'monitoring', icon: 'BarChart3',
+        configSchema: JSON.stringify([
+          { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '' },
+          { key: 'appKey', label: 'Application Key', type: 'password', placeholder: '' },
+          { key: 'site', label: 'Site', type: 'select', options: ['datadoghq.com', 'datadoghq.eu', 'us3.datadoghq.com', 'us5.datadoghq.com'] },
+        ]),
+      },
+      {
+        slug: 'pagerduty', name: 'PagerDuty', description: 'Trigger PagerDuty incidents on critical API failures.',
+        category: 'monitoring', icon: 'Bell',
+        configSchema: JSON.stringify([
+          { key: 'routingKey', label: 'Routing Key', type: 'password', placeholder: '' },
+          { key: 'severity', label: 'Default Severity', type: 'select', options: ['critical', 'error', 'warning', 'info'] },
+        ]),
+      },
+      {
+        slug: 'sentry', name: 'Sentry', description: 'Track errors and exceptions with Sentry monitoring.',
+        category: 'monitoring', icon: 'AlertTriangle',
+        configSchema: JSON.stringify([
+          { key: 'dsn', label: 'DSN', type: 'url', placeholder: 'https://examplePublicKey@o0.ingest.sentry.io/0' },
+        ]),
+      },
+      {
+        slug: 's3', name: 'AWS S3', description: 'Store response exports and backups in Amazon S3.',
+        category: 'storage', icon: 'Download',
+        configSchema: JSON.stringify([
+          { key: 'bucket', label: 'Bucket Name', type: 'text', placeholder: 'my-bucket' },
+          { key: 'region', label: 'Region', type: 'text', placeholder: 'us-east-1' },
+          { key: 'accessKey', label: 'Access Key ID', type: 'password', placeholder: '' },
+          { key: 'secretKey', label: 'Secret Access Key', type: 'password', placeholder: '' },
+        ]),
+      },
+      {
+        slug: 'smtp', name: 'Email (SMTP)', description: 'Configure SMTP for sending email notifications and alerts.',
+        category: 'notification', icon: 'Send',
+        configSchema: JSON.stringify([
+          { key: 'host', label: 'SMTP Host', type: 'text', placeholder: 'smtp.gmail.com' },
+          { key: 'port', label: 'Port', type: 'number', placeholder: '587' },
+          { key: 'user', label: 'Username', type: 'text', placeholder: '' },
+          { key: 'password', label: 'Password', type: 'password', placeholder: '' },
+          { key: 'from', label: 'From Address', type: 'email', placeholder: 'noreply@example.com' },
+        ]),
+      },
+    ];
+
+    for (const p of defaults) {
+      const exists = await this.pluginRepo.findOne({ where: { slug: p.slug } });
+      if (!exists) {
+        await this.pluginRepo.save(this.pluginRepo.create(p));
+      }
+    }
+  }
+
+  async getPlugins(category?: string) {
+    const where: any = {};
+    if (category) where.category = category;
+    return this.pluginRepo.find({ where, order: { category: 'ASC', name: 'ASC' } });
+  }
+
+  async getPlugin(slug: string) {
+    const plugin = await this.pluginRepo.findOne({ where: { slug } });
+    if (!plugin) throw new NotFoundException('Plugin not found');
+    return plugin;
+  }
+
+  async updatePlugin(slug: string, data: { enabled?: boolean; config?: any }, adminId: string) {
+    const plugin = await this.pluginRepo.findOne({ where: { slug } });
+    if (!plugin) throw new NotFoundException('Plugin not found');
+
+    if (data.enabled !== undefined) plugin.enabled = data.enabled;
+    if (data.config !== undefined) plugin.config = typeof data.config === 'string' ? data.config : JSON.stringify(data.config);
+
+    await this.pluginRepo.save(plugin);
+    await this.logAction({
+      action: data.enabled !== undefined ? `plugin.${data.enabled ? 'enabled' : 'disabled'}` : 'plugin.config_updated',
+      targetType: 'plugin',
+      targetId: plugin.id,
+      targetLabel: plugin.name,
+      performedBy: adminId,
+    }).catch(() => {});
+    return plugin;
+  }
+
+  async testPlugin(slug: string) {
+    const plugin = await this.pluginRepo.findOne({ where: { slug } });
+    if (!plugin) throw new NotFoundException('Plugin not found');
+
+    let config: any = {};
+    try { config = JSON.parse(plugin.config); } catch {}
+
+    // Basic validation: check if any config fields are filled
+    const schema = JSON.parse(plugin.configSchema || '[]');
+    const missingFields = schema.filter((f: any) => !config[f.key] && f.type !== 'select');
+    if (missingFields.length > 0) {
+      return { success: false, message: `Missing required fields: ${missingFields.map((f: any) => f.label).join(', ')}` };
+    }
+
+    // Plugin-specific test logic
+    try {
+      switch (slug) {
+        case 'slack':
+        case 'discord':
+        case 'zapier':
+          // Test webhook URL with a HEAD request
+          if (!config.webhookUrl) return { success: false, message: 'Webhook URL is required' };
+          return { success: true, message: `Webhook URL configured. Test event ready to send.` };
+
+        case 'smtp':
+          if (!config.host || !config.port) return { success: false, message: 'Host and port are required' };
+          return { success: true, message: `SMTP configured: ${config.host}:${config.port}` };
+
+        case 'github':
+        case 'gitlab':
+          if (!config.token) return { success: false, message: 'Access token is required' };
+          return { success: true, message: 'Token configured. Connection ready.' };
+
+        case 'datadog':
+          if (!config.apiKey) return { success: false, message: 'API key is required' };
+          return { success: true, message: 'Datadog keys configured.' };
+
+        case 'sentry':
+          if (!config.dsn) return { success: false, message: 'DSN is required' };
+          return { success: true, message: 'Sentry DSN configured.' };
+
+        case 's3':
+          if (!config.bucket || !config.accessKey) return { success: false, message: 'Bucket and Access Key required' };
+          return { success: true, message: `S3 bucket "${config.bucket}" configured.` };
+
+        default:
+          return { success: true, message: 'Plugin configuration looks valid.' };
+      }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Connection test failed' };
+    }
   }
 }

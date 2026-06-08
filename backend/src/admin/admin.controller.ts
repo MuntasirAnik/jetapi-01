@@ -421,4 +421,26 @@ export class AdminController {
     this.rateLimitGuard.invalidateCache();
     return result;
   }
+
+  // ── Plugins ──
+
+  @Get('plugins')
+  getPlugins(@Query('category') category?: string) {
+    return this.adminService.getPlugins(category);
+  }
+
+  @Get('plugins/:slug')
+  getPlugin(@Param('slug') slug: string) {
+    return this.adminService.getPlugin(slug);
+  }
+
+  @Put('plugins/:slug')
+  updatePlugin(@Param('slug') slug: string, @Body() body: any, @Req() req: any) {
+    return this.adminService.updatePlugin(slug, body, req.user.sub);
+  }
+
+  @Post('plugins/:slug/test')
+  testPlugin(@Param('slug') slug: string) {
+    return this.adminService.testPlugin(slug);
+  }
 }

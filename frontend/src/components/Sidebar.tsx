@@ -1,7 +1,7 @@
 "use client";
 import { apiFetch, copyToClipboard, getApiError } from '@/lib/api';
 import { useState, useEffect, useRef } from "react";
-import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star, Lock, Crown, Power } from "lucide-react";
+import { Folder, Play, Plus, Server, ChevronRight, ChevronDown, Upload, Import, Trash2, Search, Share2, Globe, Clock, Users, MoreHorizontal, FilePlus, FolderPlus, Edit2, Copy, Link, Sparkles, FileText, Files, Loader2, BookOpen, BarChart3, Activity, Star, Lock, Crown, Power, Plug } from "lucide-react";
 import AnalyticsPanel from "./AnalyticsPanel";
 import ActivityFeed from "./ActivityFeed";
 import { toast } from "react-toastify";
@@ -12,12 +12,14 @@ import { useAppContext } from "@/lib/AppContext";
 import ImportCollectionModal from "./ImportCollectionModal";
 import BulkRunnerModal from "./BulkRunnerModal";
 import { useFeatureFlags } from "@/lib/FeatureFlagContext";
+import CollectionPluginsModal from "./CollectionPluginsModal";
 
 export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollections = [], onSelectRequest, activeRequestId }: any) {
   const featureFlags = useFeatureFlags();
   const { confirmDialog, promptDialog } = useDialog();
   const { envVariables, globalVariables } = useAppContext();
   const [bulkRunnerData, setBulkRunnerData] = useState<{ name: string; requests: any[] } | null>(null);
+  const [pluginsModal, setPluginsModal] = useState<{ id: string; name: string } | null>(null);
   const [expandedCollections, setExpandedCollections] = useState<Record<string, boolean>>({});
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -1007,6 +1009,9 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                 <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={(e) => { handleExportDocs(e, contextMenu.id, contextMenu.name); setContextMenu(null); }}>
                   <div className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5 opacity-70" /> Generate Docs</div>
                 </button>
+                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-[var(--sidebar)] transition-colors w-full text-left text-[var(--foreground)] opacity-90" onClick={() => { setPluginsModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null); }}>
+                  <div className="flex items-center gap-2"><Plug className="w-3.5 h-3.5 opacity-70" /> Plugins</div>
+                </button>
                 <div className="border-t border-[var(--border)] my-1"></div>
                 <button className="flex items-center justify-between px-3 py-1.5 hover:bg-red-500/10 text-red-500 transition-colors w-full text-left" onClick={(e) => { handleDeleteCollection(e, contextMenu.id, contextMenu.name); setContextMenu(null); }}>
                   <div className="flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete</div>
@@ -1561,6 +1566,14 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
           requests={bulkRunnerData.requests}
           envVariables={[...envVariables, ...globalVariables]}
           onClose={() => setBulkRunnerData(null)}
+        />
+      )}
+
+      {pluginsModal && (
+        <CollectionPluginsModal
+          collectionId={pluginsModal.id}
+          collectionName={pluginsModal.name}
+          onClose={() => setPluginsModal(null)}
         />
       )}
     </div>

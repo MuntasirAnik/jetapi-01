@@ -15,6 +15,7 @@ import { AuditLog } from './audit-log.entity';
 import { SystemSetting } from './system-setting.entity';
 import { Changelog } from './changelog.entity';
 import { FeedbackTicket } from './feedback-ticket.entity';
+import { Plugin } from './plugin.entity';
 import { User } from '../users/user.entity';
 import { Organization } from '../organizations/organization.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
@@ -37,6 +38,7 @@ import { Payment } from '../subscriptions/payment.entity';
       SystemSetting,
       Changelog,
       FeedbackTicket,
+      Plugin,
     ]),
     JwtModule.register({
       secret: 'YOUR_SECRET_KEY',
