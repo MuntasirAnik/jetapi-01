@@ -15,7 +15,8 @@ import { SystemSetting } from './system-setting.entity';
 import { Changelog } from './changelog.entity';
 import { FeedbackTicket } from './feedback-ticket.entity';
 import { Plugin } from './plugin.entity';
-import { PLANS, PlanId } from '../subscriptions/plans.config';
+import { Plan } from '../subscriptions/plan.entity';
+import { DEFAULT_PLANS, PlanId } from '../subscriptions/plans.config';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -33,6 +34,8 @@ export class AdminService {
     private subRepo: Repository<Subscription>,
     @InjectRepository(PlanOverride)
     private overrideRepo: Repository<PlanOverride>,
+    @InjectRepository(Plan)
+    private planRepo: Repository<Plan>,
     @InjectRepository(Payment)
     private paymentRepo: Repository<Payment>,
     @InjectRepository(Banner)
@@ -51,6 +54,7 @@ export class AdminService {
   ) {
     this.seedDefaultBanners();
     this.seedDefaultPlugins();
+    this.seedDefaultPlans();
   }
 
   // ── Admin User Creation ──
@@ -286,58 +290,112 @@ export class AdminService {
     return this.subRepo.save(sub);
   }
 
-  // ── Plan Overrides ──
+  // ── Plan Configuration (DB-driven) ──
 
-  async getPlansWithOverrides() {
-    const overrides = await this.overrideRepo.find();
-    const overrideMap: Record<string, any> = {};
-    overrides.forEach((o) => (overrideMap[o.planId] = o));
+  private async seedDefaultPlans() {
+    try {
+      const count = await this.planRepo.count();
+      if (count > 0) return;
 
-    return Object.values(PLANS).map((plan) => {
-      const override = overrideMap[plan.id];
-      const mergedLimits = { ...plan.limits };
-      let mergedPriceMonthly = plan.priceMonthly;
-      let mergedPriceYearly = plan.priceYearly;
-
-      if (override) {
-        if (override.maxCollections !== null) mergedLimits.maxCollections = override.maxCollections;
-        if (override.maxRequestsPerCollection !== null) mergedLimits.maxRequestsPerCollection = override.maxRequestsPerCollection;
-        if (override.maxMembers !== null) mergedLimits.maxMembers = override.maxMembers;
-        if (override.maxCollaborators !== null) mergedLimits.maxCollaborators = override.maxCollaborators;
-        if (override.maxEnvironments !== null) mergedLimits.maxEnvironments = override.maxEnvironments;
-        if (override.historyDays !== null) mergedLimits.historyDays = override.historyDays;
-        if (override.maxUploadMb !== null) mergedLimits.maxUploadMb = override.maxUploadMb;
-        if (override.analyticsAccess !== null) mergedLimits.analyticsAccess = override.analyticsAccess;
-        if (override.priceMonthly !== null) mergedPriceMonthly = override.priceMonthly;
-        if (override.priceYearly !== null) mergedPriceYearly = override.priceYearly;
+      const defaultPlans = Object.values(DEFAULT_PLANS);
+      for (let index = 0; index < defaultPlans.length; index++) {
+        const p = defaultPlans[index];
+        const entity = new Plan();
+        entity.id = p.id;
+        entity.name = p.name;
+        entity.description = p.description;
+        entity.priceMonthly = p.priceMonthly / 100;
+        entity.priceYearly = p.priceYearly / 100;
+        entity.maxCollections = p.limits.maxCollections;
+        entity.maxRequestsPerCollection = p.limits.maxRequestsPerCollection;
+        entity.maxMembers = p.limits.maxMembers;
+        entity.maxCollaborators = p.limits.maxCollaborators;
+        entity.maxEnvironments = p.limits.maxEnvironments;
+        entity.historyDays = p.limits.historyDays;
+        entity.maxUploadMb = p.limits.maxUploadMb;
+        entity.analyticsAccess = p.limits.analyticsAccess;
+        entity.sharedCollections = p.limits.sharedCollections;
+        entity.apiDocExport = p.limits.apiDocExport;
+        entity.features = JSON.stringify(p.features);
+        entity.popular = p.popular || false;
+        entity.stripePriceIdMonthly = p.stripePriceIdMonthly || '';
+        entity.stripePriceIdYearly = p.stripePriceIdYearly || '';
+        entity.sortOrder = index;
+        await this.planRepo.save(entity);
       }
-
-      return {
-        id: plan.id,
-        name: plan.name,
-        description: plan.description,
-        priceMonthly: mergedPriceMonthly,
-        priceYearly: mergedPriceYearly,
-        limits: mergedLimits,
-        hasOverride: !!override,
-      };
-    });
+    } catch (err) {
+      // Table may not exist yet on first boot; ignore
+    }
   }
 
-  async updatePlanOverride(planId: string, limits: Partial<PlanOverride>) {
-    let override = await this.overrideRepo.findOne({ where: { planId } });
+  async getPlansWithOverrides() {
+    const plans = await this.planRepo.find({ order: { sortOrder: 'ASC' } });
 
-    if (override) {
-      Object.assign(override, limits);
-    } else {
-      override = this.overrideRepo.create({ planId, ...limits });
-    }
+    return plans.map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      description: plan.description,
+      priceMonthly: parseFloat(String(plan.priceMonthly)),
+      priceYearly: parseFloat(String(plan.priceYearly)),
+      limits: {
+        maxCollections: plan.maxCollections,
+        maxRequestsPerCollection: plan.maxRequestsPerCollection,
+        maxMembers: plan.maxMembers,
+        maxCollaborators: plan.maxCollaborators,
+        maxEnvironments: plan.maxEnvironments,
+        historyDays: plan.historyDays,
+        maxUploadMb: plan.maxUploadMb,
+        analyticsAccess: plan.analyticsAccess,
+        sharedCollections: plan.sharedCollections,
+        apiDocExport: plan.apiDocExport,
+      },
+      features: (() => { try { return JSON.parse(plan.features); } catch { return []; } })(),
+      popular: plan.popular,
+      hasOverride: true, // All plans are now DB-driven
+    }));
+  }
 
-    return this.overrideRepo.save(override);
+  async updatePlanOverride(planId: string, data: any) {
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException(`Plan ${planId} not found`);
+
+    // Update pricing
+    if (data.priceMonthly !== undefined) plan.priceMonthly = data.priceMonthly;
+    if (data.priceYearly !== undefined) plan.priceYearly = data.priceYearly;
+
+    // Update limits
+    if (data.maxCollections !== undefined) plan.maxCollections = data.maxCollections;
+    if (data.maxRequestsPerCollection !== undefined) plan.maxRequestsPerCollection = data.maxRequestsPerCollection;
+    if (data.maxMembers !== undefined) plan.maxMembers = data.maxMembers;
+    if (data.maxCollaborators !== undefined) plan.maxCollaborators = data.maxCollaborators;
+    if (data.maxEnvironments !== undefined) plan.maxEnvironments = data.maxEnvironments;
+    if (data.historyDays !== undefined) plan.historyDays = data.historyDays;
+    if (data.maxUploadMb !== undefined) plan.maxUploadMb = data.maxUploadMb;
+    if (data.analyticsAccess !== undefined) plan.analyticsAccess = data.analyticsAccess;
+
+    return this.planRepo.save(plan);
   }
 
   async resetPlanOverride(planId: string) {
-    await this.overrideRepo.delete({ planId });
+    const defaultPlan = DEFAULT_PLANS[planId as PlanId];
+    if (!defaultPlan) throw new NotFoundException(`Default plan ${planId} not found`);
+
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException(`Plan ${planId} not found`);
+
+    // Reset to factory defaults (convert cents to dollars)
+    plan.priceMonthly = defaultPlan.priceMonthly / 100;
+    plan.priceYearly = defaultPlan.priceYearly / 100;
+    plan.maxCollections = defaultPlan.limits.maxCollections;
+    plan.maxRequestsPerCollection = defaultPlan.limits.maxRequestsPerCollection;
+    plan.maxMembers = defaultPlan.limits.maxMembers;
+    plan.maxCollaborators = defaultPlan.limits.maxCollaborators;
+    plan.maxEnvironments = defaultPlan.limits.maxEnvironments;
+    plan.historyDays = defaultPlan.limits.historyDays;
+    plan.maxUploadMb = defaultPlan.limits.maxUploadMb;
+    plan.analyticsAccess = defaultPlan.limits.analyticsAccess;
+
+    await this.planRepo.save(plan);
     return { reset: true };
   }
 

@@ -81,7 +81,7 @@ export default function WorkspaceSettingsModal({ workspaceId, organizationId, on
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 modal-backdrop">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4 modal-backdrop">
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden modal-content">
         
         {/* Header */}
@@ -115,9 +115,13 @@ export default function WorkspaceSettingsModal({ workspaceId, organizationId, on
                   <button onClick={() => setIsEditingName(false)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">Cancel</button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => { if (isOwnerOrAdmin) setIsEditingName(true); }}>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => { if (isOwnerOrAdmin) setIsEditingName(true); }}>
                   <h2 className="text-sm font-semibold text-[var(--foreground)]">{workspace?.name} Settings</h2>
-                  {isOwnerOrAdmin && <span className="text-[10px] text-[var(--color-brand-500)] opacity-0 group-hover:opacity-100 transition-opacity">Edit Rename</span>}
+                  {isOwnerOrAdmin && (
+                    <button className="p-1 rounded hover:bg-[var(--sidebar)] text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-colors" title="Rename workspace">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                  )}
                 </div>
               )}
               <p className="text-xs text-[var(--muted)] mt-1">Manage this workspace</p>

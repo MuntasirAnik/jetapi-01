@@ -38,6 +38,7 @@ import { Plugin } from './admin/plugin.entity';
 import { UserPlugin } from './collections/user-plugin.entity';
 import { Subscription } from './subscriptions/subscription.entity';
 import { Payment } from './subscriptions/payment.entity';
+import { Plan } from './subscriptions/plan.entity';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
@@ -64,7 +65,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket, Plugin, UserPlugin],
+          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Plan, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket, Plugin, UserPlugin],
           synchronize: true, // Use carefully in production
         };
       },

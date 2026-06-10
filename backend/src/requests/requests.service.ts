@@ -53,10 +53,10 @@ export class RequestsService {
 
     if (data.name && data.collectionId) {
       const existing = await this.requestRepository.findOne({
-        where: { name: data.name, collectionId: data.collectionId }
+        where: { name: data.name, collectionId: data.collectionId, folder: data.folder || '' }
       });
       if (existing) {
-        throw new BadRequestException('An endpoint with this name already exists in this collection.');
+        throw new BadRequestException('An endpoint with this name already exists in this folder.');
       }
     }
     const request = this.requestRepository.create({ ...data, ownerId: userId });
@@ -132,10 +132,10 @@ export class RequestsService {
 
     if (data.name && data.name !== request.name) {
       const existing = await this.requestRepository.findOne({
-        where: { name: data.name, collectionId: request.collectionId }
+        where: { name: data.name, collectionId: request.collectionId, folder: data.folder ?? request.folder ?? '' }
       });
       if (existing) {
-        throw new BadRequestException('An endpoint with this name already exists in this collection.');
+        throw new BadRequestException('An endpoint with this name already exists in this folder.');
       }
     }
 

@@ -110,21 +110,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
     }
   };
 
-  const handleUpdateMaxMembers = async (newMax: number) => {
-    if (newMax < 1) return;
-    try {
-      const res = await apiFetch(`/organizations/${organizationId}`, {
-        method: 'PUT',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxMembers: newMax })
-      });
-      if (!res.ok) throw new Error("Failed to update max members");
-      toast.success(`Max team members updated to ${newMax}`);
-      loadData(false);
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
+
 
   const currentUserMembership = users.find(u => u.email === currentUserEmail);
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
@@ -160,9 +146,13 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                   <button onClick={() => setIsEditingName(false)} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">Cancel</button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => { if (isOwnerOrAdmin) setIsEditingName(true); }}>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => { if (isOwnerOrAdmin) setIsEditingName(true); }}>
                   <h2 className="text-sm font-semibold text-[var(--foreground)]">{org?.name} Settings</h2>
-                  {isOwnerOrAdmin && <span className="text-[10px] text-[var(--color-brand-500)] opacity-0 group-hover:opacity-100 transition-opacity">Edit Rename</span>}
+                  {isOwnerOrAdmin && (
+                    <button className="p-1 rounded hover:bg-[var(--sidebar)] text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-colors" title="Rename team">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                  )}
                 </div>
               )}
               <p className="text-xs text-[var(--muted)]">Manage your team and billing</p>
@@ -196,28 +186,6 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                 />
               </div>
 
-              {/* Max Members Control */}
-              {isOwner && (
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-[var(--muted)] font-medium">Max Team Members</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleUpdateMaxMembers(maxUsers - 1)}
-                      disabled={maxUsers <= 1 || maxUsers <= seatsUsed}
-                      className="w-7 h-7 flex items-center justify-center rounded bg-[var(--sidebar)] border border-[var(--border)] text-sm font-bold hover:bg-[var(--border)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      −
-                    </button>
-                    <span className="w-10 text-center text-sm font-semibold tabular-nums">{maxUsers}</span>
-                    <button
-                      onClick={() => handleUpdateMaxMembers(maxUsers + 1)}
-                      className="w-7 h-7 flex items-center justify-center rounded bg-[var(--sidebar)] border border-[var(--border)] text-sm font-bold hover:bg-[var(--border)] transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {isAtLimit && (
                 <div className="mt-3 flex items-start gap-2 text-xs text-red-400 bg-red-400/10 p-2 rounded">

@@ -6,8 +6,8 @@ import { Collection } from '../collections/collection.entity';
 import { RequestItem } from '../requests/request.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
 import { Environment } from '../environments/environment.entity';
-import { PlanId, PlanLimits, getPlanLimits } from './plans.config';
-import { PlanOverride } from '../admin/plan-override.entity';
+import { PlanId, PlanLimits, getDefaultPlanLimits } from './plans.config';
+import { Plan } from './plan.entity';
 
 @Injectable()
 export class LimitsService {
@@ -22,30 +22,30 @@ export class LimitsService {
     private orgUserRepo: Repository<OrganizationUser>,
     @InjectRepository(Environment)
     private environmentRepo: Repository<Environment>,
-    @InjectRepository(PlanOverride)
-    private overrideRepo: Repository<PlanOverride>,
+    @InjectRepository(Plan)
+    private planRepo: Repository<Plan>,
   ) {}
 
-  /** Get plan limits merged with any admin overrides from DB */
+  /** Get plan limits from the Plan DB table, falling back to hardcoded defaults */
   private async getMergedLimits(planId: PlanId): Promise<PlanLimits> {
-    const defaults = getPlanLimits(planId);
     try {
-      const override = await this.overrideRepo.findOne({ where: { planId } });
-      if (!override) return defaults;
+      const plan = await this.planRepo.findOne({ where: { id: planId } });
+      if (!plan) return getDefaultPlanLimits(planId);
 
       return {
-        ...defaults,
-        ...(override.maxCollections !== null && { maxCollections: override.maxCollections }),
-        ...(override.maxRequestsPerCollection !== null && { maxRequestsPerCollection: override.maxRequestsPerCollection }),
-        ...(override.maxMembers !== null && { maxMembers: override.maxMembers }),
-        ...(override.maxCollaborators !== null && { maxCollaborators: override.maxCollaborators }),
-        ...(override.maxEnvironments !== null && { maxEnvironments: override.maxEnvironments }),
-        ...(override.historyDays !== null && { historyDays: override.historyDays }),
-        ...(override.maxUploadMb !== null && { maxUploadMb: override.maxUploadMb }),
-        ...(override.analyticsAccess !== null && { analyticsAccess: override.analyticsAccess }),
+        maxCollections: plan.maxCollections,
+        maxRequestsPerCollection: plan.maxRequestsPerCollection,
+        maxMembers: plan.maxMembers,
+        maxCollaborators: plan.maxCollaborators,
+        maxEnvironments: plan.maxEnvironments,
+        sharedCollections: plan.sharedCollections,
+        apiDocExport: plan.apiDocExport,
+        historyDays: plan.historyDays,
+        maxUploadMb: plan.maxUploadMb,
+        analyticsAccess: plan.analyticsAccess,
       };
     } catch {
-      return defaults;
+      return getDefaultPlanLimits(planId);
     }
   }
 

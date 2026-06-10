@@ -10,6 +10,7 @@ import { AdminGuard } from './admin.guard';
 import { FeatureFlagGuard } from './feature-flag.guard';
 import { RateLimitGuard } from './rate-limit.guard';
 import { PlanOverride } from './plan-override.entity';
+import { Plan } from '../subscriptions/plan.entity';
 import { Banner } from './banner.entity';
 import { AuditLog } from './audit-log.entity';
 import { SystemSetting } from './system-setting.entity';
@@ -27,6 +28,7 @@ import { Payment } from '../subscriptions/payment.entity';
   imports: [
     TypeOrmModule.forFeature([
       PlanOverride,
+      Plan,
       User,
       Organization,
       OrganizationUser,

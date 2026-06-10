@@ -46,13 +46,13 @@ export default function PricingPage() {
     },
     {
       id: "PRO", name: "Pro", description: "For professional developers",
-      priceMonthly: 1200, priceYearly: 12000, popular: true,
+      priceMonthly: 12, priceYearly: 120, popular: true,
       features: ["Unlimited Collections", "Unlimited Requests", "Up to 3 team members", "10 Environments", "Shared collections", "API Documentation export", "30-day request history", "5 MB file uploads"],
       limits: {},
     },
     {
       id: "TEAM", name: "Team", description: "For teams and organizations",
-      priceMonthly: 2900, priceYearly: 29000, popular: false,
+      priceMonthly: 29, priceYearly: 290, popular: false,
       features: ["Everything in Pro", "Up to 15 team members", "Unlimited Environments", "90-day request history", "10 MB file uploads", "Priority support"],
       limits: {},
     },
@@ -296,7 +296,7 @@ export default function PricingPage() {
                 <div className="mb-4">
                   <div className="flex items-baseline gap-1">
                     <span className="text-3xl sm:text-4xl font-black">
-                      {price === 0 ? "Free" : `$${(price / 100).toFixed(0)}`}
+                      {price === 0 ? "Free" : `$${price.toFixed(0)}`}
                     </span>
                     {price > 0 && <span className="text-sm text-gray-500">/month</span>}
                     {price > 0 && interval === "yearly" && yearlySaving > 0 && (
@@ -305,7 +305,7 @@ export default function PricingPage() {
                   </div>
                   {price > 0 && interval === "yearly" && (
                     <p className="text-xs text-gray-600 mt-1">
-                      ${(plan.priceYearly / 100).toFixed(0)} billed annually
+                      ${plan.priceYearly.toFixed(0)} billed annually
                     </p>
                   )}
                 </div>

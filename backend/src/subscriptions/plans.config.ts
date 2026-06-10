@@ -26,7 +26,8 @@ export interface PlanDefinition {
   popular?: boolean;
 }
 
-export const PLANS: Record<PlanId, PlanDefinition> = {
+/** Default plan definitions — used as seed data for the Plan DB table */
+export const DEFAULT_PLANS: Record<PlanId, PlanDefinition> = {
   FREE: {
     id: 'FREE',
     name: 'Free',
@@ -121,6 +122,13 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
   },
 };
 
-export function getPlanLimits(planId: PlanId): PlanLimits {
-  return PLANS[planId]?.limits || PLANS.FREE.limits;
+/** @deprecated Use DEFAULT_PLANS instead. Kept for backward compatibility. */
+export const PLANS = DEFAULT_PLANS;
+
+export function getDefaultPlanLimits(planId: PlanId): PlanLimits {
+  return DEFAULT_PLANS[planId]?.limits || DEFAULT_PLANS.FREE.limits;
 }
+
+/** @deprecated Use getDefaultPlanLimits instead */
+export const getPlanLimits = getDefaultPlanLimits;
+

@@ -1173,10 +1173,10 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
   };
 
   const handlePriceChange = (planId: string, key: string, dollarValue: string) => {
-    const cents = Math.round((parseFloat(dollarValue) || 0) * 100);
+    const dollars = parseFloat(dollarValue) || 0;
     setEditing((prev) => ({
       ...prev,
-      [planId]: { ...(prev[planId] || {}), [key]: cents },
+      [planId]: { ...(prev[planId] || {}), [key]: dollars },
     }));
   };
 
@@ -1270,7 +1270,7 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={(edits.priceMonthly !== undefined ? edits.priceMonthly / 100 : plan.priceMonthly / 100).toFixed(2)}
+                        value={(edits.priceMonthly !== undefined ? edits.priceMonthly : plan.priceMonthly).toFixed(2)}
                         onChange={(e) => handlePriceChange(plan.id, "priceMonthly", e.target.value)}
                         className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded px-3 py-1.5 pl-6 text-sm font-mono focus:outline-none focus:border-[var(--color-brand-500)]"
                         disabled={plan.id === "FREE"}
@@ -1285,7 +1285,7 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={(edits.priceYearly !== undefined ? edits.priceYearly / 100 : plan.priceYearly / 100).toFixed(2)}
+                        value={(edits.priceYearly !== undefined ? edits.priceYearly : plan.priceYearly).toFixed(2)}
                         onChange={(e) => handlePriceChange(plan.id, "priceYearly", e.target.value)}
                         className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded px-3 py-1.5 pl-6 text-sm font-mono focus:outline-none focus:border-[var(--color-brand-500)]"
                         disabled={plan.id === "FREE"}
@@ -1295,7 +1295,7 @@ function PlansTab({ plans, onReload }: { plans: any[]; onReload: () => void }) {
                 </div>
                 {plan.id !== "FREE" && (
                   <p className="text-[10px] text-[var(--muted)] mt-1.5">
-                    Effective: ${(currentMonthly / 100).toFixed(0)}/mo · ${(currentYearly / 100).toFixed(0)}/yr (~${(currentYearly / 1200).toFixed(0)}/mo)
+                    Effective: ${currentMonthly.toFixed(0)}/mo · ${currentYearly.toFixed(0)}/yr (~${(currentYearly / 12).toFixed(0)}/mo)
                   </p>
                 )}
               </div>

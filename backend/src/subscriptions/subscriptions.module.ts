@@ -12,6 +12,7 @@ import { OrganizationUser } from '../organizations/organization-user.entity';
 import { Environment } from '../environments/environment.entity';
 import { PlanOverride } from '../admin/plan-override.entity';
 import { Payment } from './payment.entity';
+import { Plan } from './plan.entity';
 import { AdminModule } from '../admin/admin.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { AdminModule } from '../admin/admin.module';
       OrganizationUser,
       Environment,
       PlanOverride,
+      Plan,
       Payment,
     ]),
     JwtModule.register({

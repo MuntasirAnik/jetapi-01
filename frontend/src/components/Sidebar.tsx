@@ -24,6 +24,8 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
+  // Track empty folders (no requests yet) — keyed by collectionId, value is array of folder paths
+  const [emptyFolders, setEmptyFolders] = useState<Record<string, string[]>>({});
   const loadedStateRef = useRef(false);
 
   // Load favorites from localStorage
@@ -62,6 +64,28 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
   useEffect(() => {
     if (loadedStateRef.current) localStorage.setItem("sidebar_expanded_folders", JSON.stringify(expandedFolders));
   }, [expandedFolders]);
+
+  // Clean up empty folders when real requests exist in those paths
+  useEffect(() => {
+    if (Object.keys(emptyFolders).length === 0) return;
+    const allRequests = workspaces.flatMap((w: any) => (w.collections || []).flatMap((c: any) => (c.requests || []).map((r: any) => ({ folder: r.folder || '', collectionId: c.id }))));
+    setEmptyFolders((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      for (const [colId, paths] of Object.entries(updated)) {
+        const remaining = paths.filter((folderPath) => {
+          // Keep if no request exists in this folder or its subfolders
+          return !allRequests.some((r: any) => r.collectionId === colId && (r.folder === folderPath || r.folder.startsWith(folderPath + '/')));
+        });
+        if (remaining.length !== paths.length) {
+          changed = true;
+          if (remaining.length === 0) delete updated[colId];
+          else updated[colId] = remaining;
+        }
+      }
+      return changed ? updated : prev;
+    });
+  }, [workspaces]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -229,46 +253,37 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
     if (!folderName || !folderName.trim()) return;
     const trimmedName = folderName.trim();
 
-    const col = workspaces.flatMap((w:any)=>w.collections||[]).find((c:any) => c.id === contextMenu.id);
-    const colName = col?.name || "Unknown";
     let newFolderPath: string;
-    const breadcrumb = [colName];
+    let targetCollectionId: string;
 
     if (contextMenu.type === 'folder' && contextMenu.folderPath) {
       // Creating subfolder inside an existing folder
       newFolderPath = `${contextMenu.folderPath}/${trimmedName}`;
-      breadcrumb.push(...contextMenu.folderPath.split('/'), trimmedName);
+      targetCollectionId = contextMenu.id;
     } else {
       // Creating folder at collection root
       newFolderPath = trimmedName;
-      breadcrumb.push(trimmedName);
+      targetCollectionId = contextMenu.id;
     }
 
-    // Expand the collection and new folder path in the sidebar
-    setExpandedCollections((prev: any) => ({ ...prev, [contextMenu.id]: true }));
+    // Expand the collection and all parent folders
+    setExpandedCollections((prev: any) => ({ ...prev, [targetCollectionId]: true }));
     const pathParts = newFolderPath.split('/');
     const newFolders: Record<string, boolean> = {};
     let currentPath = '';
     for (const part of pathParts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
-      newFolders[`${contextMenu.id}-${currentPath}`] = true;
+      newFolders[`${targetCollectionId}-${currentPath}`] = true;
     }
     setExpandedFolders((prev: any) => ({ ...prev, ...newFolders }));
 
-    // Open a new request editor pre-set into the new folder
-    onSelectRequest({ 
-      id: `new-${Date.now()}`, 
-      collectionId: contextMenu.id,
-      folder: newFolderPath,
-      name: 'Untitled Request', 
-      method: 'GET', 
-      url: '',
-      headers: [],
-      params: [],
-      body: '',
-      _isNew: true,
-      _breadcrumb: breadcrumb
-    });
+    // Add to emptyFolders so it renders in the tree
+    setEmptyFolders((prev) => ({
+      ...prev,
+      [targetCollectionId]: [...(prev[targetCollectionId] || []).filter(p => p !== newFolderPath), newFolderPath],
+    }));
+
+    toast.success(`Folder "${trimmedName}" created`);
   };
 
   useEffect(() => {
@@ -795,10 +810,11 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
   };
 
   const renderTree = (collectionId: string, collectionName: string, requests: any[]) => {
-    if (!requests || requests.length === 0) return <div className="text-xs text-[var(--muted)] p-1.5 italic">Empty</div>;
+    const collectionEmptyFolders = emptyFolders[collectionId] || [];
+    if ((!requests || requests.length === 0) && collectionEmptyFolders.length === 0) return <div className="text-xs text-[var(--muted)] p-1.5 italic">Empty</div>;
 
     const root: any = { name: 'root', requests: [], children: {} };
-    requests.forEach(req => {
+    (requests || []).forEach(req => {
       if (!req.folder) {
         root.requests.push(req);
         return;
@@ -814,6 +830,19 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
       }
       current.requests.push(req);
     });
+
+    // Merge empty folders into the tree (so they render even without requests)
+    for (const folderPath of collectionEmptyFolders) {
+      const parts = folderPath.split('/');
+      let current = root;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (!current.children[part]) {
+          current.children[part] = { name: part, path: parts.slice(0, i+1).join('/'), requests: [], children: {} };
+        }
+        current = current.children[part];
+      }
+    }
 
     const renderNode = (node: any, pathPrefix: string) => {
       return (
@@ -876,19 +905,12 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                            newFolders[`${collectionId}-${currentPath}`] = true;
                          }
                          setExpandedFolders((prev: any) => ({ ...prev, ...newFolders }));
-                         onSelectRequest({ 
-                           id: `new-${Date.now()}`, 
-                           collectionId: collectionId,
-                           folder: newFolderPath,
-                           name: 'Untitled Request', 
-                           method: 'GET', 
-                           url: '',
-                           headers: [],
-                           params: [],
-                           body: '',
-                           _isNew: true,
-                           _breadcrumb: [collectionName, ...newFolderPath.split('/')]
-                         });
+                         // Add to emptyFolders so it renders in the tree
+                         setEmptyFolders((prev) => ({
+                           ...prev,
+                           [collectionId]: [...(prev[collectionId] || []).filter(p => p !== newFolderPath), newFolderPath],
+                         }));
+                         toast.success(`Folder "${folderName.trim()}" created`);
                       }}
                       className="hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded mr-0.5 transition-colors cursor-pointer"
                       title="New Folder"
@@ -1324,6 +1346,25 @@ export default function Sidebar({ workspaces = [], activeWorkspace, sharedCollec
                   title="Add Request"
                 >
                   <FilePlus className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={async (e) => {
+                     e.stopPropagation();
+                     const folderName = await promptDialog("Enter new folder name:");
+                     if (!folderName || !folderName.trim()) return;
+                     const trimmedName = folderName.trim();
+                     setExpandedCollections((prev: any) => ({ ...prev, [col.id]: true }));
+                     setExpandedFolders((prev: any) => ({ ...prev, [`${col.id}-${trimmedName}`]: true }));
+                     setEmptyFolders((prev) => ({
+                       ...prev,
+                       [col.id]: [...(prev[col.id] || []).filter(p => p !== trimmedName), trimmedName],
+                     }));
+                     toast.success(`Folder "${trimmedName}" created`);
+                  }}
+                  className="hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 rounded mr-0.5 transition-colors cursor-pointer"
+                  title="New Folder"
+                >
+                  <FolderPlus className="w-3.5 h-3.5" />
                 </button>
                 <button 
                   onClick={(e) => handleDeleteCollection(e, col.id, col.name)}

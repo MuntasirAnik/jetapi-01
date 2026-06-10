@@ -104,6 +104,7 @@ export default function Home() {
 
   // Save Modal States
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [saveModalEmptyFolders, setSaveModalEmptyFolders] = useState<Record<string, string[]>>({});
   const [requestToSave, setRequestToSave] = useState<any>(null);
   const [saveWorkspaces, setSaveWorkspaces] = useState<any[]>([]);
   const [saveTargetWorkspaceId, setSaveTargetWorkspaceId] = useState<string>('');
@@ -1355,6 +1356,20 @@ export default function Home() {
                                   }
                                 });
 
+                              // Merge empty folders created in the save modal
+                              const colEmptyFolders = saveModalEmptyFolders[col.id] || [];
+                              for (const folderPath of colEmptyFolders) {
+                                const parts = folderPath.split('/');
+                                let current = foldersObj;
+                                for (let i = 0; i < parts.length; i++) {
+                                  const part = parts[i];
+                                  if (!current.children[part]) {
+                                    current.children[part] = { name: part, path: parts.slice(0, i + 1).join('/'), children: {}, requests: [] };
+                                  }
+                                  current = current.children[part];
+                                }
+                              }
+
                               const isColSelected = saveTargetCollectionId === col.id && saveTargetFolder === '';
                               const colNodeId = `col-${col.id}`;
                               const isColExpanded = saveSearchQuery ? true : saveExpandedNodes[colNodeId];
@@ -1382,22 +1397,27 @@ export default function Home() {
                                       <Folder className={`w-4 h-4 ${isColSelected ? 'text-[var(--color-brand-500)]' : 'text-[var(--muted)]'}`} />
                                       <span className="flex-1">{col.name}</span>
                                     </div>
-                                    {isColSelected && (
-                                      <button
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          const folderName = await promptDialog(`Create new folder in ${col.name}:`);
-                                          if (folderName) {
-                                            setSaveTargetFolder(folderName);
-                                            toast.success(`Target directory set: /${folderName}`);
-                                          }
-                                        }}
-                                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[var(--sidebar)] rounded transition-opacity text-[var(--muted)] hover:text-[var(--color-brand-500)] flex shrink-0"
-                                        title="Create sub-folder"
-                                      >
-                                        <FolderPlus className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const folderName = await promptDialog(`Create new folder in ${col.name}:`);
+                                        if (folderName && folderName.trim()) {
+                                          const trimmed = folderName.trim();
+                                          setSaveTargetCollectionId(col.id);
+                                          setSaveTargetFolder(trimmed);
+                                          setSaveExpandedNodes(prev => ({ ...prev, [colNodeId]: true, [`folder-${col.id}-${trimmed}`]: true }));
+                                          setSaveModalEmptyFolders(prev => ({
+                                            ...prev,
+                                            [col.id]: [...(prev[col.id] || []).filter(p => p !== trimmed), trimmed],
+                                          }));
+                                          toast.success(`Folder "${trimmed}" created`);
+                                        }
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[var(--sidebar)] rounded transition-opacity text-[var(--muted)] hover:text-[var(--color-brand-500)] flex shrink-0"
+                                      title="Create sub-folder"
+                                    >
+                                      <FolderPlus className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
 
                                   {/* Render extracted folders and requests inside the collection */}
@@ -1434,23 +1454,28 @@ export default function Home() {
                                                   <Folder className={`w-3.5 h-3.5 ${isFolderSelected ? 'text-[var(--color-brand-500)]' : 'text-[var(--muted)]'}`} />
                                                   <span className="flex-1 truncate">{node.name}</span>
                                                 </div>
-                                                {isFolderSelected && (
-                                                  <button
-                                                    onClick={async (e) => {
-                                                      e.stopPropagation();
-                                                      const folderName = await promptDialog(`Create sub-folder inside ${node.name}:`);
-                                                      if (folderName) {
-                                                        const newPath = `${node.path}/${folderName}`;
-                                                        setSaveTargetFolder(newPath);
-                                                        toast.success(`Target directory set: /${newPath}`);
-                                                      }
-                                                    }}
-                                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[var(--sidebar)] rounded transition-opacity text-[var(--muted)] hover:text-[var(--color-brand-500)] flex shrink-0"
-                                                    title="Create sub-folder"
-                                                  >
-                                                    <FolderPlus className="w-3.5 h-3.5" />
-                                                  </button>
-                                                )}
+                                                <button
+                                                  onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    const folderName = await promptDialog(`Create sub-folder inside ${node.name}:`);
+                                                    if (folderName && folderName.trim()) {
+                                                      const trimmed = folderName.trim();
+                                                      const newPath = `${node.path}/${trimmed}`;
+                                                      setSaveTargetCollectionId(col.id);
+                                                      setSaveTargetFolder(newPath);
+                                                      setSaveExpandedNodes(prev => ({ ...prev, [folderNodeId]: true, [`folder-${col.id}-${newPath}`]: true }));
+                                                      setSaveModalEmptyFolders(prev => ({
+                                                        ...prev,
+                                                        [col.id]: [...(prev[col.id] || []).filter(p => p !== newPath), newPath],
+                                                      }));
+                                                      toast.success(`Folder "${trimmed}" created`);
+                                                    }
+                                                  }}
+                                                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[var(--sidebar)] rounded transition-opacity text-[var(--muted)] hover:text-[var(--color-brand-500)] flex shrink-0"
+                                                  title="Create sub-folder"
+                                                >
+                                                  <FolderPlus className="w-3.5 h-3.5" />
+                                                </button>
                                               </div>
 
                                               {isFolderExpanded && (

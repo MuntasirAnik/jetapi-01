@@ -150,8 +150,8 @@ function PaymentPageInner() {
                    <Zap className="w-5 h-5 text-gray-400" />;
 
   const interval = subscription?.subscription?.billingInterval || "monthly";
-  const priceInCents = interval === "yearly" ? (plan.priceYearly || 0) : (plan.priceMonthly || 0);
-  const price = priceInCents === 0 ? "$0" : `$${(priceInCents / 100).toFixed(0)}`;
+  const priceInDollars = interval === "yearly" ? (plan.priceYearly || 0) : (plan.priceMonthly || 0);
+  const price = priceInDollars === 0 ? "$0" : `$${priceInDollars.toFixed(0)}`;
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
