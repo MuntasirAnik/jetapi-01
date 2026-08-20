@@ -39,6 +39,7 @@ import { UserPlugin } from './collections/user-plugin.entity';
 import { Subscription } from './subscriptions/subscription.entity';
 import { Payment } from './subscriptions/payment.entity';
 import { Plan } from './subscriptions/plan.entity';
+import { ApiHit } from './admin/api-hit.entity';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
@@ -50,7 +51,9 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        const isLocal = configService.get<string>('DB_HOST') === 'localhost' || configService.get<string>('DB_HOST') === '127.0.0.1';
+        const isLocal =
+          configService.get<string>('DB_HOST') === 'localhost' ||
+          configService.get<string>('DB_HOST') === '127.0.0.1';
 
         return {
           type: 'postgres',
@@ -60,12 +63,38 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
           password: configService.get<string>('DB_PASSWORD'),
           database: configService.get<string>('DB_DATABASE'),
           ssl: isLocal ? false : true,
-          extra: isLocal ? {} : {
-            ssl: {
-              rejectUnauthorized: false,
-            },
-          },
-          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Plan, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket, Plugin, UserPlugin],
+          extra: isLocal
+            ? {}
+            : {
+                ssl: {
+                  rejectUnauthorized: false,
+                },
+              },
+          entities: [
+            Workspace,
+            Collection,
+            CollectionShare,
+            RequestItem,
+            Environment,
+            User,
+            Organization,
+            OrganizationUser,
+            Notification,
+            Activity,
+            Comment,
+            PlanOverride,
+            Plan,
+            Subscription,
+            Payment,
+            Banner,
+            AuditLog,
+            SystemSetting,
+            Changelog,
+            FeedbackTicket,
+            Plugin,
+            UserPlugin,
+            ApiHit,
+          ],
           synchronize: true, // Use carefully in production
         };
       },
@@ -89,4 +118,4 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

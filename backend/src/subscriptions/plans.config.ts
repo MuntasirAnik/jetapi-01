@@ -18,7 +18,7 @@ export interface PlanDefinition {
   name: string;
   description: string;
   priceMonthly: number; // in cents
-  priceYearly: number;  // in cents (per year)
+  priceYearly: number; // in cents (per year)
   readonly stripePriceIdMonthly: string;
   readonly stripePriceIdYearly: string;
   limits: PlanLimits;
@@ -63,8 +63,12 @@ export const DEFAULT_PLANS: Record<PlanId, PlanDefinition> = {
     description: 'For professional developers',
     priceMonthly: 1200, // $12
     priceYearly: 12000, // $120/yr ($10/mo effective)
-    get stripePriceIdMonthly() { return process.env.STRIPE_PRO_MONTHLY_PRICE_ID || ''; },
-    get stripePriceIdYearly() { return process.env.STRIPE_PRO_YEARLY_PRICE_ID || ''; },
+    get stripePriceIdMonthly() {
+      return process.env.STRIPE_PRO_MONTHLY_PRICE_ID || '';
+    },
+    get stripePriceIdYearly() {
+      return process.env.STRIPE_PRO_YEARLY_PRICE_ID || '';
+    },
     limits: {
       maxCollections: -1, // unlimited
       maxRequestsPerCollection: -1,
@@ -96,8 +100,12 @@ export const DEFAULT_PLANS: Record<PlanId, PlanDefinition> = {
     description: 'For teams and organizations',
     priceMonthly: 2900, // $29
     priceYearly: 29000, // $290/yr (~$24/mo effective)
-    get stripePriceIdMonthly() { return process.env.STRIPE_TEAM_MONTHLY_PRICE_ID || ''; },
-    get stripePriceIdYearly() { return process.env.STRIPE_TEAM_YEARLY_PRICE_ID || ''; },
+    get stripePriceIdMonthly() {
+      return process.env.STRIPE_TEAM_MONTHLY_PRICE_ID || '';
+    },
+    get stripePriceIdYearly() {
+      return process.env.STRIPE_TEAM_YEARLY_PRICE_ID || '';
+    },
     limits: {
       maxCollections: -1,
       maxRequestsPerCollection: -1,
@@ -131,4 +139,3 @@ export function getDefaultPlanLimits(planId: PlanId): PlanLimits {
 
 /** @deprecated Use getDefaultPlanLimits instead */
 export const getPlanLimits = getDefaultPlanLimits;
-

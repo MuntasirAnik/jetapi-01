@@ -11,7 +11,10 @@ export class NotificationsService {
   ) {}
 
   async create(userId: string, message: string): Promise<Notification> {
-    const notification = this.notificationRepository.create({ userId, message });
+    const notification = this.notificationRepository.create({
+      userId,
+      message,
+    });
     return this.notificationRepository.save(notification);
   }
 
@@ -20,7 +23,15 @@ export class NotificationsService {
     page = 1,
     limit = 20,
     filter: 'all' | 'unread' | 'read' = 'all',
-  ): Promise<{ data: Notification[]; total: number; page: number; limit: number; totalPages: number; unreadCount: number; totalAll: number }> {
+  ): Promise<{
+    data: Notification[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    unreadCount: number;
+    totalAll: number;
+  }> {
     const where: any = { userId };
     if (filter === 'unread') where.isRead = false;
     else if (filter === 'read') where.isRead = true;
@@ -55,7 +66,9 @@ export class NotificationsService {
   }
 
   async markAsRead(id: string, userId: string): Promise<Notification | null> {
-    const notification = await this.notificationRepository.findOne({ where: { id, userId } });
+    const notification = await this.notificationRepository.findOne({
+      where: { id, userId },
+    });
     if (notification) {
       notification.isRead = true;
       return this.notificationRepository.save(notification);
@@ -64,7 +77,10 @@ export class NotificationsService {
   }
 
   async markAllAsRead(userId: string): Promise<void> {
-    await this.notificationRepository.update({ userId, isRead: false }, { isRead: true });
+    await this.notificationRepository.update(
+      { userId, isRead: false },
+      { isRead: true },
+    );
   }
 
   async remove(id: string, userId: string): Promise<void> {

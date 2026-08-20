@@ -41,7 +41,9 @@ export class SubscriptionsService {
   ) {
     const stripeKey = this.configService.get<string>('STRIPE_SECRET_KEY');
     if (stripeKey) {
-      this.stripe = new Stripe(stripeKey, { apiVersion: '2025-03-31.basil' as any });
+      this.stripe = new Stripe(stripeKey, {
+        apiVersion: '2025-03-31.basil' as any,
+      });
     }
   }
 
@@ -50,7 +52,7 @@ export class SubscriptionsService {
   async getPlans() {
     const plans = await this.planRepo.find({ order: { sortOrder: 'ASC' } });
 
-    return plans.map(plan => {
+    return plans.map((plan) => {
       return {
         id: plan.id,
         name: plan.name,
@@ -69,7 +71,13 @@ export class SubscriptionsService {
           maxUploadMb: plan.maxUploadMb,
           analyticsAccess: plan.analyticsAccess,
         },
-        features: (() => { try { return JSON.parse(plan.features); } catch { return []; } })(),
+        features: (() => {
+          try {
+            return JSON.parse(plan.features);
+          } catch {
+            return [];
+          }
+        })(),
         popular: plan.popular || false,
       };
     });
@@ -90,20 +98,26 @@ export class SubscriptionsService {
       plan: {
         id: planId,
         name: plan?.name || fallback.name,
-        limits: plan ? {
-          maxCollections: plan.maxCollections,
-          maxRequestsPerCollection: plan.maxRequestsPerCollection,
-          maxMembers: plan.maxMembers,
-          maxCollaborators: plan.maxCollaborators,
-          maxEnvironments: plan.maxEnvironments,
-          sharedCollections: plan.sharedCollections,
-          apiDocExport: plan.apiDocExport,
-          historyDays: plan.historyDays,
-          maxUploadMb: plan.maxUploadMb,
-          analyticsAccess: plan.analyticsAccess,
-        } : fallback.limits,
-        priceMonthly: plan ? parseFloat(String(plan.priceMonthly)) : fallback.priceMonthly / 100,
-        priceYearly: plan ? parseFloat(String(plan.priceYearly)) : fallback.priceYearly / 100,
+        limits: plan
+          ? {
+              maxCollections: plan.maxCollections,
+              maxRequestsPerCollection: plan.maxRequestsPerCollection,
+              maxMembers: plan.maxMembers,
+              maxCollaborators: plan.maxCollaborators,
+              maxEnvironments: plan.maxEnvironments,
+              sharedCollections: plan.sharedCollections,
+              apiDocExport: plan.apiDocExport,
+              historyDays: plan.historyDays,
+              maxUploadMb: plan.maxUploadMb,
+              analyticsAccess: plan.analyticsAccess,
+            }
+          : fallback.limits,
+        priceMonthly: plan
+          ? parseFloat(String(plan.priceMonthly))
+          : fallback.priceMonthly / 100,
+        priceYearly: plan
+          ? parseFloat(String(plan.priceYearly))
+          : fallback.priceYearly / 100,
       },
       status: sub?.status || 'active',
       currentPeriodStart: sub?.currentPeriodStart,
@@ -116,17 +130,21 @@ export class SubscriptionsService {
   // ── User Payment History ──
 
   async getUserPayments(userId: string, year?: number, month?: number) {
-    const query = this.paymentRepo.createQueryBuilder('payment')
+    const query = this.paymentRepo
+      .createQueryBuilder('payment')
       .where('payment.userId = :userId', { userId })
       .orderBy('payment.createdAt', 'DESC');
 
     if (year && month) {
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0, 23, 59, 59);
-      query.andWhere('payment.createdAt >= :start AND payment.createdAt <= :end', {
-        start: startDate,
-        end: endDate,
-      });
+      query.andWhere(
+        'payment.createdAt >= :start AND payment.createdAt <= :end',
+        {
+          start: startDate,
+          end: endDate,
+        },
+      );
     }
 
     const payments = await query.getMany();
@@ -145,7 +163,12 @@ export class SubscriptionsService {
 
   // ── Stripe Checkout ──
 
-  async createCheckoutSession(userId: string, planId: PlanId, interval: 'monthly' | 'yearly' = 'monthly', origin?: string) {
+  async createCheckoutSession(
+    userId: string,
+    planId: PlanId,
+    interval: 'monthly' | 'yearly' = 'monthly',
+    origin?: string,
+  ) {
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     const fallback = DEFAULT_PLANS[planId];
     if (!plan && !fallback) {
@@ -155,19 +178,30 @@ export class SubscriptionsService {
       throw new BadRequestException('Invalid plan selected');
     }
 
-    const frontendUrl = origin || this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl =
+      origin ||
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://localhost:3000';
 
     // Get pricing from DB plan (in dollars), fallback to defaults (in cents, convert to dollars)
-    const planPriceMonthly = plan ? parseFloat(String(plan.priceMonthly)) : (fallback?.priceMonthly ?? 0) / 100;
-    const planPriceYearly = plan ? parseFloat(String(plan.priceYearly)) : (fallback?.priceYearly ?? 0) / 100;
+    const planPriceMonthly = plan
+      ? parseFloat(String(plan.priceMonthly))
+      : (fallback?.priceMonthly ?? 0) / 100;
+    const planPriceYearly = plan
+      ? parseFloat(String(plan.priceYearly))
+      : (fallback?.priceYearly ?? 0) / 100;
     const planName = plan?.name ?? fallback?.name ?? planId;
     const planDescription = plan?.description ?? fallback?.description ?? '';
-    const stripePriceIdMonthly = plan?.stripePriceIdMonthly ?? fallback?.stripePriceIdMonthly ?? '';
-    const stripePriceIdYearly = plan?.stripePriceIdYearly ?? fallback?.stripePriceIdYearly ?? '';
+    const stripePriceIdMonthly =
+      plan?.stripePriceIdMonthly ?? fallback?.stripePriceIdMonthly ?? '';
+    const stripePriceIdYearly =
+      plan?.stripePriceIdYearly ?? fallback?.stripePriceIdYearly ?? '';
 
     // When Stripe is not configured, create a pending subscription (payment required within 10 days)
     if (!this.stripe) {
-      this.logger.warn(`Stripe not configured — creating pending subscription for ${planId} plan for user ${userId}`);
+      this.logger.warn(
+        `Stripe not configured — creating pending subscription for ${planId} plan for user ${userId}`,
+      );
       const paymentDueDate = new Date(Date.now() + 10 * 86400000); // 10 days grace period
       let sub = await this.subscriptionRepo.findOne({ where: { userId } });
       if (sub) {
@@ -188,16 +222,21 @@ export class SubscriptionsService {
       return { url: `${frontendUrl}/payment` };
     }
 
-    const priceId = interval === 'yearly' ? stripePriceIdYearly : stripePriceIdMonthly;
+    const priceId =
+      interval === 'yearly' ? stripePriceIdYearly : stripePriceIdMonthly;
     if (!priceId) {
-      throw new BadRequestException('Stripe price not configured for this plan');
+      throw new BadRequestException(
+        'Stripe price not configured for this plan',
+      );
     }
 
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new BadRequestException('User not found');
 
     // Find or create Stripe customer
-    let stripeCustomerId = (await this.subscriptionRepo.findOne({ where: { userId } }))?.stripeCustomerId;
+    let stripeCustomerId = (
+      await this.subscriptionRepo.findOne({ where: { userId } })
+    )?.stripeCustomerId;
 
     if (!stripeCustomerId) {
       const customer = await this.stripe.customers.create({
@@ -209,20 +248,24 @@ export class SubscriptionsService {
     }
 
     let lineItems: any[];
-    lineItems = [{
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: `${planName} Plan`,
-          description: planDescription,
+    lineItems = [
+      {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `${planName} Plan`,
+            description: planDescription,
+          },
+          unit_amount: Math.round(
+            (interval === 'yearly' ? planPriceYearly : planPriceMonthly) * 100,
+          ), // Stripe expects cents
+          recurring: {
+            interval: interval === 'yearly' ? 'year' : 'month',
+          },
         },
-        unit_amount: Math.round((interval === 'yearly' ? planPriceYearly : planPriceMonthly) * 100), // Stripe expects cents
-        recurring: {
-          interval: interval === 'yearly' ? 'year' : 'month',
-        },
+        quantity: 1,
       },
-      quantity: 1,
-    }];
+    ];
 
     const session = await this.stripe.checkout.sessions.create({
       customer: stripeCustomerId,
@@ -242,7 +285,11 @@ export class SubscriptionsService {
 
   // ── Change Plan (upgrade/downgrade for existing subscribers) ──
 
-  async changePlan(userId: string, planId: PlanId, interval: 'monthly' | 'yearly' = 'monthly') {
+  async changePlan(
+    userId: string,
+    planId: PlanId,
+    interval: 'monthly' | 'yearly' = 'monthly',
+  ) {
     const sub = await this.subscriptionRepo.findOne({ where: { userId } });
 
     // If user has no subscription or is on FREE, redirect to checkout
@@ -250,7 +297,9 @@ export class SubscriptionsService {
       if (planId === 'FREE') {
         return { status: 'already_free' };
       }
-      throw new BadRequestException('No active subscription. Please use checkout to subscribe.');
+      throw new BadRequestException(
+        'No active subscription. Please use checkout to subscribe.',
+      );
     }
 
     // Downgrade to FREE = cancel subscription
@@ -262,25 +311,40 @@ export class SubscriptionsService {
     const fallback = DEFAULT_PLANS[planId];
     if (!plan && !fallback) throw new BadRequestException('Invalid plan');
 
-    const planPriceMonthly = plan ? parseFloat(String(plan.priceMonthly)) : (fallback?.priceMonthly ?? 0) / 100;
-    const planPriceYearly = plan ? parseFloat(String(plan.priceYearly)) : (fallback?.priceYearly ?? 0) / 100;
+    const planPriceMonthly = plan
+      ? parseFloat(String(plan.priceMonthly))
+      : (fallback?.priceMonthly ?? 0) / 100;
+    const planPriceYearly = plan
+      ? parseFloat(String(plan.priceYearly))
+      : (fallback?.priceYearly ?? 0) / 100;
     const planName = plan?.name ?? fallback?.name ?? planId;
 
-    const stripePriceIdMonthly = plan?.stripePriceIdMonthly ?? fallback?.stripePriceIdMonthly ?? '';
-    const stripePriceIdYearly = plan?.stripePriceIdYearly ?? fallback?.stripePriceIdYearly ?? '';
-    const overriddenPriceDollars = interval === 'yearly' ? planPriceYearly : planPriceMonthly;
+    const stripePriceIdMonthly =
+      plan?.stripePriceIdMonthly ?? fallback?.stripePriceIdMonthly ?? '';
+    const stripePriceIdYearly =
+      plan?.stripePriceIdYearly ?? fallback?.stripePriceIdYearly ?? '';
+    const overriddenPriceDollars =
+      interval === 'yearly' ? planPriceYearly : planPriceMonthly;
 
-    const priceId = interval === 'yearly' ? stripePriceIdYearly : stripePriceIdMonthly;
-    if (!priceId && overriddenPriceDollars === 0) throw new BadRequestException('Stripe price not configured for this plan');
+    const priceId =
+      interval === 'yearly' ? stripePriceIdYearly : stripePriceIdMonthly;
+    if (!priceId && overriddenPriceDollars === 0)
+      throw new BadRequestException(
+        'Stripe price not configured for this plan',
+      );
 
     if (!this.stripe) throw new BadRequestException('Stripe is not configured');
 
     // Retrieve current Stripe subscription
-    const stripeSubscription = await this.stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+    const stripeSubscription = await this.stripe.subscriptions.retrieve(
+      sub.stripeSubscriptionId,
+    );
     const currentItemId = stripeSubscription.items.data[0]?.id;
 
     if (!currentItemId) {
-      throw new BadRequestException('Could not find subscription item to update');
+      throw new BadRequestException(
+        'Could not find subscription item to update',
+      );
     }
 
     let itemUpdate: any;
@@ -302,18 +366,25 @@ export class SubscriptionsService {
     }
 
     // Update the subscription with the new price (Stripe handles proration automatically)
-    const updatedSubscription = await this.stripe.subscriptions.update(sub.stripeSubscriptionId, {
-      items: [itemUpdate],
-      proration_behavior: 'create_prorations',
-      metadata: { userId, planId },
-    });
+    const updatedSubscription = await this.stripe.subscriptions.update(
+      sub.stripeSubscriptionId,
+      {
+        items: [itemUpdate],
+        proration_behavior: 'create_prorations',
+        metadata: { userId, planId },
+      },
+    );
 
     // Update local record
     sub.plan = planId;
     sub.billingInterval = interval;
     sub.stripePriceId = newPriceId;
-    sub.currentPeriodStart = this.parseStripeDate(updatedSubscription.current_period_start);
-    sub.currentPeriodEnd = this.parseStripeDate(updatedSubscription.current_period_end);
+    sub.currentPeriodStart = this.parseStripeDate(
+      updatedSubscription.current_period_start,
+    );
+    sub.currentPeriodEnd = this.parseStripeDate(
+      updatedSubscription.current_period_end,
+    );
     sub.canceledAt = null as any;
     sub.status = 'active';
     await this.subscriptionRepo.save(sub);
@@ -341,10 +412,13 @@ export class SubscriptionsService {
     sub.canceledAt = new Date();
     await this.subscriptionRepo.save(sub);
 
-    this.logger.log(`User ${userId} canceled subscription (downgrade to FREE at period end)`);
+    this.logger.log(
+      `User ${userId} canceled subscription (downgrade to FREE at period end)`,
+    );
     return {
       status: 'canceled',
-      message: 'Your subscription will be canceled at the end of the current billing period.',
+      message:
+        'Your subscription will be canceled at the end of the current billing period.',
       periodEnd: sub.currentPeriodEnd,
     };
   }
@@ -354,7 +428,8 @@ export class SubscriptionsService {
   async confirmPayment(userId: string, paymentData: any) {
     const sub = await this.subscriptionRepo.findOne({ where: { userId } });
 
-    const isRenewalPayment = sub && sub.status === 'active' && sub.paymentDueDate;
+    const isRenewalPayment =
+      sub && sub.status === 'active' && sub.paymentDueDate;
     const isNewPayment = sub && sub.status === 'payment_pending';
 
     if (!sub || (!isRenewalPayment && !isNewPayment)) {
@@ -367,7 +442,9 @@ export class SubscriptionsService {
       sub.plan = 'FREE';
       sub.paymentDueDate = null as any;
       await this.subscriptionRepo.save(sub);
-      throw new BadRequestException('Payment window has expired. Please select a plan again.');
+      throw new BadRequestException(
+        'Payment window has expired. Please select a plan again.',
+      );
     }
 
     // Validate payment data
@@ -375,19 +452,27 @@ export class SubscriptionsService {
       if (!paymentData.cardLast4 || !paymentData.cardName) {
         throw new BadRequestException('Invalid card details');
       }
-      this.logger.log(`Card payment received for user ${userId}: ****${paymentData.cardLast4}`);
+      this.logger.log(
+        `Card payment received for user ${userId}: ****${paymentData.cardLast4}`,
+      );
     } else if (paymentData.method === 'mfs') {
       if (!paymentData.transactionId || !paymentData.mfsNumber) {
-        throw new BadRequestException('Transaction ID and mobile number are required');
+        throw new BadRequestException(
+          'Transaction ID and mobile number are required',
+        );
       }
-      this.logger.log(`MFS payment received for user ${userId}: ${paymentData.provider} TrxID=${paymentData.transactionId}`);
+      this.logger.log(
+        `MFS payment received for user ${userId}: ${paymentData.provider} TrxID=${paymentData.transactionId}`,
+      );
     } else {
       throw new BadRequestException('Invalid payment method');
     }
 
     // Activate the subscription — plan runs for 1 month (30 days) or 1 year (365 days)
     const cycleDays = sub.billingInterval === 'yearly' ? 365 : 30;
-    const isRenewal = sub.currentPeriodEnd && new Date(sub.currentPeriodEnd).getTime() > Date.now();
+    const isRenewal =
+      sub.currentPeriodEnd &&
+      new Date(sub.currentPeriodEnd).getTime() > Date.now();
 
     sub.status = 'active';
     if (isRenewal) {
@@ -410,11 +495,14 @@ export class SubscriptionsService {
     // Determine price from Plan DB table (stored in dollars)
     const plan = await this.planRepo.findOne({ where: { id: sub.plan } });
     const fallback = DEFAULT_PLANS[sub.plan as PlanId];
-    const monthlyPrice = plan ? parseFloat(String(plan.priceMonthly)) : (fallback?.priceMonthly ?? 0) / 100;
-    const yearlyPrice = plan ? parseFloat(String(plan.priceYearly)) : (fallback?.priceYearly ?? 0) / 100;
-    const price = sub.billingInterval === 'yearly'
-      ? `$${yearlyPrice}`
-      : `$${monthlyPrice}`;
+    const monthlyPrice = plan
+      ? parseFloat(String(plan.priceMonthly))
+      : (fallback?.priceMonthly ?? 0) / 100;
+    const yearlyPrice = plan
+      ? parseFloat(String(plan.priceYearly))
+      : (fallback?.priceYearly ?? 0) / 100;
+    const price =
+      sub.billingInterval === 'yearly' ? `$${yearlyPrice}` : `$${monthlyPrice}`;
 
     // Save payment record
     const payment = this.paymentRepo.create({
@@ -433,7 +521,9 @@ export class SubscriptionsService {
     });
     await this.paymentRepo.save(payment);
 
-    this.logger.log(`Subscription activated: ${sub.plan} plan for user ${userId}`);
+    this.logger.log(
+      `Subscription activated: ${sub.plan} plan for user ${userId}`,
+    );
 
     return {
       success: true,
@@ -453,18 +543,24 @@ export class SubscriptionsService {
     }
 
     if (sub.paymentDueDate) {
-      throw new BadRequestException('You already have a pending renewal. Please complete payment.');
+      throw new BadRequestException(
+        'You already have a pending renewal. Please complete payment.',
+      );
     }
 
     // Keep status ACTIVE — user keeps their plan until it expires
     // Setting paymentDueDate signals that a renewal payment is expected
-    sub.paymentDueDate = sub.currentPeriodEnd || new Date(Date.now() + 30 * 86400000);
+    sub.paymentDueDate =
+      sub.currentPeriodEnd || new Date(Date.now() + 30 * 86400000);
 
     await this.subscriptionRepo.save(sub);
 
     this.logger.log(`Renewal initiated for ${sub.plan} plan, user ${userId}`);
 
-    return { success: true, message: 'Renewal initiated. Please complete payment.' };
+    return {
+      success: true,
+      message: 'Renewal initiated. Please complete payment.',
+    };
   }
 
   // ── Stripe Customer Portal ──
@@ -477,7 +573,10 @@ export class SubscriptionsService {
       throw new BadRequestException('No active subscription found');
     }
 
-    const frontendUrl = origin || this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl =
+      origin ||
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://localhost:3000';
 
     const session = await this.stripe.billingPortal.sessions.create({
       customer: sub.stripeCustomerId,
@@ -494,22 +593,22 @@ export class SubscriptionsService {
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as any;
+        const session = event.data.object;
         await this.handleCheckoutCompleted(session);
         break;
       }
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as any;
+        const subscription = event.data.object;
         await this.handleSubscriptionUpdated(subscription);
         break;
       }
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as any;
+        const subscription = event.data.object;
         await this.handleSubscriptionDeleted(subscription);
         break;
       }
       case 'invoice.payment_failed': {
-        const invoice = event.data.object as any;
+        const invoice = event.data.object;
         await this.handlePaymentFailed(invoice);
         break;
       }
@@ -523,7 +622,8 @@ export class SubscriptionsService {
   private async handleCheckoutCompleted(session: any) {
     const userId = session.metadata?.userId;
     const planId = session.metadata?.planId as PlanId;
-    const interval = (session.metadata?.interval as 'monthly' | 'yearly') || 'monthly';
+    const interval =
+      (session.metadata?.interval as 'monthly' | 'yearly') || 'monthly';
 
     if (!userId || !planId) {
       this.logger.warn('Checkout session missing metadata');
@@ -544,8 +644,12 @@ export class SubscriptionsService {
       sub.stripeCustomerId = session.customer as string;
       sub.stripeSubscriptionId = stripeSubscription.id;
       sub.stripePriceId = stripeSubscription.items.data[0]?.price.id;
-      sub.currentPeriodStart = this.parseStripeDate(stripeSubscription.current_period_start);
-      sub.currentPeriodEnd = this.parseStripeDate(stripeSubscription.current_period_end);
+      sub.currentPeriodStart = this.parseStripeDate(
+        stripeSubscription.current_period_start,
+      );
+      sub.currentPeriodEnd = this.parseStripeDate(
+        stripeSubscription.current_period_end,
+      );
       sub.canceledAt = null as any;
     } else {
       sub = this.subscriptionRepo.create({
@@ -556,8 +660,12 @@ export class SubscriptionsService {
         stripeCustomerId: session.customer as string,
         stripeSubscriptionId: stripeSubscription.id,
         stripePriceId: stripeSubscription.items.data[0]?.price.id,
-        currentPeriodStart: this.parseStripeDate(stripeSubscription.current_period_start),
-        currentPeriodEnd: this.parseStripeDate(stripeSubscription.current_period_end),
+        currentPeriodStart: this.parseStripeDate(
+          stripeSubscription.current_period_start,
+        ),
+        currentPeriodEnd: this.parseStripeDate(
+          stripeSubscription.current_period_end,
+        ),
       });
     }
 
@@ -572,11 +680,20 @@ export class SubscriptionsService {
 
     if (!sub) return;
 
-    sub.status = subscription.status === 'active' ? 'active' :
-                 subscription.status === 'past_due' ? 'past_due' :
-                 subscription.status === 'canceled' ? 'canceled' : sub.status;
-    sub.currentPeriodStart = this.parseStripeDate(subscription.current_period_start);
-    sub.currentPeriodEnd = this.parseStripeDate(subscription.current_period_end);
+    sub.status =
+      subscription.status === 'active'
+        ? 'active'
+        : subscription.status === 'past_due'
+          ? 'past_due'
+          : subscription.status === 'canceled'
+            ? 'canceled'
+            : sub.status;
+    sub.currentPeriodStart = this.parseStripeDate(
+      subscription.current_period_start,
+    );
+    sub.currentPeriodEnd = this.parseStripeDate(
+      subscription.current_period_end,
+    );
 
     if (subscription.cancel_at_period_end) {
       sub.canceledAt = new Date();
@@ -634,22 +751,35 @@ export class SubscriptionsService {
     }
 
     // Check if already processed
-    const existingSub = await this.subscriptionRepo.findOne({ where: { userId } });
+    const existingSub = await this.subscriptionRepo.findOne({
+      where: { userId },
+    });
     if (existingSub?.stripeSubscriptionId === session.subscription) {
-      this.logger.log(`Session ${sessionId} already processed for user ${userId}`);
+      this.logger.log(
+        `Session ${sessionId} already processed for user ${userId}`,
+      );
       return { status: 'already_active', plan: existingSub?.plan };
     }
 
     // Process the checkout — reuse the existing handler
     await this.handleCheckoutCompleted(session);
 
-    const updatedSub = await this.subscriptionRepo.findOne({ where: { userId } });
+    const updatedSub = await this.subscriptionRepo.findOne({
+      where: { userId },
+    });
     return { status: 'activated', plan: updatedSub?.plan };
   }
 
   constructWebhookEvent(payload: Buffer, signature: string): any {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
-    if (!webhookSecret) throw new BadRequestException('Webhook secret not configured');
-    return this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    const webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET',
+    );
+    if (!webhookSecret)
+      throw new BadRequestException('Webhook secret not configured');
+    return this.stripe.webhooks.constructEvent(
+      payload,
+      signature,
+      webhookSecret,
+    );
   }
 }

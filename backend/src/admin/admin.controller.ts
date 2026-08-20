@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
@@ -49,12 +61,19 @@ export class AdminController {
   }
 
   @Post('users')
-  createAdminUser(@Body() body: { name: string; email: string; password: string }, @Req() req: any) {
+  createAdminUser(
+    @Body() body: { name: string; email: string; password: string },
+    @Req() req: any,
+  ) {
     return this.adminService.createAdminUser(body, req.user.sub);
   }
 
   @Put('users/:id')
-  async updateUser(@Param('id') id: string, @Body() body: { role?: string; name?: string }, @Req() req: any) {
+  async updateUser(
+    @Param('id') id: string,
+    @Body() body: { role?: string; name?: string },
+    @Req() req: any,
+  ) {
     const requester = await this.adminService.getUserRole(req.user.sub);
     return this.adminService.updateUser(id, body, requester);
   }
@@ -96,7 +115,10 @@ export class AdminController {
   }
 
   @Put('subscriptions/:userId')
-  overrideUserPlan(@Param('userId') userId: string, @Body() body: { planId: string }) {
+  overrideUserPlan(
+    @Param('userId') userId: string,
+    @Body() body: { planId: string },
+  ) {
     return this.adminService.overrideUserPlan(userId, body.planId);
   }
 
@@ -140,7 +162,16 @@ export class AdminController {
   }
 
   @Put('banners/:id')
-  updateBanner(@Param('id') id: string, @Body() body: { text?: string; isActive?: boolean; sortOrder?: number; isDeleted?: boolean }) {
+  updateBanner(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      text?: string;
+      isActive?: boolean;
+      sortOrder?: number;
+      isDeleted?: boolean;
+    },
+  ) {
     return this.adminService.updateBanner(id, body);
   }
 
@@ -168,6 +199,51 @@ export class AdminController {
     );
   }
 
+  @Get('api-hits')
+  getApiHits(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('method') method?: string,
+    @Query('statusCode') statusCode?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.adminService.getApiHits(
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 25,
+      search,
+      method,
+      statusCode ? parseInt(statusCode) : undefined,
+      startDate,
+      endDate,
+    );
+  }
+
+  @Get('api-hits/export')
+  async exportApiHits(
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('method') method?: string,
+    @Query('statusCode') statusCode?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const csv = await this.adminService.exportApiHitsCsv(
+      search,
+      method,
+      statusCode ? parseInt(statusCode) : undefined,
+      startDate,
+      endDate,
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="api-hits_${new Date().toISOString().split('T')[0]}.csv"`,
+    );
+    return res.send(csv);
+  }
+
   @Get('audit-logs/stats')
   getAuditStats() {
     return this.adminService.getAuditStats();
@@ -180,7 +256,11 @@ export class AdminController {
     @Query('dateRange') dateRange?: string,
     @Res() res?: any,
   ) {
-    const csv = await this.adminService.exportAuditLogsCsv(search, action, dateRange);
+    const csv = await this.adminService.exportAuditLogsCsv(
+      search,
+      action,
+      dateRange,
+    );
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.csv');
     res.send(csv);
@@ -194,15 +274,30 @@ export class AdminController {
   }
 
   @Put('maintenance')
-  setMaintenanceMode(@Body() body: { enabled: boolean; message: string }, @Req() req: any) {
-    return this.adminService.setMaintenanceMode(body.enabled, body.message, req.user.sub);
+  setMaintenanceMode(
+    @Body() body: { enabled: boolean; message: string },
+    @Req() req: any,
+  ) {
+    return this.adminService.setMaintenanceMode(
+      body.enabled,
+      body.message,
+      req.user.sub,
+    );
   }
 
   // ── Bulk User Actions ──
 
   @Post('users/bulk')
-  async bulkUpdateUsers(@Body() body: { ids: string[]; action: string; value?: string }, @Req() req: any) {
-    return this.adminService.bulkUpdateUsers(body.ids, body.action, req.user.sub, body.value);
+  async bulkUpdateUsers(
+    @Body() body: { ids: string[]; action: string; value?: string },
+    @Req() req: any,
+  ) {
+    return this.adminService.bulkUpdateUsers(
+      body.ids,
+      body.action,
+      req.user.sub,
+      body.value,
+    );
   }
 
   // ── Feature Flags ──
@@ -213,7 +308,11 @@ export class AdminController {
   }
 
   @Put('feature-flags/:key')
-  setFeatureFlag(@Param('key') key: string, @Body() body: { enabled: boolean }, @Req() req: any) {
+  setFeatureFlag(
+    @Param('key') key: string,
+    @Body() body: { enabled: boolean },
+    @Req() req: any,
+  ) {
     return this.adminService.setFeatureFlag(key, body.enabled, req.user.sub);
   }
 
@@ -275,7 +374,10 @@ export class AdminController {
   async exportUsers(@Res() res: any) {
     const csv = await this.adminService.exportUsersCsv();
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=jetapi-users.csv');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=jetapi-users.csv',
+    );
     res.send(csv);
   }
 
@@ -288,11 +390,14 @@ export class AdminController {
 
   @Get('changelog/next-version')
   getNextVersion() {
-    return this.adminService.getNextVersion().then(v => ({ version: v }));
+    return this.adminService.getNextVersion().then((v) => ({ version: v }));
   }
 
   @Post('changelog')
-  createChangelog(@Body() body: { title: string; content: string; version?: string }, @Req() req: any) {
+  createChangelog(
+    @Body() body: { title: string; content: string; version?: string },
+    @Req() req: any,
+  ) {
     return this.adminService.createChangelog(body, req.user.sub);
   }
 
@@ -333,7 +438,10 @@ export class AdminController {
   }
 
   @Put('webhooks')
-  updateWebhookConfig(@Body() body: { url: string; events: string[]; enabled: boolean }, @Req() req: any) {
+  updateWebhookConfig(
+    @Body() body: { url: string; events: string[]; enabled: boolean },
+    @Req() req: any,
+  ) {
     return this.adminService.updateWebhookConfig(body, req.user.sub);
   }
 
@@ -379,7 +487,11 @@ export class AdminController {
   }
 
   @Put('tickets/:id/reply')
-  replyToTicket(@Param('id') id: string, @Body() body: { reply: string }, @Req() req: any) {
+  replyToTicket(
+    @Param('id') id: string,
+    @Body() body: { reply: string },
+    @Req() req: any,
+  ) {
     return this.adminService.replyToTicket(id, body.reply, req.user.sub);
   }
 
@@ -397,7 +509,10 @@ export class AdminController {
 
   @Put('rate-limits')
   async setRateLimitConfig(@Body() body: any, @Req() req: any) {
-    const result = await this.adminService.setRateLimitConfig(body, req.user.sub);
+    const result = await this.adminService.setRateLimitConfig(
+      body,
+      req.user.sub,
+    );
     this.rateLimitGuard.invalidateCache();
     return result;
   }
@@ -409,15 +524,27 @@ export class AdminController {
   }
 
   @Put('rate-limits/user/:userId')
-  async setUserRateLimit(@Param('id') id: string, @Body() body: { limit: number }, @Req() req: any, @Param('userId') userId: string) {
-    const result = await this.adminService.setUserRateLimit(userId, body.limit, req.user.sub);
+  async setUserRateLimit(
+    @Param('id') id: string,
+    @Body() body: { limit: number },
+    @Req() req: any,
+    @Param('userId') userId: string,
+  ) {
+    const result = await this.adminService.setUserRateLimit(
+      userId,
+      body.limit,
+      req.user.sub,
+    );
     this.rateLimitGuard.invalidateCache();
     return result;
   }
 
   @Delete('rate-limits/user/:userId')
   async removeUserRateLimit(@Param('userId') userId: string, @Req() req: any) {
-    const result = await this.adminService.removeUserRateLimit(userId, req.user.sub);
+    const result = await this.adminService.removeUserRateLimit(
+      userId,
+      req.user.sub,
+    );
     this.rateLimitGuard.invalidateCache();
     return result;
   }
@@ -435,7 +562,11 @@ export class AdminController {
   }
 
   @Put('plugins/:slug')
-  updatePlugin(@Param('slug') slug: string, @Body() body: any, @Req() req: any) {
+  updatePlugin(
+    @Param('slug') slug: string,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
     return this.adminService.updatePlugin(slug, body, req.user.sub);
   }
 

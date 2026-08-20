@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { OrganizationUser } from './organization-user.entity';
 
 @Entity()
@@ -18,7 +25,9 @@ export class Organization {
   @Column({ default: 3 })
   maxMembers: number;
 
-  @OneToMany(() => OrganizationUser, (orgUser) => orgUser.organization, { cascade: true })
+  @OneToMany(() => OrganizationUser, (orgUser) => orgUser.organization, {
+    cascade: true,
+  })
   users: OrganizationUser[];
 
   @CreateDateColumn()

@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { AuthGuard } from '../auth/auth.guard';
 
@@ -13,7 +22,10 @@ export class CommentsController {
   }
 
   @Post()
-  create(@Body() data: { requestId: string; collectionId: string; content: string }, @Request() req: any) {
+  create(
+    @Body() data: { requestId: string; collectionId: string; content: string },
+    @Request() req: any,
+  ) {
     return this.commentsService.create({
       userId: req.user.sub,
       userName: req.user.name || req.user.email?.split('@')[0] || 'User',

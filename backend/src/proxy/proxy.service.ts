@@ -33,6 +33,19 @@ interface TimingBreakdown {
 export class ProxyService {
   constructor(private readonly httpService: HttpService) {}
 
+  private stripJsonComments(jsonString: string): string {
+    return jsonString.replace(
+      /("([^\\"]|\\.)*")|(\/\/.*|\/\*[\s\S]*?\*\/)/g,
+      (match, g1) => {
+        if (g1) return match;
+        if (match.startsWith('//')) {
+          return '';
+        }
+        return match.replace(/[^\n]/g, ''); // Keep only newlines for multi-line comments
+      },
+    );
+  }
+
   /**
    * Execute the HTTP request using Node.js native http/https modules.
    * This gives us direct access to socket events for accurate timing.
@@ -41,10 +54,10 @@ export class ProxyService {
     const overallStart = performance.now();
 
     try {
-      console.log("============ PROXY REQUEST ============");
-      console.log("URL:", requestDto.url);
-      console.log("METHOD:", requestDto.method);
-      console.log("=======================================");
+      console.log('============ PROXY REQUEST ============');
+      console.log('URL:', requestDto.url);
+      console.log('METHOD:', requestDto.method);
+      console.log('=======================================');
 
       let finalData = requestDto.body;
       let finalHeaders = { ...requestDto.headers };
@@ -77,7 +90,9 @@ export class ProxyService {
       const hostname = parsedUrl.hostname;
       const port = parsedUrl.port
         ? parseInt(parsedUrl.port)
-        : (isHttps ? 443 : 80);
+        : isHttps
+          ? 443
+          : 80;
       const path = parsedUrl.pathname + parsedUrl.search;
 
       // Serialize body
@@ -85,17 +100,34 @@ export class ProxyService {
       if (finalData !== undefined && finalData !== null) {
         if (isFormData) {
           // FormData needs special handling — fall back to Axios for this
-          return this.executeWithAxios(requestDto, finalData, finalHeaders, overallStart);
+          return this.executeWithAxios(
+            requestDto,
+            finalData,
+            finalHeaders,
+            overallStart,
+          );
         } else if (typeof finalData === 'string') {
-          bodyBuffer = finalData;
+          const contentType = String(
+            finalHeaders['Content-Type'] || finalHeaders['content-type'] || '',
+          );
+          if (contentType.toLowerCase().includes('application/json')) {
+            bodyBuffer = this.stripJsonComments(finalData);
+          } else {
+            bodyBuffer = finalData;
+          }
         } else {
           bodyBuffer = JSON.stringify(finalData);
         }
       }
 
       // Set content-length if we have a body
-      if (bodyBuffer && !finalHeaders['Content-Length'] && !finalHeaders['content-length']) {
-        finalHeaders['Content-Length'] = Buffer.byteLength(bodyBuffer).toString();
+      if (
+        bodyBuffer &&
+        !finalHeaders['Content-Length'] &&
+        !finalHeaders['content-length']
+      ) {
+        finalHeaders['Content-Length'] =
+          Buffer.byteLength(bodyBuffer).toString();
       }
 
       // ─── Timing markers ───
@@ -125,7 +157,6 @@ export class ProxyService {
           path,
           method: (requestDto.method || 'GET').toUpperCase(),
           headers: finalHeaders,
-          family: 4, // Force IPv4
         };
 
         // For HTTPS, disable cert verification for flexibility
@@ -141,7 +172,10 @@ export class ProxyService {
           // Follow redirects (3xx) — up to 10 hops
           const statusCode = res.statusCode || 0;
           if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
-            const redirectUrl = new URL(res.headers.location, requestDto.url).toString();
+            const redirectUrl = new URL(
+              res.headers.location,
+              requestDto.url,
+            ).toString();
             console.log(`REDIRECT ${statusCode} -> ${redirectUrl}`);
             // Consume the response body to free the socket
             res.resume();
@@ -157,7 +191,9 @@ export class ProxyService {
           downloadStart = performance.now();
 
           // Decompress response based on content-encoding
-          const encoding = (res.headers['content-encoding'] || '').toLowerCase();
+          const encoding = (
+            res.headers['content-encoding'] || ''
+          ).toLowerCase();
           let stream: Readable = res;
           if (encoding === 'gzip' || encoding === 'x-gzip') {
             stream = res.pipe(zlib.createGunzip());
@@ -194,7 +230,9 @@ export class ProxyService {
             // Calculate real timing breakdown
             const dnsMs = Math.max(0, Math.round(dnsEnd - dnsStart));
             const tcpMs = Math.max(0, Math.round(tcpEnd - tcpStart));
-            const tlsMs = isHttps ? Math.max(0, Math.round(tlsEnd - tlsStart)) : 0;
+            const tlsMs = isHttps
+              ? Math.max(0, Math.round(tlsEnd - tlsStart))
+              : 0;
             const ttfbMs = Math.max(0, Math.round(ttfbEnd - ttfbStart));
             const dlMs = Math.max(0, Math.round(downloadEnd - downloadStart));
 
@@ -207,7 +245,7 @@ export class ProxyService {
               totalMs,
             };
 
-            console.log("TIMING:", JSON.stringify(timing));
+            console.log('TIMING:', JSON.stringify(timing));
 
             resolve({
               status: res.statusCode || 0,
@@ -258,9 +296,9 @@ export class ProxyService {
 
           // If socket is already connected (reused), capture immediately
           if (socket.connecting === false) {
-            dnsEnd = dnsStart;      // no DNS needed
-            tcpEnd = tcpStart;      // already connected
-            tlsEnd = tlsStart;      // already secure
+            dnsEnd = dnsStart; // no DNS needed
+            tcpEnd = tcpStart; // already connected
+            tlsEnd = tlsStart; // already secure
             ttfbStart = performance.now();
           }
         });
@@ -292,7 +330,7 @@ export class ProxyService {
       };
     } catch (error: any) {
       const totalMs = Math.round(performance.now() - overallStart);
-      console.error("PROXY ERROR:", error.message);
+      console.error('PROXY ERROR:', error.message);
 
       return {
         status: error.response?.status || 0,
@@ -351,8 +389,10 @@ export class ProxyService {
       headers: finalHeaders,
       data: finalData,
       httpAgent: new http.Agent({ keepAlive: false }),
-      httpsAgent: new https.Agent({ keepAlive: false, rejectUnauthorized: false }),
-      family: 4,
+      httpsAgent: new https.Agent({
+        keepAlive: false,
+        rejectUnauthorized: false,
+      }),
       validateStatus: () => true,
     };
 
@@ -378,7 +418,7 @@ export class ProxyService {
       totalMs,
     };
 
-    console.log("TIMING (Axios fallback):", JSON.stringify(timing));
+    console.log('TIMING (Axios fallback):', JSON.stringify(timing));
 
     return {
       status: response.status,

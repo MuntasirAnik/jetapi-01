@@ -33,14 +33,19 @@ export class ActivityService {
     });
   }
 
-  async findRecent(userId: string, collectionIds: string[], take = 30): Promise<Activity[]> {
+  async findRecent(
+    userId: string,
+    collectionIds: string[],
+    take = 30,
+  ): Promise<Activity[]> {
     if (!collectionIds.length) return [];
-    
-    const qb = this.activityRepo.createQueryBuilder('activity')
+
+    const qb = this.activityRepo
+      .createQueryBuilder('activity')
       .where('activity.collectionId IN (:...ids)', { ids: collectionIds })
       .orderBy('activity.createdAt', 'DESC')
       .take(take);
-    
+
     return qb.getMany();
   }
 }

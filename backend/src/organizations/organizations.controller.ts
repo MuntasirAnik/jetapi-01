@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request, ForbiddenException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Request,
+  ForbiddenException,
+} from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { AuthGuard } from '../auth/auth.guard';
 
@@ -33,12 +44,20 @@ export class OrganizationsController {
   }
 
   @Post(':id/invite')
-  inviteUser(@Param('id') id: string, @Body('email') email: string, @Request() req: any) {
+  inviteUser(
+    @Param('id') id: string,
+    @Body('email') email: string,
+    @Request() req: any,
+  ) {
     return this.organizationsService.inviteUser(id, email, req.user.sub);
   }
 
   @Delete(':id/users/:userId')
-  removeUser(@Param('id') id: string, @Param('userId') userId: string, @Request() req: any) {
+  removeUser(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Request() req: any,
+  ) {
     return this.organizationsService.removeUser(id, userId, req.user.sub);
   }
 }

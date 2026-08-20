@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Collection } from '../collections/collection.entity';
 
 @Entity('request_item')
@@ -42,7 +51,9 @@ export class RequestItem {
   @Column('text', { nullable: true })
   folder: string;
 
-  @ManyToOne(() => Collection, (collection) => collection.requests, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Collection, (collection) => collection.requests, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'collectionId' })
   collection: Collection;
 

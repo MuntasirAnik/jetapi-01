@@ -89,7 +89,10 @@ export class LimitsService {
     }
   }
 
-  async checkMemberLimit(organizationId: string, userId: string): Promise<void> {
+  async checkMemberLimit(
+    organizationId: string,
+    userId: string,
+  ): Promise<void> {
     const plan = await this.getUserPlan(userId);
     const limits = await this.getMergedLimits(plan);
     if (limits.maxMembers === -1) return;
@@ -105,7 +108,10 @@ export class LimitsService {
     }
   }
 
-  async checkEnvironmentLimit(userId: string, workspaceId: string): Promise<void> {
+  async checkEnvironmentLimit(
+    userId: string,
+    workspaceId: string,
+  ): Promise<void> {
     const plan = await this.getUserPlan(userId);
     const limits = await this.getMergedLimits(plan);
     if (limits.maxEnvironments === -1) return;
@@ -193,32 +199,45 @@ export class LimitsService {
 
     const collectionStats = await Promise.all(
       collections.map(async (c) => {
-        const requestCount = await this.requestRepo.count({ where: { collectionId: c.id } });
+        const requestCount = await this.requestRepo.count({
+          where: { collectionId: c.id },
+        });
         return { id: c.id, name: c.name, requestCount, createdAt: c.createdAt };
       }),
     );
 
     // Sort by request count desc for "top collections"
-    const topCollections = [...collectionStats].sort((a, b) => b.requestCount - a.requestCount).slice(0, 10);
+    const topCollections = [...collectionStats]
+      .sort((a, b) => b.requestCount - a.requestCount)
+      .slice(0, 10);
 
     // Total requests across all collections
-    const totalRequests = collectionStats.reduce((s, c) => s + c.requestCount, 0);
+    const totalRequests = collectionStats.reduce(
+      (s, c) => s + c.requestCount,
+      0,
+    );
 
     // Environments count
     let environments = 0;
     try {
-      environments = await this.environmentRepo.count({ where: { ownerId: userId } });
-    } catch { environments = 0; }
+      environments = await this.environmentRepo.count({
+        where: { ownerId: userId },
+      });
+    } catch {
+      environments = 0;
+    }
 
     // Collections per month (last 6 months)
     const months: string[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      months.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      );
     }
-    const collectionsByMonth = months.map(m => {
-      const count = collections.filter(c => {
+    const collectionsByMonth = months.map((m) => {
+      const count = collections.filter((c) => {
         const cm = `${c.createdAt.getFullYear()}-${String(c.createdAt.getMonth() + 1).padStart(2, '0')}`;
         return cm === m;
       }).length;

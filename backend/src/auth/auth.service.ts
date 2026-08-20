@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { JwtService } from '@nestjs/jwt';
@@ -38,7 +42,9 @@ export class AuthService {
 
   private async getPasswordPolicy(): Promise<PasswordPolicy> {
     try {
-      const setting = await this.settingRepo.findOne({ where: { key: 'password_policy' } });
+      const setting = await this.settingRepo.findOne({
+        where: { key: 'password_policy' },
+      });
       if (setting) return { ...DEFAULT_POLICY, ...JSON.parse(setting.value) };
     } catch {}
     return DEFAULT_POLICY;
@@ -48,12 +54,23 @@ export class AuthService {
     return this.getPasswordPolicy();
   }
 
-  private validatePasswordPolicy(password: string, policy: PasswordPolicy): string | null {
-    if (password.length < policy.minLength) return `Password must be at least ${policy.minLength} characters`;
-    if (policy.requireUppercase && !/[A-Z]/.test(password)) return 'Password must contain an uppercase letter';
-    if (policy.requireLowercase && !/[a-z]/.test(password)) return 'Password must contain a lowercase letter';
-    if (policy.requireNumber && !/[0-9]/.test(password)) return 'Password must contain a number';
-    if (policy.requireSpecial && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) return 'Password must contain a special character';
+  private validatePasswordPolicy(
+    password: string,
+    policy: PasswordPolicy,
+  ): string | null {
+    if (password.length < policy.minLength)
+      return `Password must be at least ${policy.minLength} characters`;
+    if (policy.requireUppercase && !/[A-Z]/.test(password))
+      return 'Password must contain an uppercase letter';
+    if (policy.requireLowercase && !/[a-z]/.test(password))
+      return 'Password must contain a lowercase letter';
+    if (policy.requireNumber && !/[0-9]/.test(password))
+      return 'Password must contain a number';
+    if (
+      policy.requireSpecial &&
+      !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+    )
+      return 'Password must contain a special character';
     return null;
   }
 
@@ -64,11 +81,15 @@ export class AuthService {
     // Check if account is locked
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
-      throw new UnauthorizedException(`Account is locked. Try again in ${mins} minute(s).`);
+      throw new UnauthorizedException(
+        `Account is locked. Try again in ${mins} minute(s).`,
+      );
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Your account has been deactivated. Please contact the administrator.');
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact the administrator.',
+      );
     }
 
     if (await bcrypt.compare(pass, user.passwordHash)) {
@@ -95,7 +116,9 @@ export class AuthService {
     await this.usersService.updateUser(user.id, updateData);
 
     if (attempts >= 5) {
-      throw new UnauthorizedException('Too many failed attempts. Account locked for 15 minutes.');
+      throw new UnauthorizedException(
+        'Too many failed attempts. Account locked for 15 minutes.',
+      );
     }
 
     return null;
@@ -111,7 +134,13 @@ export class AuthService {
     };
     return {
       access_token: await this.jwtService.signAsync(payload),
-      user: { id: user.id, email: user.email, name: user.name, role: user.role || 'USER', avatarMimeType: user.avatarMimeType || null }
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role || 'USER',
+        avatarMimeType: user.avatarMimeType || null,
+      },
     };
   }
 
@@ -126,9 +155,12 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(pass, 10);
     const user = await this.usersService.create({ name, email, passwordHash });
-    
+
     // Auto-provision Personal Organization
-    await this.organizationsService.create({ name: 'My Team', subscriptionTier: 'FREE' }, user.id);
+    await this.organizationsService.create(
+      { name: 'My Team', subscriptionTier: 'FREE' },
+      user.id,
+    );
 
     return this.login(user);
   }
@@ -143,20 +175,29 @@ export class AuthService {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
 
-    await this.usersService.updateUser(user.id, { resetToken, resetTokenExpiry });
+    await this.usersService.updateUser(user.id, {
+      resetToken,
+      resetTokenExpiry,
+    });
 
     // In a real app, send an email here. We simulate for MVP:
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
-    console.log(`\n\n[DEV]: Password Reset Link for ${email}:\n${frontendUrl}/reset-password?token=${resetToken}\n\n`);
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
+    console.log(
+      `\n\n[DEV]: Password Reset Link for ${email}:\n${frontendUrl}/reset-password?token=${resetToken}\n\n`,
+    );
 
-    return { message: 'Reset link generated. (Check server logs)', dev_token: resetToken };
+    return {
+      message: 'Reset link generated. (Check server logs)',
+      dev_token: resetToken,
+    };
   }
 
   async resetPassword(token: string, newPassword: string) {
     const user = await this.usersService.findByResetToken(token);
-    
+
     if (!user || user.resetTokenExpiry < new Date()) {
-       throw new BadRequestException('Invalid or expired reset token');
+      throw new BadRequestException('Invalid or expired reset token');
     }
 
     // Enforce password policy
@@ -165,8 +206,12 @@ export class AuthService {
     if (policyError) throw new BadRequestException(policyError);
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await this.usersService.updateUser(user.id, { passwordHash, resetToken: null as any, resetTokenExpiry: null as any });
-    
+    await this.usersService.updateUser(user.id, {
+      passwordHash,
+      resetToken: null as any,
+      resetTokenExpiry: null as any,
+    });
+
     return { message: 'Password has been successfully reset.' };
   }
 
@@ -175,7 +220,8 @@ export class AuthService {
     if (!user) throw new BadRequestException('User not found');
 
     const isValid = await bcrypt.compare(currentPass, user.passwordHash);
-    if (!isValid) throw new UnauthorizedException('Current password is incorrect');
+    if (!isValid)
+      throw new UnauthorizedException('Current password is incorrect');
 
     // Enforce password policy
     const policy = await this.getPasswordPolicy();

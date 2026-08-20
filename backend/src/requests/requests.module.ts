@@ -10,4 +10,4 @@ import { ActivityModule } from '../activity/activity.module';
   controllers: [RequestsController],
   providers: [RequestsService],
 })
-export class RequestsModule { }
+export class RequestsModule {}

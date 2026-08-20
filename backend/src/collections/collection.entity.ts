@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from 'typeorm';
 import { Workspace } from '../workspaces/workspace.entity';
 import { RequestItem } from '../requests/request.entity';
 import { User } from '../users/user.entity';
@@ -15,14 +24,18 @@ export class Collection {
   @Column({ nullable: true })
   description: string;
 
-  @ManyToOne(() => Workspace, (workspace) => workspace.collections, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Workspace, (workspace) => workspace.collections, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'workspaceId' })
   workspace: Workspace;
 
   @Column()
   workspaceId: string;
 
-  @OneToMany(() => RequestItem, (requestItem) => requestItem.collection, { cascade: true })
+  @OneToMany(() => RequestItem, (requestItem) => requestItem.collection, {
+    cascade: true,
+  })
   requests: RequestItem[];
 
   @ManyToOne(() => User, { nullable: true })
@@ -32,7 +45,9 @@ export class Collection {
   @Column({ nullable: true })
   ownerId: string;
 
-  @OneToMany(() => CollectionShare, (share) => share.collection, { cascade: true })
+  @OneToMany(() => CollectionShare, (share) => share.collection, {
+    cascade: true,
+  })
   shares: CollectionShare[];
 
   @Column({ default: true })

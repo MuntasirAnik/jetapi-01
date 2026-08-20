@@ -41,7 +41,11 @@ export class UsersService {
     return this.findOneById(id);
   }
 
-  async updateAvatar(id: string, avatarData: Buffer, avatarMimeType: string): Promise<User | null> {
+  async updateAvatar(
+    id: string,
+    avatarData: Buffer,
+    avatarMimeType: string,
+  ): Promise<User | null> {
     // Compress and resize avatar to max 256x256, convert to WebP
     let compressedData = avatarData;
     let finalMimeType = avatarMimeType;
@@ -54,31 +58,48 @@ export class UsersService {
       finalMimeType = 'image/webp';
     } catch (err) {
       // If sharp fails, store the original
-      console.warn('[Avatar] sharp compression failed, storing original:', err?.message);
+      console.warn(
+        '[Avatar] sharp compression failed, storing original:',
+        err?.message,
+      );
     }
-    await this.userRepository.update(id, { avatarData: compressedData, avatarMimeType: finalMimeType });
+    await this.userRepository.update(id, {
+      avatarData: compressedData,
+      avatarMimeType: finalMimeType,
+    });
     return this.findOneById(id);
   }
 
   async getAllUsers(): Promise<User[]> {
-    return this.userRepository.find({ select: ['id', 'email', 'name', 'avatarMimeType'] });
+    return this.userRepository.find({
+      select: ['id', 'email', 'name', 'avatarMimeType'],
+    });
   }
 
   async getUserStats(userId: string) {
-    const [collections, requests, workspaces, sharedCollections] = await Promise.all([
-      this.collectionRepository.count({ where: { ownerId: userId } }),
-      this.requestRepository.count({ where: { ownerId: userId } }),
-      this.workspaceRepository
-        .createQueryBuilder('ws')
-        .innerJoin('organization', 'org', 'org.id::text = ws."organizationId"::text')
-        .where('org."ownerId" = :userId', { userId })
-        .getCount(),
-      this.collectionRepository
-        .createQueryBuilder('col')
-        .innerJoin('collection_shared_users', 'csu', 'csu."collectionId" = col.id')
-        .where('csu."userId" = :userId', { userId })
-        .getCount(),
-    ]);
+    const [collections, requests, workspaces, sharedCollections] =
+      await Promise.all([
+        this.collectionRepository.count({ where: { ownerId: userId } }),
+        this.requestRepository.count({ where: { ownerId: userId } }),
+        this.workspaceRepository
+          .createQueryBuilder('ws')
+          .innerJoin(
+            'organization',
+            'org',
+            'org.id::text = ws."organizationId"::text',
+          )
+          .where('org."ownerId" = :userId', { userId })
+          .getCount(),
+        this.collectionRepository
+          .createQueryBuilder('col')
+          .innerJoin(
+            'collection_shared_users',
+            'csu',
+            'csu."collectionId" = col.id',
+          )
+          .where('csu."userId" = :userId', { userId })
+          .getCount(),
+      ]);
     return { workspaces, collections, requests, sharedCollections };
   }
 }

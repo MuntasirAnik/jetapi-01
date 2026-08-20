@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Patch, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  Patch,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { RequestsService } from './requests.service';
 import { RequestItem } from './request.entity';
 import { AuthGuard } from '../auth/auth.guard';
@@ -6,9 +17,7 @@ import { AuthGuard } from '../auth/auth.guard';
 @UseGuards(AuthGuard)
 @Controller('requests')
 export class RequestsController {
-  constructor(
-    private readonly requestsService: RequestsService,
-  ) {}
+  constructor(private readonly requestsService: RequestsService) {}
 
   @Post()
   async create(@Body() data: Partial<RequestItem>, @Request() req: any) {
@@ -16,13 +25,41 @@ export class RequestsController {
   }
 
   @Patch('move')
-  async moveRequest(@Body() body: { requestId: string; newFolder: string | null; newCollectionId?: string }, @Request() req: any) {
-    return this.requestsService.moveRequest(body.requestId, body.newFolder, req.user.sub, body.newCollectionId);
+  async moveRequest(
+    @Body()
+    body: {
+      requestId: string;
+      newFolder: string | null;
+      newCollectionId?: string;
+    },
+    @Request() req: any,
+  ) {
+    return this.requestsService.moveRequest(
+      body.requestId,
+      body.newFolder,
+      req.user.sub,
+      body.newCollectionId,
+    );
   }
 
   @Patch('move-folder')
-  async moveFolder(@Body() body: { collectionId: string; oldPath: string; newPath: string; targetCollectionId?: string }, @Request() req: any) {
-    return this.requestsService.moveFolder(body.collectionId, body.oldPath, body.newPath, req.user.sub, body.targetCollectionId);
+  async moveFolder(
+    @Body()
+    body: {
+      collectionId: string;
+      oldPath: string;
+      newPath: string;
+      targetCollectionId?: string;
+    },
+    @Request() req: any,
+  ) {
+    return this.requestsService.moveFolder(
+      body.collectionId,
+      body.oldPath,
+      body.newPath,
+      req.user.sub,
+      body.targetCollectionId,
+    );
   }
 
   @Get()
@@ -41,7 +78,11 @@ export class RequestsController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() data: Partial<RequestItem>, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() data: Partial<RequestItem>,
+    @Request() req: any,
+  ) {
     return this.requestsService.update(id, data, req.user.sub);
   }
 

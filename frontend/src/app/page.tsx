@@ -328,6 +328,44 @@ export default function Home() {
         setOpenRequests(prev => [...prev, { id: newId, name: 'Untitled Request', method: 'GET', url: '', headers: [], params: [], body: '', _isNew: true }]);
         setActiveRequestId(newId);
       }
+      // ⌘S — Save Request
+      if (meta && e.key === 's' && !e.shiftKey) {
+        e.preventDefault();
+        const activeReq = openRequests.find(r => r.id === activeRequestId);
+        if (activeReq) {
+          let finalRequest = activeReq;
+          const bd = activeReq.body;
+          if (bd && typeof bd === 'object' && bd.mode === 'raw' && bd.raw?.language === 'json' && bd.raw?.data) {
+            try {
+              const parsed = JSON.parse(stripJsonComments(bd.raw.data));
+              const formattedData = JSON.stringify(parsed, null, 2);
+              finalRequest = { ...activeReq, body: { ...bd, raw: { ...bd.raw, data: formattedData } } };
+              setOpenRequests(prev => prev.map(r => r.id === finalRequest.id ? finalRequest : r));
+            } catch (e) {}
+          }
+          
+          if (!finalRequest.id || finalRequest.id === 'new') {
+            openSaveModal(finalRequest);
+          } else {
+            setIsSavingEndpoint(true);
+            apiFetch(`/requests/${finalRequest.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(finalRequest)
+            })
+              .then(async (res) => {
+                if (!res.ok) {
+                  toast.error(await getApiError(res, "Failed to save request"));
+                } else {
+                  toast.success("Request saved successfully");
+                  window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+                }
+              })
+              .catch(() => toast.error("Failed to save request."))
+              .finally(() => setIsSavingEndpoint(false));
+          }
+        }
+      }
       // ⌘W — Close Active Tab (skip pinned)
       if (meta && e.key === 'w' && !e.shiftKey) {
         e.preventDefault();
@@ -369,6 +407,16 @@ export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Global variables are now loaded by AppContext.initApp() — no separate fetch needed.
+
+  const stripJsonComments = (jsonString: string): string => {
+    return jsonString.replace(/("([^\\"]|\\.)*")|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (match, g1) => {
+      if (g1) return match;
+      if (match.startsWith('//')) {
+        return "";
+      }
+      return match.replace(/[^\n]/g, ''); // Keep only newlines for multi-line comments
+    });
+  };
 
   const interpolate = (str: string) => {
     if (!str || typeof str !== 'string') return str;
@@ -858,7 +906,11 @@ export default function Home() {
                     const bd = reqData.body;
                     if (bd && typeof bd === 'object' && bd.mode) {
                       if (bd.mode === 'raw') {
-                        payloadData = interpolate(bd.raw?.data || '');
+                        let rawData = bd.raw?.data || '';
+                        if (bd.raw?.language === 'json') {
+                          rawData = stripJsonComments(rawData);
+                        }
+                        payloadData = interpolate(rawData);
                         if (!finalHeaders['Content-Type']) {
                           if (bd.raw?.language === 'json') finalHeaders['Content-Type'] = 'application/json';
                           else if (bd.raw?.language === 'xml') finalHeaders['Content-Type'] = 'application/xml';

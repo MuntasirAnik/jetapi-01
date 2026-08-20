@@ -1,4 +1,13 @@
-import { Controller, Get, Put, Delete, Param, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Delete,
+  Param,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { AuthGuard } from '../auth/auth.guard';
 
@@ -16,7 +25,7 @@ export class NotificationsController {
   ) {
     const p = Math.max(1, parseInt(page || '1', 10) || 1);
     const l = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
-    const f = (filter === 'unread' || filter === 'read') ? filter : 'all';
+    const f = filter === 'unread' || filter === 'read' ? filter : 'all';
     return this.notificationsService.findAllForUser(req.user.sub, p, l, f);
   }
 

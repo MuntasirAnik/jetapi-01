@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Collection } from './collection.entity';
@@ -26,8 +31,14 @@ export class CollectionsService {
   /** Hydrate sharedUsers from shares relation for backward compat */
   private hydrateSharedUsers(collection: Collection): Collection {
     if (collection.shares) {
-      collection.sharedUsers = collection.shares.map(s => {
-        const { avatarData, passwordHash, resetToken, resetTokenExpiry, ...safeUser } = (s.user || {}) as any;
+      collection.sharedUsers = collection.shares.map((s) => {
+        const {
+          avatarData,
+          passwordHash,
+          resetToken,
+          resetTokenExpiry,
+          ...safeUser
+        } = (s.user || {}) as any;
         return {
           ...safeUser,
           shareRole: s.role,
@@ -38,65 +49,123 @@ export class CollectionsService {
   }
 
   async create(data: Partial<Collection>, userId: string): Promise<Collection> {
-    const collection = this.collectionRepository.create({ ...data, ownerId: userId });
+    const collection = this.collectionRepository.create({
+      ...data,
+      ownerId: userId,
+    });
     return this.collectionRepository.save(collection);
   }
 
-  async getCollectionsByWorkspace(workspaceId: string, userId: string): Promise<Collection[]> {
-    const workspace = await this.workspaceRepository.findOne({ where: { id: workspaceId } });
+  async getCollectionsByWorkspace(
+    workspaceId: string,
+    userId: string,
+  ): Promise<Collection[]> {
+    const workspace = await this.workspaceRepository.findOne({
+      where: { id: workspaceId },
+    });
     if (!workspace) throw new NotFoundException('Workspace not found');
-    const membership = await this.orgUserRepo.findOne({ where: { organizationId: workspace.organizationId, userId }});
+    const membership = await this.orgUserRepo.findOne({
+      where: { organizationId: workspace.organizationId, userId },
+    });
     if (!membership) throw new ForbiddenException('Access denied');
 
-    const collections = await this.collectionRepository.createQueryBuilder('collection')
+    const collections = await this.collectionRepository
+      .createQueryBuilder('collection')
       .leftJoinAndSelect('collection.shares', 'shares')
       .leftJoin('shares.user', 'sharedUser')
-      .addSelect(['sharedUser.id', 'sharedUser.email', 'sharedUser.name', 'sharedUser.avatarMimeType'])
+      .addSelect([
+        'sharedUser.id',
+        'sharedUser.email',
+        'sharedUser.name',
+        'sharedUser.avatarMimeType',
+      ])
       .leftJoin('collection.owner', 'owner')
-      .addSelect(['owner.id', 'owner.email', 'owner.name', 'owner.avatarMimeType'])
-      .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
+      .addSelect([
+        'owner.id',
+        'owner.email',
+        'owner.name',
+        'owner.avatarMimeType',
+      ])
+      .loadRelationCountAndMap(
+        'collection.requestsCount',
+        'collection.requests',
+      )
       .where('collection.workspaceId = :workspaceId', { workspaceId })
       .getMany();
 
-    return collections.map(c => this.hydrateSharedUsers(c));
+    return collections.map((c) => this.hydrateSharedUsers(c));
   }
 
-  async findAll(userId: string, includeRequests: boolean = false): Promise<Collection[]> {
+  async findAll(
+    userId: string,
+    includeRequests: boolean = false,
+  ): Promise<Collection[]> {
     // Phase 1: Find IDs of owned + shared collections
-    const ownedCols = await this.collectionRepository.find({ where: { ownerId: userId }, select: ['id'] });
-    const sharedCols = await this.shareRepository.find({ where: { userId }, select: ['collectionId'] });
+    const ownedCols = await this.collectionRepository.find({
+      where: { ownerId: userId },
+      select: ['id'],
+    });
+    const sharedCols = await this.shareRepository.find({
+      where: { userId },
+      select: ['collectionId'],
+    });
 
-    const allowedIds = [...new Set([...ownedCols.map(c => c.id), ...sharedCols.map(c => c.collectionId)])];
+    const allowedIds = [
+      ...new Set([
+        ...ownedCols.map((c) => c.id),
+        ...sharedCols.map((c) => c.collectionId),
+      ]),
+    ];
     if (allowedIds.length === 0) return [];
 
     // Phase 2: Fetch collections with shares
-    const collections = await this.collectionRepository.createQueryBuilder('collection')
+    const collections = await this.collectionRepository
+      .createQueryBuilder('collection')
       .leftJoinAndSelect('collection.shares', 'shares')
       .leftJoin('shares.user', 'sharedUser')
-      .addSelect(['sharedUser.id', 'sharedUser.email', 'sharedUser.name', 'sharedUser.avatarMimeType'])
+      .addSelect([
+        'sharedUser.id',
+        'sharedUser.email',
+        'sharedUser.name',
+        'sharedUser.avatarMimeType',
+      ])
       .leftJoin('collection.owner', 'owner')
-      .addSelect(['owner.id', 'owner.email', 'owner.name', 'owner.avatarMimeType'])
+      .addSelect([
+        'owner.id',
+        'owner.email',
+        'owner.name',
+        'owner.avatarMimeType',
+      ])
       .leftJoinAndSelect('collection.workspace', 'workspace')
-      .loadRelationCountAndMap('collection.requestsCount', 'collection.requests')
+      .loadRelationCountAndMap(
+        'collection.requestsCount',
+        'collection.requests',
+      )
       .where('collection.id IN (:...allowedIds)', { allowedIds })
       .getMany();
 
     if (includeRequests && collections.length > 0) {
-      const collectionIds = collections.map(c => c.id);
-      const requests = await this.collectionRepository.manager.getRepository('RequestItem')
+      const collectionIds = collections.map((c) => c.id);
+      const requests = await this.collectionRepository.manager
+        .getRepository('RequestItem')
         .createQueryBuilder('req')
         .where('req.collectionId IN (:...collectionIds)', { collectionIds })
         .getMany();
-      
-      collections.forEach(col => {
-        col.requests = requests.filter((r: any) => r.collectionId === col.id) as any;
+
+      collections.forEach((col) => {
+        col.requests = requests.filter(
+          (r: any) => r.collectionId === col.id,
+        ) as any;
       });
     }
 
-    return collections.map(c => this.hydrateSharedUsers(c));
+    return collections.map((c) => this.hydrateSharedUsers(c));
   }
 
-  async findOne(id: string, userId: string): Promise<{ collection: Collection, membership: OrganizationUser | null }> {
+  async findOne(
+    id: string,
+    userId: string,
+  ): Promise<{ collection: Collection; membership: OrganizationUser | null }> {
     const collection = await this.collectionRepository.findOne({
       where: { id },
       relationLoadStrategy: 'query',
@@ -105,12 +174,16 @@ export class CollectionsService {
 
     if (!collection) throw new NotFoundException('Collection not found');
     this.hydrateSharedUsers(collection);
-    const workspace = await this.workspaceRepository.findOne({ where: { id: collection.workspace.id } });
+    const workspace = await this.workspaceRepository.findOne({
+      where: { id: collection.workspace.id },
+    });
     if (!workspace) throw new NotFoundException('Workspace not found');
-    const membership = await this.orgUserRepo.findOne({ where: { organizationId: workspace.organizationId, userId }});
-    
+    const membership = await this.orgUserRepo.findOne({
+      where: { organizationId: workspace.organizationId, userId },
+    });
+
     // Allow access if user is an org member OR has a share on this collection
-    const hasShare = collection.shares?.some(s => s.userId === userId);
+    const hasShare = collection.shares?.some((s) => s.userId === userId);
     const isOwner = collection.ownerId === userId;
     if (!membership && !hasShare && !isOwner) {
       throw new ForbiddenException('Access denied');
@@ -119,7 +192,11 @@ export class CollectionsService {
     return { collection, membership };
   }
 
-  async update(id: string, data: Partial<Collection>, userId: string): Promise<Collection> {
+  async update(
+    id: string,
+    data: Partial<Collection>,
+    userId: string,
+  ): Promise<Collection> {
     const { collection } = await this.findOne(id, userId);
     Object.assign(collection, data);
     return this.collectionRepository.save(collection);
@@ -128,16 +205,28 @@ export class CollectionsService {
   async remove(id: string, userId: string): Promise<void> {
     const { collection, membership } = await this.findOne(id, userId);
     const isOwner = collection.ownerId === userId;
-    if (membership?.role !== 'ADMIN' && membership?.role !== 'OWNER' && !isOwner) {
-      throw new ForbiddenException('Only Admins or the Owner can delete this collection');
+    if (
+      membership?.role !== 'ADMIN' &&
+      membership?.role !== 'OWNER' &&
+      !isOwner
+    ) {
+      throw new ForbiddenException(
+        'Only Admins or the Owner can delete this collection',
+      );
     }
     await this.collectionRepository.remove(collection);
   }
 
-  async toggleActive(id: string, isActive: boolean, userId: string): Promise<Collection> {
+  async toggleActive(
+    id: string,
+    isActive: boolean,
+    userId: string,
+  ): Promise<Collection> {
     const { collection, membership } = await this.findOne(id, userId);
     if (!this.canManageSharing(collection, membership, userId)) {
-      throw new ForbiddenException('Only Owners or Admins can enable/disable this collection');
+      throw new ForbiddenException(
+        'Only Owners or Admins can enable/disable this collection',
+      );
     }
     collection.isActive = isActive;
     await this.collectionRepository.save(collection);
@@ -146,36 +235,48 @@ export class CollectionsService {
   }
 
   /** Check if a user can manage sharing (is owner, org admin, or collection-level admin) */
-  private canManageSharing(collection: Collection, membership: OrganizationUser | null, userId: string): boolean {
+  private canManageSharing(
+    collection: Collection,
+    membership: OrganizationUser | null,
+    userId: string,
+  ): boolean {
     const isOwner = collection.ownerId === userId;
-    const isOrgAdmin = membership?.role === 'ADMIN' || membership?.role === 'OWNER';
-    const shareRecord = collection.shares?.find(s => s.userId === userId);
+    const isOrgAdmin =
+      membership?.role === 'ADMIN' || membership?.role === 'OWNER';
+    const shareRecord = collection.shares?.find((s) => s.userId === userId);
     const isCollectionAdmin = shareRecord?.role === 'admin';
     return isOwner || isOrgAdmin || isCollectionAdmin;
   }
 
-  async share(id: string, email: string, userId: string, role: 'viewer' | 'editor' | 'admin' = 'viewer'): Promise<Collection> {
+  async share(
+    id: string,
+    email: string,
+    userId: string,
+    role: 'viewer' | 'editor' | 'admin' = 'viewer',
+  ): Promise<Collection> {
     const { collection, membership } = await this.findOne(id, userId);
-    
+
     if (!this.canManageSharing(collection, membership, userId)) {
-      throw new ForbiddenException('You do not have permission to share this collection');
+      throw new ForbiddenException(
+        'You do not have permission to share this collection',
+      );
     }
 
     let userToShareWith = await this.usersService.findOneByEmail(email);
     if (!userToShareWith) {
       // Auto-create a stub user for external sharing
-      userToShareWith = await this.usersService.create({ 
-        email, 
+      userToShareWith = await this.usersService.create({
+        email,
         name: email.split('@')[0],
-        passwordHash: 'external-invite-no-password' 
+        passwordHash: 'external-invite-no-password',
       });
     }
-    
+
     // Check if share already exists
-    const existing = await this.shareRepository.findOne({ 
-      where: { collectionId: id, userId: userToShareWith.id } 
+    const existing = await this.shareRepository.findOne({
+      where: { collectionId: id, userId: userToShareWith.id },
     });
-    
+
     if (existing) {
       // Update role if different
       if (existing.role !== role) {
@@ -189,11 +290,11 @@ export class CollectionsService {
         role,
       });
       await this.shareRepository.save(share);
-      
+
       // Dispatch notification
       await this.notificationsService.create(
         userToShareWith.id,
-        `You have been given access to collection '${collection.name}'`
+        `You have been given access to collection '${collection.name}'`,
       );
     }
 
@@ -202,24 +303,30 @@ export class CollectionsService {
     return updated;
   }
 
-  async unshare(id: string, userToUnshareId: string, userId: string): Promise<Collection> {
+  async unshare(
+    id: string,
+    userToUnshareId: string,
+    userId: string,
+  ): Promise<Collection> {
     const { collection, membership } = await this.findOne(id, userId);
-    
+
     if (!this.canManageSharing(collection, membership, userId)) {
-      throw new ForbiddenException('You do not have permission to manage access to this collection');
+      throw new ForbiddenException(
+        'You do not have permission to manage access to this collection',
+      );
     }
-    
+
     const shareRecord = await this.shareRepository.findOne({
-      where: { collectionId: id, userId: userToUnshareId }
+      where: { collectionId: id, userId: userToUnshareId },
     });
 
     if (shareRecord) {
       await this.shareRepository.remove(shareRecord);
-      
+
       // Dispatch notification
       await this.notificationsService.create(
         userToUnshareId,
-        `Your access to collection '${collection.name}' has been revoked`
+        `Your access to collection '${collection.name}' has been revoked`,
       );
     }
 
@@ -227,11 +334,18 @@ export class CollectionsService {
     return updated;
   }
 
-  async updateShareRole(id: string, targetUserId: string, newRole: 'viewer' | 'editor' | 'admin', userId: string): Promise<Collection> {
+  async updateShareRole(
+    id: string,
+    targetUserId: string,
+    newRole: 'viewer' | 'editor' | 'admin',
+    userId: string,
+  ): Promise<Collection> {
     const { collection, membership } = await this.findOne(id, userId);
-    
+
     if (!this.canManageSharing(collection, membership, userId)) {
-      throw new ForbiddenException('You do not have permission to change roles on this collection');
+      throw new ForbiddenException(
+        'You do not have permission to change roles on this collection',
+      );
     }
 
     // Cannot change your own role
@@ -241,11 +355,11 @@ export class CollectionsService {
 
     // Cannot change owner's role
     if (targetUserId === collection.ownerId) {
-      throw new BadRequestException('Cannot change the owner\'s role');
+      throw new BadRequestException("Cannot change the owner's role");
     }
 
     const shareRecord = await this.shareRepository.findOne({
-      where: { collectionId: id, userId: targetUserId }
+      where: { collectionId: id, userId: targetUserId },
     });
 
     if (!shareRecord) {
@@ -266,7 +380,7 @@ export class CollectionsService {
 
     const getFolder = (folderPath: string) => {
       if (folderMap.has(folderPath)) return folderMap.get(folderPath);
-      
+
       const parts = folderPath.split('/');
       let currentRoot = rootItems;
       let currentPath = '';
@@ -276,11 +390,14 @@ export class CollectionsService {
         if (!folderMap.has(currentPath)) {
           const newFolder = { name: part, item: [] };
           folderMap.set(currentPath, newFolder);
-          
+
           if (currentPath === part) {
             currentRoot.push(newFolder);
           } else {
-            const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+            const parentPath = currentPath.substring(
+              0,
+              currentPath.lastIndexOf('/'),
+            );
             const parent = folderMap.get(parentPath);
             parent.item.push(newFolder);
           }
@@ -294,11 +411,27 @@ export class CollectionsService {
       for (const req of collection.requests) {
         let parsedHeaders = [];
         let parsedBody: any = null;
-        let parsedUrl = req.url || '';
+        const parsedUrl = req.url || '';
         let parsedParams = [];
-        try { if (req.headers) parsedHeaders = typeof req.headers === 'string' ? JSON.parse(req.headers) : req.headers; } catch(e){}
-        try { if (req.body) parsedBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; } catch(e){}
-        try { if (req.params) parsedParams = typeof req.params === 'string' ? JSON.parse(req.params) : req.params; } catch(e){}
+        try {
+          if (req.headers)
+            parsedHeaders =
+              typeof req.headers === 'string'
+                ? JSON.parse(req.headers)
+                : req.headers;
+        } catch (e) {}
+        try {
+          if (req.body)
+            parsedBody =
+              typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        } catch (e) {}
+        try {
+          if (req.params)
+            parsedParams =
+              typeof req.params === 'string'
+                ? JSON.parse(req.params)
+                : req.params;
+        } catch (e) {}
 
         // Convert internal body format to Postman export format
         let postmanBody: any = undefined;
@@ -307,10 +440,13 @@ export class CollectionsService {
           if (mode === 'raw' && parsedBody.raw) {
             postmanBody = {
               mode: 'raw',
-              raw: typeof parsedBody.raw === 'object' ? (parsedBody.raw.data || '') : parsedBody.raw,
+              raw:
+                typeof parsedBody.raw === 'object'
+                  ? parsedBody.raw.data || ''
+                  : parsedBody.raw,
               options: {
-                raw: { language: parsedBody.raw?.language || 'json' }
-              }
+                raw: { language: parsedBody.raw?.language || 'json' },
+              },
             };
           } else if (mode === 'formdata' && parsedBody.formdata) {
             postmanBody = {
@@ -321,7 +457,7 @@ export class CollectionsService {
                 type: fd.type || 'text',
                 description: fd.description || '',
                 disabled: fd.enabled === false,
-              }))
+              })),
             };
           } else if (mode === 'urlencoded' && parsedBody.urlencoded) {
             postmanBody = {
@@ -331,7 +467,7 @@ export class CollectionsService {
                 value: ue.value || '',
                 description: ue.description || '',
                 disabled: ue.enabled === false,
-              }))
+              })),
             };
           } else if (mode === 'graphql' && parsedBody.graphql) {
             postmanBody = {
@@ -339,7 +475,7 @@ export class CollectionsService {
               graphql: {
                 query: parsedBody.graphql.query || '',
                 variables: parsedBody.graphql.variables || '',
-              }
+              },
             };
           } else if (mode !== 'none') {
             // Fallback: try to serialize as raw
@@ -362,9 +498,13 @@ export class CollectionsService {
               raw: parsedUrl,
               ...(queryParams.length > 0 ? { query: queryParams } : {}),
             },
-            header: (parsedHeaders || []).map((h: any) => ({ key: h.key, value: h.value, disabled: h.enabled === false })),
+            header: (parsedHeaders || []).map((h: any) => ({
+              key: h.key,
+              value: h.value,
+              disabled: h.enabled === false,
+            })),
             body: postmanBody,
-          }
+          },
         };
 
         if (req.folder) {
@@ -380,52 +520,102 @@ export class CollectionsService {
       info: {
         name: collection.name,
         description: collection.description,
-        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+        schema:
+          'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
       },
-      item: rootItems
+      item: rootItems,
     };
   }
 
-  async import(workspaceId: string, importData: any, userId: string): Promise<Collection> {
+  async import(
+    workspaceId: string,
+    importData: any,
+    userId: string,
+  ): Promise<Collection> {
     const isPostmanFormat = !!importData?.info?.name && !!importData?.item;
     if (!importData || (!importData.name && !isPostmanFormat)) {
       throw new Error('Invalid collection format');
     }
 
-    const collectionName = isPostmanFormat ? importData.info.name : importData.name;
-    const collectionDesc = isPostmanFormat ? importData.info.description : importData.description;
+    const collectionName = isPostmanFormat
+      ? importData.info.name
+      : importData.name;
+    const collectionDesc = isPostmanFormat
+      ? importData.info.description
+      : importData.description;
 
-    const parsePostmanItems = (items: any[], currentPath: string = ''): any[] => {
-      let flatRequests: any[] = [];
+    const parsePostmanItems = (
+      items: any[],
+      currentPath: string = '',
+    ): any[] => {
+      const flatRequests: any[] = [];
       for (const item of items) {
         if (item.item) {
-          const newPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+          const newPath = currentPath
+            ? `${currentPath}/${item.name}`
+            : item.name;
           flatRequests.push(...parsePostmanItems(item.item, newPath));
         } else if (item.request) {
           flatRequests.push({
             name: item.name || 'Unnamed Request',
             method: item.request.method || 'GET',
-            url: typeof item.request.url === 'string' ? item.request.url : (item.request.url?.raw || ''),
-            headers: item.request.header?.map((h: any) => ({ key: h.key, value: h.value })) || [],
-            params: item.request.url?.query?.map((q: any) => ({ key: q.key, value: q.value })) || [],
-            body: item.request.body ? JSON.stringify({
-              mode: item.request.body.mode || (item.request.body.raw ? 'raw' : 'none'),
-              raw: { language: item.request.body.options?.raw?.language || 'json', data: typeof item.request.body.raw === 'string' ? item.request.body.raw : '' },
-              formdata: (item.request.body.formdata || []).map((fd: any) => ({
-                key: fd.key || '',
-                value: fd.type === 'file' ? (typeof fd.src === 'string' ? fd.src : (Array.isArray(fd.src) ? fd.src.join(', ') : '')) : (fd.value || ''),
-                type: fd.type || 'text',
-                description: fd.description || '',
-                enabled: fd.disabled !== true
-              })),
-              urlencoded: (item.request.body.urlencoded || []).map((urlc: any) => ({
-                key: urlc.key || '',
-                value: urlc.value || '',
-                description: urlc.description || '',
-                enabled: urlc.disabled !== true
-              })),
-              graphql: item.request.body.graphql || { query: '', variables: '' }
-            }) : '',
+            url:
+              typeof item.request.url === 'string'
+                ? item.request.url
+                : item.request.url?.raw || '',
+            headers:
+              item.request.header?.map((h: any) => ({
+                key: h.key,
+                value: h.value,
+              })) || [],
+            params:
+              item.request.url?.query?.map((q: any) => ({
+                key: q.key,
+                value: q.value,
+              })) || [],
+            body: item.request.body
+              ? JSON.stringify({
+                  mode:
+                    item.request.body.mode ||
+                    (item.request.body.raw ? 'raw' : 'none'),
+                  raw: {
+                    language:
+                      item.request.body.options?.raw?.language || 'json',
+                    data:
+                      typeof item.request.body.raw === 'string'
+                        ? item.request.body.raw
+                        : '',
+                  },
+                  formdata: (item.request.body.formdata || []).map(
+                    (fd: any) => ({
+                      key: fd.key || '',
+                      value:
+                        fd.type === 'file'
+                          ? typeof fd.src === 'string'
+                            ? fd.src
+                            : Array.isArray(fd.src)
+                              ? fd.src.join(', ')
+                              : ''
+                          : fd.value || '',
+                      type: fd.type || 'text',
+                      description: fd.description || '',
+                      enabled: fd.disabled !== true,
+                    }),
+                  ),
+                  urlencoded: (item.request.body.urlencoded || []).map(
+                    (urlc: any) => ({
+                      key: urlc.key || '',
+                      value: urlc.value || '',
+                      description: urlc.description || '',
+                      enabled: urlc.disabled !== true,
+                    }),
+                  ),
+                  graphql: item.request.body.graphql || {
+                    query: '',
+                    variables: '',
+                  },
+                })
+              : '',
             folder: currentPath || null,
           });
         }
@@ -433,9 +623,9 @@ export class CollectionsService {
       return flatRequests;
     };
 
-    const requestsData = isPostmanFormat 
+    const requestsData = isPostmanFormat
       ? parsePostmanItems(importData.item || [])
-      : (importData.requests?.map((req: any) => ({
+      : importData.requests?.map((req: any) => ({
           name: req.name || 'Imported Request',
           method: req.method || 'GET',
           url: req.url || '',
@@ -443,7 +633,7 @@ export class CollectionsService {
           params: req.params,
           body: req.body,
           folder: req.folder || null,
-        })) || []);
+        })) || [];
 
     const newCollection = this.collectionRepository.create({
       name: collectionName + ' (Imported)',

@@ -8,7 +8,9 @@ import { RequestItem } from '../requests/request.entity';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Workspace, Collection, RequestItem])],
+  imports: [
+    TypeOrmModule.forFeature([User, Workspace, Collection, RequestItem]),
+  ],
   providers: [UsersService],
   exports: [UsersService],
 })

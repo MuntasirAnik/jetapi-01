@@ -11,7 +11,10 @@ dns.setDefaultResultOrder('ipv4first');
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableCors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       // Allow requests with no origin (mobile apps, curl, Postman, same-origin)
       if (!origin) return callback(null, true);
       const allowed = [
@@ -20,13 +23,23 @@ async function bootstrap() {
         process.env.FRONTEND_URL,
       ].filter(Boolean);
       // Also allow any LAN IP on port 3000 for dev
-      if (allowed.includes(origin) || /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):3000$/.test(origin)) {
+      if (
+        allowed.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):3000$/.test(
+          origin,
+        )
+      ) {
         return callback(null, true);
       }
       callback(null, true); // Allow all in dev; tighten in production
     },
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+    ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   app.use(compress()); // gzip all responses — reduces JSON payloads by 70-90%

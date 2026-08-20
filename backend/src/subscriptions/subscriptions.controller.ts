@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Req, Res, UseGuards, Headers, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Req,
+  Res,
+  UseGuards,
+  Headers,
+  Query,
+} from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { SubscriptionsService } from './subscriptions.service';
@@ -91,7 +101,15 @@ export class SubscriptionsController {
   @RequireFeature('allow_subscriptions')
   async confirmPayment(
     @Req() req: any,
-    @Body() body: { method: string; cardLast4?: string; cardName?: string; provider?: string; mfsNumber?: string; transactionId?: string },
+    @Body()
+    body: {
+      method: string;
+      cardLast4?: string;
+      cardName?: string;
+      provider?: string;
+      mfsNumber?: string;
+      transactionId?: string;
+    },
   ) {
     return this.subscriptionsService.confirmPayment(req.user.sub, body);
   }
@@ -111,11 +129,11 @@ export class SubscriptionsController {
 
   @Post('verify-session')
   @UseGuards(AuthGuard)
-  async verifySession(
-    @Req() req: any,
-    @Body() body: { sessionId: string },
-  ) {
-    return this.subscriptionsService.verifyCheckoutSession(req.user.sub, body.sessionId);
+  async verifySession(@Req() req: any, @Body() body: { sessionId: string }) {
+    return this.subscriptionsService.verifyCheckoutSession(
+      req.user.sub,
+      body.sessionId,
+    );
   }
 
   @Post('webhook')

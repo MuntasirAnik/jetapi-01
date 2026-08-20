@@ -9,7 +9,14 @@ export class FeedbackController {
 
   @Post()
   createTicket(
-    @Body() body: { subject: string; description: string; type?: string; priority?: string; tags?: string },
+    @Body()
+    body: {
+      subject: string;
+      description: string;
+      type?: string;
+      priority?: string;
+      tags?: string;
+    },
     @Req() req: any,
   ) {
     return this.adminService.createTicket(body, req.user.sub);

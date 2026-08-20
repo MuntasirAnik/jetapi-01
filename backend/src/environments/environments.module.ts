@@ -7,6 +7,6 @@ import { Environment } from './environment.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([Environment])],
   controllers: [EnvironmentsController],
-  providers: [EnvironmentsService]
+  providers: [EnvironmentsService],
 })
 export class EnvironmentsModule {}

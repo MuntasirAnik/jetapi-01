@@ -3,7 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
 import { BannersController } from './banners.controller';
-import { MaintenanceController, FeatureFlagsController, ChangelogController } from './maintenance.controller';
+import {
+  MaintenanceController,
+  FeatureFlagsController,
+  ChangelogController,
+} from './maintenance.controller';
 import { FeedbackController } from './feedback.controller';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
@@ -23,6 +27,9 @@ import { OrganizationUser } from '../organizations/organization-user.entity';
 import { Collection } from '../collections/collection.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 import { Payment } from '../subscriptions/payment.entity';
+import { ApiHit } from './api-hit.entity';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ApiHitInterceptor } from './api-hit.interceptor';
 
 @Module({
   imports: [
@@ -41,14 +48,31 @@ import { Payment } from '../subscriptions/payment.entity';
       Changelog,
       FeedbackTicket,
       Plugin,
+      ApiHit,
     ]),
     JwtModule.register({
       secret: 'YOUR_SECRET_KEY',
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  controllers: [AdminController, BannersController, MaintenanceController, FeatureFlagsController, ChangelogController, FeedbackController],
-  providers: [AdminService, AdminGuard, FeatureFlagGuard, RateLimitGuard],
+  controllers: [
+    AdminController,
+    BannersController,
+    MaintenanceController,
+    FeatureFlagsController,
+    ChangelogController,
+    FeedbackController,
+  ],
+  providers: [
+    AdminService,
+    AdminGuard,
+    FeatureFlagGuard,
+    RateLimitGuard,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ApiHitInterceptor,
+    },
+  ],
   exports: [AdminService, FeatureFlagGuard, RateLimitGuard, TypeOrmModule],
 })
 export class AdminModule {}

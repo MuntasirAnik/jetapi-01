@@ -9,7 +9,12 @@ import { Environment } from '../environments/environment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrganizationUser, Workspace, Collection, Environment]),
+    TypeOrmModule.forFeature([
+      OrganizationUser,
+      Workspace,
+      Collection,
+      Environment,
+    ]),
   ],
   controllers: [InitController],
   providers: [InitService],

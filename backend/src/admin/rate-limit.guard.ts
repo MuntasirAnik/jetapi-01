@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, HttpException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  HttpException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemSetting } from './system-setting.entity';
@@ -40,12 +45,19 @@ export class RateLimitGuard implements CanActivate {
 
   async getConfig(): Promise<RateLimitConfig> {
     const now = Date.now();
-    if (this.configCache && now - this.configCacheTime < this.CONFIG_CACHE_TTL) {
+    if (
+      this.configCache &&
+      now - this.configCacheTime < this.CONFIG_CACHE_TTL
+    ) {
       return this.configCache;
     }
     try {
-      const setting = await this.settingRepo.findOne({ where: { key: 'rate_limit_config' } });
-      this.configCache = setting ? { ...DEFAULT_CONFIG, ...JSON.parse(setting.value) } : { ...DEFAULT_CONFIG };
+      const setting = await this.settingRepo.findOne({
+        where: { key: 'rate_limit_config' },
+      });
+      this.configCache = setting
+        ? { ...DEFAULT_CONFIG, ...JSON.parse(setting.value) }
+        : { ...DEFAULT_CONFIG };
     } catch {
       this.configCache = { ...DEFAULT_CONFIG };
     }
@@ -61,15 +73,27 @@ export class RateLimitGuard implements CanActivate {
   }
 
   /** Get live usage stats for all active windows */
-  getUsageStats(): Array<{ userId: string; count: number; windowStart: number }> {
+  getUsageStats(): Array<{
+    userId: string;
+    count: number;
+    windowStart: number;
+  }> {
     const now = Date.now();
     const windowMs = this.configCache?.windowMs || DEFAULT_CONFIG.windowMs;
-    const result: Array<{ userId: string; count: number; windowStart: number }> = [];
+    const result: Array<{
+      userId: string;
+      count: number;
+      windowStart: number;
+    }> = [];
 
     for (const [userId, window] of this.windows.entries()) {
       // Skip expired windows
       if (now - window.windowStart > windowMs) continue;
-      result.push({ userId, count: window.count, windowStart: window.windowStart });
+      result.push({
+        userId,
+        count: window.count,
+        windowStart: window.windowStart,
+      });
     }
 
     return result;
@@ -105,9 +129,10 @@ export class RateLimitGuard implements CanActivate {
     } catch {}
 
     // Get limit for this user
-    const limit = config.overrides[userId]
-      || config.limits[plan as keyof typeof config.limits]
-      || config.limits.FREE;
+    const limit =
+      config.overrides[userId] ||
+      config.limits[plan as keyof typeof config.limits] ||
+      config.limits.FREE;
 
     const now = Date.now();
     let window = this.windows.get(userId);
@@ -129,7 +154,9 @@ export class RateLimitGuard implements CanActivate {
 
     // Only enforce (block) when rate limiting is enabled
     if (config.enabled && window.count > limit) {
-      const retryAfter = Math.ceil((window.windowStart + config.windowMs - now) / 1000);
+      const retryAfter = Math.ceil(
+        (window.windowStart + config.windowMs - now) / 1000,
+      );
       response.setHeader('Retry-After', String(retryAfter));
       throw new HttpException(
         {

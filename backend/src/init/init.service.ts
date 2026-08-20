@@ -41,13 +41,18 @@ export class InitService {
         .getMany(),
     ]);
 
-    const organizations = orgUsers.map(ou => ou.organization);
-    const orgIds = organizations.map(o => o.id);
-    const colIds = [...new Set(accessibleColIds.map(c => c.id))];
+    const organizations = orgUsers.map((ou) => ou.organization);
+    const orgIds = organizations.map((o) => o.id);
+    const colIds = [...new Set(accessibleColIds.map((c) => c.id))];
 
     // Early exit — nothing to load
     if (orgIds.length === 0 && colIds.length === 0) {
-      return { organizations, workspaces: [], sharedCollections: [], environments: [] };
+      return {
+        organizations,
+        workspaces: [],
+        sharedCollections: [],
+        environments: [],
+      };
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -69,26 +74,48 @@ export class InitService {
             .createQueryBuilder('col')
             .leftJoinAndSelect('col.shares', 'share')
             .leftJoin('share.user', 'sharedUser')
-            .addSelect(['sharedUser.id', 'sharedUser.email', 'sharedUser.name', 'sharedUser.avatarMimeType'])
+            .addSelect([
+              'sharedUser.id',
+              'sharedUser.email',
+              'sharedUser.name',
+              'sharedUser.avatarMimeType',
+            ])
             .leftJoin('col.owner', 'owner')
-            .addSelect(['owner.id', 'owner.email', 'owner.name', 'owner.avatarMimeType'])
+            .addSelect([
+              'owner.id',
+              'owner.email',
+              'owner.name',
+              'owner.avatarMimeType',
+            ])
             .leftJoinAndSelect('col.workspace', 'ws')
             .where('col.id IN (:...colIds)', { colIds })
             .getMany()
-            .then(cols => cols.map(c => {
-              // Hydrate virtual sharedUsers from shares for backward compat
-              c.sharedUsers = (c.shares || []).map(s => ({ ...s.user, shareRole: s.role })) as any;
-              // Strip shares array to reduce payload — frontend only uses sharedUsers
-              delete (c as any).shares;
-              return c;
-            }))
+            .then((cols) =>
+              cols.map((c) => {
+                // Hydrate virtual sharedUsers from shares for backward compat
+                c.sharedUsers = (c.shares || []).map((s) => ({
+                  ...s.user,
+                  shareRole: s.role,
+                })) as any;
+                // Strip shares array to reduce payload — frontend only uses sharedUsers
+                delete (c as any).shares;
+                return c;
+              }),
+            )
         : [],
 
       colIds.length > 0
         ? this.collectionRepo.manager
             .getRepository('RequestItem')
             .createQueryBuilder('req')
-            .select(['req.id', 'req.name', 'req.method', 'req.url', 'req.folder', 'req.collectionId'])
+            .select([
+              'req.id',
+              'req.name',
+              'req.method',
+              'req.url',
+              'req.folder',
+              'req.collectionId',
+            ])
             .where('req.collectionId IN (:...colIds)', { colIds })
             .getMany()
         : [],
@@ -97,10 +124,10 @@ export class InitService {
     // ═══════════════════════════════════════════════════════════════
     // PHASE 3 — Environments (needs workspace IDs from Phase 2)
     // ═══════════════════════════════════════════════════════════════
-    const orgWsIds = workspaces.map(w => w.id);
+    const orgWsIds = workspaces.map((w) => w.id);
     const sharedWsIds = collections
-      .map(c => c.workspaceId)
-      .filter(id => id && !orgWsIds.includes(id));
+      .map((c) => c.workspaceId)
+      .filter((id) => id && !orgWsIds.includes(id));
     const uniqueSharedWsIds = [...new Set(sharedWsIds)];
     const allWsIds = [...new Set([...orgWsIds, ...uniqueSharedWsIds])];
 
@@ -151,10 +178,15 @@ export class InitService {
     }
 
     // Shared collections: user has a share record but is NOT the owner
-    const sharedCollections = collections.filter(c =>
-      c.ownerId !== userId && c.shares?.some(s => s.userId === userId)
+    const sharedCollections = collections.filter(
+      (c) => c.ownerId !== userId && c.shares?.some((s) => s.userId === userId),
     );
 
-    return { organizations, workspaces: allWorkspaces, sharedCollections, environments };
+    return {
+      organizations,
+      workspaces: allWorkspaces,
+      sharedCollections,
+      environments,
+    };
   }
 }

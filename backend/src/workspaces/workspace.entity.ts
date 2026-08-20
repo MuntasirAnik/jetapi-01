@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Collection } from '../collections/collection.entity';
 import { Organization } from '../organizations/organization.entity';
 
@@ -13,7 +20,9 @@ export class Workspace {
   @Column({ nullable: true })
   description: string;
 
-  @OneToMany(() => Collection, (collection) => collection.workspace, { cascade: true })
+  @OneToMany(() => Collection, (collection) => collection.workspace, {
+    cascade: true,
+  })
   collections: Collection[];
 
   @Column()

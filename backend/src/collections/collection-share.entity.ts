@@ -1,4 +1,11 @@
-import { Entity, Column, ManyToOne, JoinColumn, PrimaryColumn, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  PrimaryColumn,
+  CreateDateColumn,
+} from 'typeorm';
 import { Collection } from './collection.entity';
 import { User } from '../users/user.entity';
 
@@ -13,7 +20,9 @@ export class CollectionShare {
   @Column({ default: 'viewer' })
   role: 'viewer' | 'editor' | 'admin';
 
-  @ManyToOne(() => Collection, (collection) => collection.shares, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Collection, (collection) => collection.shares, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'collectionId' })
   collection: Collection;
 

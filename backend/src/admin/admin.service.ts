@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -15,12 +21,13 @@ import { SystemSetting } from './system-setting.entity';
 import { Changelog } from './changelog.entity';
 import { FeedbackTicket } from './feedback-ticket.entity';
 import { Plugin } from './plugin.entity';
+import { ApiHit } from './api-hit.entity';
 import { Plan } from '../subscriptions/plan.entity';
 import { DEFAULT_PLANS, PlanId } from '../subscriptions/plans.config';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnApplicationBootstrap {
   constructor(
     @InjectRepository(User)
     private userRepo: Repository<User>,
@@ -50,6 +57,8 @@ export class AdminService {
     private ticketRepo: Repository<FeedbackTicket>,
     @InjectRepository(Plugin)
     private pluginRepo: Repository<Plugin>,
+    @InjectRepository(ApiHit)
+    private apiHitRepo: Repository<ApiHit>,
     private jwtService: JwtService,
   ) {
     this.seedDefaultBanners();
@@ -59,9 +68,13 @@ export class AdminService {
 
   // ── Admin User Creation ──
 
-  async createAdminUser(data: { name: string; email: string; password: string }, performedBy?: string) {
+  async createAdminUser(
+    data: { name: string; email: string; password: string },
+    performedBy?: string,
+  ) {
     const existing = await this.userRepo.findOneBy({ email: data.email });
-    if (existing) throw new BadRequestException('A user with this email already exists');
+    if (existing)
+      throw new BadRequestException('A user with this email already exists');
     const passwordHash = await bcrypt.hash(data.password, 10);
     const user = this.userRepo.create({
       name: data.name,
@@ -72,23 +85,38 @@ export class AdminService {
     });
     const saved = await this.userRepo.save(user);
     if (performedBy) {
-      await this.logAction({ action: 'user.created', targetType: 'user', targetId: saved.id, targetLabel: saved.email, performedBy, details: { role: 'ADMIN' } });
+      await this.logAction({
+        action: 'user.created',
+        targetType: 'user',
+        targetId: saved.id,
+        targetLabel: saved.email,
+        performedBy,
+        details: { role: 'ADMIN' },
+      });
     }
-    return { id: saved.id, name: saved.name, email: saved.email, role: saved.role };
+    return {
+      id: saved.id,
+      name: saved.name,
+      email: saved.email,
+      role: saved.role,
+    };
   }
 
   // ── Stats ──
 
   async getStats() {
-    const [totalUsers, totalOrgs, totalCollections, totalSubscriptions] = await Promise.all([
-      this.userRepo.count(),
-      this.orgRepo.count(),
-      this.collectionRepo.count(),
-      this.subRepo.count({ where: { status: 'active' } }),
-    ]);
+    const [totalUsers, totalOrgs, totalCollections, totalSubscriptions] =
+      await Promise.all([
+        this.userRepo.count(),
+        this.orgRepo.count(),
+        this.collectionRepo.count(),
+        this.subRepo.count({ where: { status: 'active' } }),
+      ]);
 
     // Total revenue (from payment records)
-    const payments = await this.paymentRepo.find({ where: { status: 'completed' } });
+    const payments = await this.paymentRepo.find({
+      where: { status: 'completed' },
+    });
     const totalRevenue = payments.reduce((sum, p) => {
       const amount = parseFloat(p.amount.replace('$', '')) || 0;
       return sum + amount;
@@ -116,18 +144,29 @@ export class AdminService {
   // ── Helpers ──
 
   async getUserRole(userId: string): Promise<string> {
-    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['role'] });
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['role'],
+    });
     return user?.role || 'USER';
   }
 
   // ── Users ──
 
-  async getAllUsers(params: { search?: string; page?: number; limit?: number; role?: string; status?: string; plan?: string }) {
+  async getAllUsers(params: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    role?: string;
+    status?: string;
+    plan?: string;
+  }) {
     const page = params.page || 1;
     const limit = Math.min(params.limit || 20, 100);
     const offset = (page - 1) * limit;
 
-    const query = this.userRepo.createQueryBuilder('user')
+    const query = this.userRepo
+      .createQueryBuilder('user')
       .select([
         'user.id',
         'user.email',
@@ -139,7 +178,9 @@ export class AdminService {
       ]);
 
     if (params.search) {
-      query.where('(user.email ILIKE :search OR user.name ILIKE :search)', { search: `%${params.search}%` });
+      query.where('(user.email ILIKE :search OR user.name ILIKE :search)', {
+        search: `%${params.search}%`,
+      });
     }
 
     if (params.role && params.role !== 'all') {
@@ -181,11 +222,17 @@ export class AdminService {
     };
   }
 
-  async updateUser(userId: string, data: { role?: string; name?: string }, requesterRole?: string) {
+  async updateUser(
+    userId: string,
+    data: { role?: string; name?: string },
+    requesterRole?: string,
+  ) {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.role === 'SUPER_ADMIN' && requesterRole !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Only Super Admins can modify other Super Admins');
+      throw new ForbiddenException(
+        'Only Super Admins can modify other Super Admins',
+      );
     }
 
     if (data.role) user.role = data.role;
@@ -193,34 +240,67 @@ export class AdminService {
 
     const result = await this.userRepo.save(user);
     if (requesterRole) {
-      await this.logAction({ action: 'user.role_changed', targetType: 'user', targetId: userId, targetLabel: user.email, performedBy: userId, details: data }).catch(() => {});
+      await this.logAction({
+        action: 'user.role_changed',
+        targetType: 'user',
+        targetId: userId,
+        targetLabel: user.email,
+        performedBy: userId,
+        details: data,
+      }).catch(() => {});
     }
     return result;
   }
 
-  async deleteUser(userId: string, requesterId: string, requesterRole?: string) {
-    if (userId === requesterId) throw new ForbiddenException('You cannot deactivate yourself.');
+  async deleteUser(
+    userId: string,
+    requesterId: string,
+    requesterRole?: string,
+  ) {
+    if (userId === requesterId)
+      throw new ForbiddenException('You cannot deactivate yourself.');
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.role === 'SUPER_ADMIN' && requesterRole !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Only Super Admins can deactivate other Super Admins');
+      throw new ForbiddenException(
+        'Only Super Admins can deactivate other Super Admins',
+      );
     }
     user.isActive = false;
     await this.userRepo.save(user);
-    await this.logAction({ action: 'user.deactivated', targetType: 'user', targetId: userId, targetLabel: user.email, performedBy: requesterId }).catch(() => {});
+    await this.logAction({
+      action: 'user.deactivated',
+      targetType: 'user',
+      targetId: userId,
+      targetLabel: user.email,
+      performedBy: requesterId,
+    }).catch(() => {});
     return { deactivated: true };
   }
 
-  async toggleUserActive(userId: string, requesterId: string, requesterRole?: string) {
-    if (userId === requesterId) throw new ForbiddenException('You cannot deactivate yourself.');
+  async toggleUserActive(
+    userId: string,
+    requesterId: string,
+    requesterRole?: string,
+  ) {
+    if (userId === requesterId)
+      throw new ForbiddenException('You cannot deactivate yourself.');
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.role === 'SUPER_ADMIN' && requesterRole !== 'SUPER_ADMIN') {
-      throw new ForbiddenException('Only Super Admins can modify other Super Admins');
+      throw new ForbiddenException(
+        'Only Super Admins can modify other Super Admins',
+      );
     }
     user.isActive = !user.isActive;
     await this.userRepo.save(user);
-    await this.logAction({ action: user.isActive ? 'user.activated' : 'user.deactivated', targetType: 'user', targetId: userId, targetLabel: user.email, performedBy: requesterId }).catch(() => {});
+    await this.logAction({
+      action: user.isActive ? 'user.activated' : 'user.deactivated',
+      targetType: 'user',
+      targetId: userId,
+      targetLabel: user.email,
+      performedBy: requesterId,
+    }).catch(() => {});
     return { isActive: user.isActive };
   }
 
@@ -234,7 +314,9 @@ export class AdminService {
         const memberCount = await this.orgUserRepo.count({
           where: { organizationId: org.id },
         });
-        const owner = await this.userRepo.findOne({ where: { id: org.ownerId } });
+        const owner = await this.userRepo.findOne({
+          where: { id: org.ownerId },
+        });
         return {
           ...org,
           memberCount,
@@ -349,7 +431,13 @@ export class AdminService {
         sharedCollections: plan.sharedCollections,
         apiDocExport: plan.apiDocExport,
       },
-      features: (() => { try { return JSON.parse(plan.features); } catch { return []; } })(),
+      features: (() => {
+        try {
+          return JSON.parse(plan.features);
+        } catch {
+          return [];
+        }
+      })(),
       popular: plan.popular,
       hasOverride: true, // All plans are now DB-driven
     }));
@@ -364,21 +452,27 @@ export class AdminService {
     if (data.priceYearly !== undefined) plan.priceYearly = data.priceYearly;
 
     // Update limits
-    if (data.maxCollections !== undefined) plan.maxCollections = data.maxCollections;
-    if (data.maxRequestsPerCollection !== undefined) plan.maxRequestsPerCollection = data.maxRequestsPerCollection;
+    if (data.maxCollections !== undefined)
+      plan.maxCollections = data.maxCollections;
+    if (data.maxRequestsPerCollection !== undefined)
+      plan.maxRequestsPerCollection = data.maxRequestsPerCollection;
     if (data.maxMembers !== undefined) plan.maxMembers = data.maxMembers;
-    if (data.maxCollaborators !== undefined) plan.maxCollaborators = data.maxCollaborators;
-    if (data.maxEnvironments !== undefined) plan.maxEnvironments = data.maxEnvironments;
+    if (data.maxCollaborators !== undefined)
+      plan.maxCollaborators = data.maxCollaborators;
+    if (data.maxEnvironments !== undefined)
+      plan.maxEnvironments = data.maxEnvironments;
     if (data.historyDays !== undefined) plan.historyDays = data.historyDays;
     if (data.maxUploadMb !== undefined) plan.maxUploadMb = data.maxUploadMb;
-    if (data.analyticsAccess !== undefined) plan.analyticsAccess = data.analyticsAccess;
+    if (data.analyticsAccess !== undefined)
+      plan.analyticsAccess = data.analyticsAccess;
 
     return this.planRepo.save(plan);
   }
 
   async resetPlanOverride(planId: string) {
     const defaultPlan = DEFAULT_PLANS[planId as PlanId];
-    if (!defaultPlan) throw new NotFoundException(`Default plan ${planId} not found`);
+    if (!defaultPlan)
+      throw new NotFoundException(`Default plan ${planId} not found`);
 
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) throw new NotFoundException(`Plan ${planId} not found`);
@@ -402,7 +496,8 @@ export class AdminService {
   // ── Payments ──
 
   async getPayments(year?: number, month?: number) {
-    const query = this.paymentRepo.createQueryBuilder('payment')
+    const query = this.paymentRepo
+      .createQueryBuilder('payment')
       .orderBy('payment.createdAt', 'DESC');
 
     if (year && month) {
@@ -443,25 +538,44 @@ export class AdminService {
       '🔗 Share collections with your team — right-click any collection → Share.',
       '🌙 Toggle between dark and light themes from the top bar.',
     ];
-    const banners = defaults.map((text, i) => this.bannerRepo.create({ text, isActive: true, sortOrder: i }));
+    const banners = defaults.map((text, i) =>
+      this.bannerRepo.create({ text, isActive: true, sortOrder: i }),
+    );
     await this.bannerRepo.save(banners);
   }
 
   async getAllBanners() {
-    return this.bannerRepo.find({ order: { isDeleted: 'ASC', sortOrder: 'ASC', createdAt: 'ASC' } });
+    return this.bannerRepo.find({
+      order: { isDeleted: 'ASC', sortOrder: 'ASC', createdAt: 'ASC' },
+    });
   }
 
   async getActiveBanners() {
-    return this.bannerRepo.find({ where: { isActive: true, isDeleted: false }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
+    return this.bannerRepo.find({
+      where: { isActive: true, isDeleted: false },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
   }
 
   async createBanner(text: string) {
-    const maxSort = await this.bannerRepo.maximum('sortOrder') || 0;
-    const banner = this.bannerRepo.create({ text, isActive: true, sortOrder: maxSort + 1 });
+    const maxSort = (await this.bannerRepo.maximum('sortOrder')) || 0;
+    const banner = this.bannerRepo.create({
+      text,
+      isActive: true,
+      sortOrder: maxSort + 1,
+    });
     return this.bannerRepo.save(banner);
   }
 
-  async updateBanner(id: string, data: { text?: string; isActive?: boolean; sortOrder?: number; isDeleted?: boolean }) {
+  async updateBanner(
+    id: string,
+    data: {
+      text?: string;
+      isActive?: boolean;
+      sortOrder?: number;
+      isDeleted?: boolean;
+    },
+  ) {
     const banner = await this.bannerRepo.findOneBy({ id });
     if (!banner) throw new NotFoundException('Banner not found');
     Object.assign(banner, data);
@@ -479,8 +593,18 @@ export class AdminService {
 
   // ── Audit Log ──
 
-  async logAction(data: { action: string; targetType?: string; targetId?: string; targetLabel?: string; performedBy: string; details?: any }) {
-    const performer = await this.userRepo.findOne({ where: { id: data.performedBy }, select: ['name', 'email'] });
+  async logAction(data: {
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    targetLabel?: string;
+    performedBy: string;
+    details?: any;
+  }) {
+    const performer = await this.userRepo.findOne({
+      where: { id: data.performedBy },
+      select: ['name', 'email'],
+    });
     const log = this.auditRepo.create({
       action: data.action,
       targetType: data.targetType,
@@ -498,15 +622,29 @@ export class AdminService {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     switch (dateRange) {
-      case 'today': return start;
-      case '7d': start.setDate(start.getDate() - 7); return start;
-      case '30d': start.setDate(start.getDate() - 30); return start;
-      case '90d': start.setDate(start.getDate() - 90); return start;
-      default: return null;
+      case 'today':
+        return start;
+      case '7d':
+        start.setDate(start.getDate() - 7);
+        return start;
+      case '30d':
+        start.setDate(start.getDate() - 30);
+        return start;
+      case '90d':
+        start.setDate(start.getDate() - 90);
+        return start;
+      default:
+        return null;
     }
   }
 
-  async getAuditLogs(page = 1, limit = 25, search?: string, action?: string, dateRange?: string) {
+  async getAuditLogs(
+    page = 1,
+    limit = 25,
+    search?: string,
+    action?: string,
+    dateRange?: string,
+  ) {
     const query = this.auditRepo.createQueryBuilder('log');
 
     if (search) {
@@ -528,44 +666,72 @@ export class AdminService {
     query.orderBy('log.createdAt', 'DESC');
 
     const total = await query.getCount();
-    const logs = await query.skip((page - 1) * limit).take(limit).getMany();
+    const logs = await query
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
 
     return { logs, total, page, totalPages: Math.ceil(total / limit) };
   }
 
   async getAuditStats() {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
     const weekStart = new Date(todayStart);
     weekStart.setDate(weekStart.getDate() - 7);
 
-    const [total, today, thisWeek, actionCounts, uniqueAdmins, dailyBreakdown] = await Promise.all([
-      this.auditRepo.count(),
-      this.auditRepo.createQueryBuilder('log').where('log.createdAt >= :d', { d: todayStart }).getCount(),
-      this.auditRepo.createQueryBuilder('log').where('log.createdAt >= :d', { d: weekStart }).getCount(),
-      this.auditRepo.createQueryBuilder('log')
-        .select('log.action', 'action')
-        .addSelect('COUNT(*)', 'count')
-        .groupBy('log.action')
-        .orderBy('count', 'DESC')
-        .getRawMany(),
-      this.auditRepo.createQueryBuilder('log')
-        .select('COUNT(DISTINCT log.performedBy)', 'count')
-        .getRawOne()
-        .then(r => parseInt(r?.count || '0')),
-      this.auditRepo.createQueryBuilder('log')
-        .select("TO_CHAR(log.createdAt, 'YYYY-MM-DD')", 'date')
-        .addSelect('COUNT(*)', 'count')
-        .where('log.createdAt >= :d', { d: weekStart })
-        .groupBy("TO_CHAR(log.createdAt, 'YYYY-MM-DD')")
-        .orderBy('date', 'ASC')
-        .getRawMany(),
-    ]);
+    const [total, today, thisWeek, actionCounts, uniqueAdmins, dailyBreakdown] =
+      await Promise.all([
+        this.auditRepo.count(),
+        this.auditRepo
+          .createQueryBuilder('log')
+          .where('log.createdAt >= :d', { d: todayStart })
+          .getCount(),
+        this.auditRepo
+          .createQueryBuilder('log')
+          .where('log.createdAt >= :d', { d: weekStart })
+          .getCount(),
+        this.auditRepo
+          .createQueryBuilder('log')
+          .select('log.action', 'action')
+          .addSelect('COUNT(*)', 'count')
+          .groupBy('log.action')
+          .orderBy('count', 'DESC')
+          .getRawMany(),
+        this.auditRepo
+          .createQueryBuilder('log')
+          .select('COUNT(DISTINCT log.performedBy)', 'count')
+          .getRawOne()
+          .then((r) => parseInt(r?.count || '0')),
+        this.auditRepo
+          .createQueryBuilder('log')
+          .select("TO_CHAR(log.createdAt, 'YYYY-MM-DD')", 'date')
+          .addSelect('COUNT(*)', 'count')
+          .where('log.createdAt >= :d', { d: weekStart })
+          .groupBy("TO_CHAR(log.createdAt, 'YYYY-MM-DD')")
+          .orderBy('date', 'ASC')
+          .getRawMany(),
+      ]);
 
-    return { total, today, thisWeek, actionCounts, uniqueAdmins, dailyBreakdown };
+    return {
+      total,
+      today,
+      thisWeek,
+      actionCounts,
+      uniqueAdmins,
+      dailyBreakdown,
+    };
   }
 
-  async exportAuditLogsCsv(search?: string, action?: string, dateRange?: string): Promise<string> {
+  async exportAuditLogsCsv(
+    search?: string,
+    action?: string,
+    dateRange?: string,
+  ): Promise<string> {
     const query = this.auditRepo.createQueryBuilder('log');
 
     if (search) {
@@ -582,11 +748,13 @@ export class AdminService {
     const logs = await query.getMany();
 
     const header = 'Date,Action,Performer,Target,Target Type,Details\n';
-    const rows = logs.map(l => {
-      const d = l.createdAt ? new Date(l.createdAt).toISOString() : '';
-      const details = (l.details || '').replace(/"/g, '""');
-      return `"${d}","${l.action}","${l.performerName || ''}","${l.targetLabel || ''}","${l.targetType || ''}","${details}"`;
-    }).join('\n');
+    const rows = logs
+      .map((l) => {
+        const d = l.createdAt ? new Date(l.createdAt).toISOString() : '';
+        const details = (l.details || '').replace(/"/g, '""');
+        return `"${d}","${l.action}","${l.performerName || ''}","${l.targetLabel || ''}","${l.targetType || ''}","${details}"`;
+      })
+      .join('\n');
 
     return header + rows;
   }
@@ -598,7 +766,8 @@ export class AdminService {
     if (!target) throw new NotFoundException('User not found');
     if (target.role === 'SUPER_ADMIN') {
       const adminRole = await this.getUserRole(adminUserId);
-      if (adminRole !== 'SUPER_ADMIN') throw new ForbiddenException('Cannot impersonate a Super Admin');
+      if (adminRole !== 'SUPER_ADMIN')
+        throw new ForbiddenException('Cannot impersonate a Super Admin');
     }
 
     const payload = { sub: target.id, email: target.email, role: target.role };
@@ -628,13 +797,25 @@ export class AdminService {
   // ── Maintenance Mode ──
 
   async getMaintenanceMode() {
-    const setting = await this.settingRepo.findOne({ where: { key: 'maintenance_mode' } });
+    const setting = await this.settingRepo.findOne({
+      where: { key: 'maintenance_mode' },
+    });
     if (!setting) return { enabled: false, message: '' };
-    try { return JSON.parse(setting.value); } catch { return { enabled: false, message: '' }; }
+    try {
+      return JSON.parse(setting.value);
+    } catch {
+      return { enabled: false, message: '' };
+    }
   }
 
-  async setMaintenanceMode(enabled: boolean, message: string, adminUserId: string) {
-    let setting = await this.settingRepo.findOne({ where: { key: 'maintenance_mode' } });
+  async setMaintenanceMode(
+    enabled: boolean,
+    message: string,
+    adminUserId: string,
+  ) {
+    let setting = await this.settingRepo.findOne({
+      where: { key: 'maintenance_mode' },
+    });
     if (!setting) {
       setting = this.settingRepo.create({ key: 'maintenance_mode', value: '' });
     }
@@ -642,7 +823,9 @@ export class AdminService {
     await this.settingRepo.save(setting);
 
     await this.logAction({
-      action: enabled ? 'system.maintenance_enabled' : 'system.maintenance_disabled',
+      action: enabled
+        ? 'system.maintenance_enabled'
+        : 'system.maintenance_disabled',
       targetType: 'system',
       targetLabel: 'Maintenance Mode',
       performedBy: adminUserId,
@@ -674,7 +857,7 @@ export class AdminService {
       .createQueryBuilder('p')
       .select("TO_CHAR(p.createdAt, 'YYYY-MM')", 'month')
       .addSelect('COUNT(*)', 'count')
-      .addSelect('SUM(CAST(REPLACE(p.amount, \'$\', \'\') AS DECIMAL))', 'revenue')
+      .addSelect("SUM(CAST(REPLACE(p.amount, '$', '') AS DECIMAL))", 'revenue')
       .where('p.status = :status', { status: 'completed' })
       .andWhere('p.createdAt >= :since', { since: sixMonthsAgo })
       .groupBy("TO_CHAR(p.createdAt, 'YYYY-MM')")
@@ -686,16 +869,22 @@ export class AdminService {
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      months.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      );
     }
 
-    const userMap = Object.fromEntries(userGrowth.map((r: any) => [r.month, parseInt(r.count)]));
-    const revMap = Object.fromEntries(revenueGrowth.map((r: any) => [r.month, parseFloat(r.revenue || '0')]));
+    const userMap = Object.fromEntries(
+      userGrowth.map((r: any) => [r.month, parseInt(r.count)]),
+    );
+    const revMap = Object.fromEntries(
+      revenueGrowth.map((r: any) => [r.month, parseFloat(r.revenue || '0')]),
+    );
 
     return {
       months,
-      users: months.map(m => userMap[m] || 0),
-      revenue: months.map(m => revMap[m] || 0),
+      users: months.map((m) => userMap[m] || 0),
+      revenue: months.map((m) => revMap[m] || 0),
     };
   }
 
@@ -735,10 +924,22 @@ export class AdminService {
     for (let i = 11; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      months.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      );
     }
-    const ugMap = Object.fromEntries(userGrowth.map((r: any) => [r.month, parseInt(r.count)]));
-    const rgMap = Object.fromEntries(revenueGrowth.map((r: any) => [r.month, { revenue: parseFloat(r.revenue || '0'), txCount: parseInt(r.txCount || '0') }]));
+    const ugMap = Object.fromEntries(
+      userGrowth.map((r: any) => [r.month, parseInt(r.count)]),
+    );
+    const rgMap = Object.fromEntries(
+      revenueGrowth.map((r: any) => [
+        r.month,
+        {
+          revenue: parseFloat(r.revenue || '0'),
+          txCount: parseInt(r.txCount || '0'),
+        },
+      ]),
+    );
 
     // Plan distribution
     const planDist = await this.subRepo
@@ -748,12 +949,17 @@ export class AdminService {
       .where('sub.status = :status', { status: 'active' })
       .groupBy('sub.plan')
       .getRawMany();
-    const totalSubbed = planDist.reduce((s: number, r: any) => s + parseInt(r.count), 0);
+    const totalSubbed = planDist.reduce(
+      (s: number, r: any) => s + parseInt(r.count),
+      0,
+    );
     const totalUsers = await this.userRepo.count();
     const freeCount = totalUsers - totalSubbed;
 
     // Active vs inactive
-    const activeUsers = await this.userRepo.count({ where: { isActive: true } });
+    const activeUsers = await this.userRepo.count({
+      where: { isActive: true },
+    });
 
     // Collections per month
     const collectionGrowth = await this.collectionRepo
@@ -764,7 +970,9 @@ export class AdminService {
       .groupBy("TO_CHAR(c.createdAt, 'YYYY-MM')")
       .orderBy("TO_CHAR(c.createdAt, 'YYYY-MM')", 'ASC')
       .getRawMany();
-    const cgMap = Object.fromEntries(collectionGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+    const cgMap = Object.fromEntries(
+      collectionGrowth.map((r: any) => [r.month, parseInt(r.count)]),
+    );
 
     // Org growth
     const orgGrowth = await this.orgRepo
@@ -775,7 +983,9 @@ export class AdminService {
       .groupBy("TO_CHAR(o.createdAt, 'YYYY-MM')")
       .orderBy("TO_CHAR(o.createdAt, 'YYYY-MM')", 'ASC')
       .getRawMany();
-    const ogMap = Object.fromEntries(orgGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+    const ogMap = Object.fromEntries(
+      orgGrowth.map((r: any) => [r.month, parseInt(r.count)]),
+    );
 
     // Audit activity per month
     const auditGrowth = await this.auditRepo
@@ -786,28 +996,48 @@ export class AdminService {
       .groupBy("TO_CHAR(a.createdAt, 'YYYY-MM')")
       .orderBy("TO_CHAR(a.createdAt, 'YYYY-MM')", 'ASC')
       .getRawMany();
-    const agMap = Object.fromEntries(auditGrowth.map((r: any) => [r.month, parseInt(r.count)]));
+    const agMap = Object.fromEntries(
+      auditGrowth.map((r: any) => [r.month, parseInt(r.count)]),
+    );
 
     // Signups recent
-    const signupsLast7d = await this.userRepo.createQueryBuilder('u').where('u.createdAt >= :since', { since: new Date(now.getTime() - 7 * 86400000) }).getCount();
-    const signupsLast30d = await this.userRepo.createQueryBuilder('u').where('u.createdAt >= :since', { since: new Date(now.getTime() - 30 * 86400000) }).getCount();
+    const signupsLast7d = await this.userRepo
+      .createQueryBuilder('u')
+      .where('u.createdAt >= :since', {
+        since: new Date(now.getTime() - 7 * 86400000),
+      })
+      .getCount();
+    const signupsLast30d = await this.userRepo
+      .createQueryBuilder('u')
+      .where('u.createdAt >= :since', {
+        since: new Date(now.getTime() - 30 * 86400000),
+      })
+      .getCount();
 
     // Revenue summary
-    const allPayments = await this.paymentRepo.find({ where: { status: 'completed' } });
-    const totalRevenue = allPayments.reduce((s, p) => s + (parseFloat(p.amount.replace('$', '')) || 0), 0);
+    const allPayments = await this.paymentRepo.find({
+      where: { status: 'completed' },
+    });
+    const totalRevenue = allPayments.reduce(
+      (s, p) => s + (parseFloat(p.amount.replace('$', '')) || 0),
+      0,
+    );
     const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     return {
       months,
-      userGrowth: months.map(m => ugMap[m] || 0),
-      revenueGrowth: months.map(m => rgMap[m]?.revenue || 0),
-      transactionCount: months.map(m => rgMap[m]?.txCount || 0),
-      collectionGrowth: months.map(m => cgMap[m] || 0),
-      orgGrowth: months.map(m => ogMap[m] || 0),
-      auditActivity: months.map(m => agMap[m] || 0),
+      userGrowth: months.map((m) => ugMap[m] || 0),
+      revenueGrowth: months.map((m) => rgMap[m]?.revenue || 0),
+      transactionCount: months.map((m) => rgMap[m]?.txCount || 0),
+      collectionGrowth: months.map((m) => cgMap[m] || 0),
+      orgGrowth: months.map((m) => ogMap[m] || 0),
+      auditActivity: months.map((m) => agMap[m] || 0),
       planDistribution: [
         { plan: 'FREE', count: freeCount },
-        ...planDist.map((r: any) => ({ plan: r.plan, count: parseInt(r.count) })),
+        ...planDist.map((r: any) => ({
+          plan: r.plan,
+          count: parseInt(r.count),
+        })),
       ],
       summary: {
         totalUsers,
@@ -826,39 +1056,54 @@ export class AdminService {
 
   // ── Bulk User Actions ──
 
-  async bulkUpdateUsers(ids: string[], action: string, performedBy: string, value?: string) {
+  async bulkUpdateUsers(
+    ids: string[],
+    action: string,
+    performedBy: string,
+    value?: string,
+  ) {
     if (!ids?.length) throw new BadRequestException('No user IDs provided');
 
     const users = await this.userRepo.findByIds(ids);
     if (!users.length) throw new NotFoundException('No users found');
 
     // Protect SUPER_ADMINs
-    const protectedUsers = users.filter(u => u.role === 'SUPER_ADMIN');
-    const targetUsers = users.filter(u => u.role !== 'SUPER_ADMIN');
+    const protectedUsers = users.filter((u) => u.role === 'SUPER_ADMIN');
+    const targetUsers = users.filter((u) => u.role !== 'SUPER_ADMIN');
 
     let affected = 0;
 
     switch (action) {
       case 'deactivate':
-        for (const u of targetUsers) { u.isActive = false; }
+        for (const u of targetUsers) {
+          u.isActive = false;
+        }
         await this.userRepo.save(targetUsers);
         affected = targetUsers.length;
         break;
       case 'activate':
-        for (const u of targetUsers) { u.isActive = true; }
+        for (const u of targetUsers) {
+          u.isActive = true;
+        }
         await this.userRepo.save(targetUsers);
         affected = targetUsers.length;
         break;
       case 'delete':
-        for (const u of targetUsers) { u.isActive = false; }
+        for (const u of targetUsers) {
+          u.isActive = false;
+        }
         await this.userRepo.save(targetUsers);
         affected = targetUsers.length;
         break;
       case 'set_role':
         if (!value || (value !== 'USER' && value !== 'ADMIN')) {
-          throw new BadRequestException('Invalid role. Only USER or ADMIN allowed.');
+          throw new BadRequestException(
+            'Invalid role. Only USER or ADMIN allowed.',
+          );
         }
-        for (const u of targetUsers) { u.role = value; }
+        for (const u of targetUsers) {
+          u.role = value;
+        }
         await this.userRepo.save(targetUsers);
         affected = targetUsers.length;
         break;
@@ -872,7 +1117,12 @@ export class AdminService {
       targetId: ids.join(','),
       targetLabel: `${affected} users`,
       performedBy,
-      details: { action, affected, skippedProtected: protectedUsers.length, value },
+      details: {
+        action,
+        affected,
+        skippedProtected: protectedUsers.length,
+        value,
+      },
     }).catch(() => {});
 
     return { affected, skippedProtected: protectedUsers.length };
@@ -880,20 +1130,59 @@ export class AdminService {
 
   // ── Feature Flags ──
 
-  private readonly DEFAULT_FLAGS: Record<string, { enabled: boolean; label: string; description: string }> = {
-    allow_signups: { enabled: true, label: 'User Registration', description: 'Allow new users to sign up' },
-    allow_api_execution: { enabled: true, label: 'API Execution', description: 'Allow users to execute API requests via proxy' },
-    show_pricing: { enabled: true, label: 'Show Pricing Page', description: 'Display the pricing page to users' },
-    allow_subscriptions: { enabled: true, label: 'Subscription Plans', description: 'Allow users to purchase or upgrade subscription plans' },
-    require_email_verification: { enabled: false, label: 'Email Verification', description: 'Require email verification for new accounts' },
-    allow_collection_upload: { enabled: true, label: 'Collection Upload', description: 'Allow users to import/upload collection JSON files' },
-    allow_variable_upload: { enabled: true, label: 'Variable Upload', description: 'Allow users to import/upload environment variable files' },
-    show_announcements: { enabled: true, label: 'Announcements Ticker', description: 'Show the scrolling announcement ticker bar to all users' },
+  private readonly DEFAULT_FLAGS: Record<
+    string,
+    { enabled: boolean; label: string; description: string }
+  > = {
+    allow_signups: {
+      enabled: true,
+      label: 'User Registration',
+      description: 'Allow new users to sign up',
+    },
+    allow_api_execution: {
+      enabled: true,
+      label: 'API Execution',
+      description: 'Allow users to execute API requests via proxy',
+    },
+    show_pricing: {
+      enabled: true,
+      label: 'Show Pricing Page',
+      description: 'Display the pricing page to users',
+    },
+    allow_subscriptions: {
+      enabled: true,
+      label: 'Subscription Plans',
+      description: 'Allow users to purchase or upgrade subscription plans',
+    },
+    require_email_verification: {
+      enabled: false,
+      label: 'Email Verification',
+      description: 'Require email verification for new accounts',
+    },
+    allow_collection_upload: {
+      enabled: true,
+      label: 'Collection Upload',
+      description: 'Allow users to import/upload collection JSON files',
+    },
+    allow_variable_upload: {
+      enabled: true,
+      label: 'Variable Upload',
+      description: 'Allow users to import/upload environment variable files',
+    },
+    show_announcements: {
+      enabled: true,
+      label: 'Announcements Ticker',
+      description: 'Show the scrolling announcement ticker bar to all users',
+    },
   };
 
   async getFeatureFlags() {
-    const setting = await this.settingRepo.findOne({ where: { key: 'feature_flags' } });
-    const saved: Record<string, boolean> = setting ? JSON.parse(setting.value) : {};
+    const setting = await this.settingRepo.findOne({
+      where: { key: 'feature_flags' },
+    });
+    const saved: Record<string, boolean> = setting
+      ? JSON.parse(setting.value)
+      : {};
 
     return Object.entries(this.DEFAULT_FLAGS).map(([key, def]) => ({
       key,
@@ -904,17 +1193,25 @@ export class AdminService {
   }
 
   async setFeatureFlag(key: string, enabled: boolean, adminUserId: string) {
-    if (!this.DEFAULT_FLAGS[key]) throw new BadRequestException(`Unknown feature flag: ${key}`);
+    if (!this.DEFAULT_FLAGS[key])
+      throw new BadRequestException(`Unknown feature flag: ${key}`);
 
-    let setting = await this.settingRepo.findOne({ where: { key: 'feature_flags' } });
-    const current: Record<string, boolean> = setting ? JSON.parse(setting.value) : {};
+    let setting = await this.settingRepo.findOne({
+      where: { key: 'feature_flags' },
+    });
+    const current: Record<string, boolean> = setting
+      ? JSON.parse(setting.value)
+      : {};
     current[key] = enabled;
 
     if (setting) {
       setting.value = JSON.stringify(current);
       await this.settingRepo.save(setting);
     } else {
-      setting = this.settingRepo.create({ key: 'feature_flags', value: JSON.stringify(current) });
+      setting = this.settingRepo.create({
+        key: 'feature_flags',
+        value: JSON.stringify(current),
+      });
       await this.settingRepo.save(setting);
     }
 
@@ -931,7 +1228,7 @@ export class AdminService {
 
   async getPublicFeatureFlags() {
     const flags = await this.getFeatureFlags();
-    return Object.fromEntries(flags.map(f => [f.key, f.enabled]));
+    return Object.fromEntries(flags.map((f) => [f.key, f.enabled]));
   }
 
   // ── Security & Control ──
@@ -978,7 +1275,14 @@ export class AdminService {
       .where('user.lockedUntil > :now', { now: new Date() })
       .orWhere('user.failedLoginAttempts >= :max', { max: 5 })
       .orWhere('user.isActive = :inactive', { inactive: false })
-      .select(['user.id', 'user.email', 'user.name', 'user.failedLoginAttempts', 'user.lockedUntil', 'user.isActive'])
+      .select([
+        'user.id',
+        'user.email',
+        'user.name',
+        'user.failedLoginAttempts',
+        'user.lockedUntil',
+        'user.isActive',
+      ])
       .orderBy('user.lockedUntil', 'DESC')
       .getMany();
 
@@ -1005,7 +1309,9 @@ export class AdminService {
   }
 
   async getPasswordPolicy() {
-    const setting = await this.settingRepo.findOne({ where: { key: 'password_policy' } });
+    const setting = await this.settingRepo.findOne({
+      where: { key: 'password_policy' },
+    });
     const defaults = {
       minLength: 6,
       requireUppercase: false,
@@ -1028,12 +1334,17 @@ export class AdminService {
       requireSpecial: !!policy.requireSpecial,
     };
 
-    let setting = await this.settingRepo.findOne({ where: { key: 'password_policy' } });
+    let setting = await this.settingRepo.findOne({
+      where: { key: 'password_policy' },
+    });
     if (setting) {
       setting.value = JSON.stringify(cleaned);
       await this.settingRepo.save(setting);
     } else {
-      setting = this.settingRepo.create({ key: 'password_policy', value: JSON.stringify(cleaned) });
+      setting = this.settingRepo.create({
+        key: 'password_policy',
+        value: JSON.stringify(cleaned),
+      });
       await this.settingRepo.save(setting);
     }
 
@@ -1054,7 +1365,14 @@ export class AdminService {
     const users = await this.userRepo
       .createQueryBuilder('user')
       .where('user.lastLoginAt > :since', { since })
-      .select(['user.id', 'user.email', 'user.name', 'user.lastLoginAt', 'user.lastLoginIp', 'user.role'])
+      .select([
+        'user.id',
+        'user.email',
+        'user.name',
+        'user.lastLoginAt',
+        'user.lastLoginIp',
+        'user.role',
+      ])
       .orderBy('user.lastLoginAt', 'DESC')
       .getMany();
 
@@ -1062,42 +1380,91 @@ export class AdminService {
   }
 
   async getSecuritySettings() {
-    const setting = await this.settingRepo.findOne({ where: { key: 'security_settings' } });
-    const defaults = { maxLoginAttempts: 5, sessionTimeoutMinutes: 1440, lockoutDurationMinutes: 30, requireEmailVerification: false };
+    const setting = await this.settingRepo.findOne({
+      where: { key: 'security_settings' },
+    });
+    const defaults = {
+      maxLoginAttempts: 5,
+      sessionTimeoutMinutes: 1440,
+      lockoutDurationMinutes: 30,
+      requireEmailVerification: false,
+    };
     if (setting) return { ...defaults, ...JSON.parse(setting.value) };
     return defaults;
   }
 
   async setSecuritySettings(data: any, adminUserId: string) {
     const cleaned = {
-      maxLoginAttempts: Math.max(1, Math.min(20, parseInt(data.maxLoginAttempts) || 5)),
-      sessionTimeoutMinutes: Math.max(5, Math.min(10080, parseInt(data.sessionTimeoutMinutes) || 1440)),
-      lockoutDurationMinutes: Math.max(1, Math.min(1440, parseInt(data.lockoutDurationMinutes) || 30)),
+      maxLoginAttempts: Math.max(
+        1,
+        Math.min(20, parseInt(data.maxLoginAttempts) || 5),
+      ),
+      sessionTimeoutMinutes: Math.max(
+        5,
+        Math.min(10080, parseInt(data.sessionTimeoutMinutes) || 1440),
+      ),
+      lockoutDurationMinutes: Math.max(
+        1,
+        Math.min(1440, parseInt(data.lockoutDurationMinutes) || 30),
+      ),
       requireEmailVerification: !!data.requireEmailVerification,
     };
-    let setting = await this.settingRepo.findOne({ where: { key: 'security_settings' } });
-    if (setting) { setting.value = JSON.stringify(cleaned); await this.settingRepo.save(setting); }
-    else { setting = this.settingRepo.create({ key: 'security_settings', value: JSON.stringify(cleaned) }); await this.settingRepo.save(setting); }
-    await this.logAction({ action: 'security.settings_updated', targetType: 'system', targetId: 'security_settings', targetLabel: 'Security Settings', performedBy: adminUserId, details: JSON.stringify(cleaned) }).catch(() => {});
+    let setting = await this.settingRepo.findOne({
+      where: { key: 'security_settings' },
+    });
+    if (setting) {
+      setting.value = JSON.stringify(cleaned);
+      await this.settingRepo.save(setting);
+    } else {
+      setting = this.settingRepo.create({
+        key: 'security_settings',
+        value: JSON.stringify(cleaned),
+      });
+      await this.settingRepo.save(setting);
+    }
+    await this.logAction({
+      action: 'security.settings_updated',
+      targetType: 'system',
+      targetId: 'security_settings',
+      targetLabel: 'Security Settings',
+      performedBy: adminUserId,
+      details: JSON.stringify(cleaned),
+    }).catch(() => {});
     return cleaned;
   }
 
   async getSecurityOverview() {
-    const [totalUsers, activeUsers, inactiveUsers, failedAttemptUsers, recentSecurityEvents] = await Promise.all([
+    const [
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      failedAttemptUsers,
+      recentSecurityEvents,
+    ] = await Promise.all([
       this.userRepo.count(),
       this.userRepo.count({ where: { isActive: true } }),
       this.userRepo.count({ where: { isActive: false } }),
-      this.userRepo.createQueryBuilder('u').where('u.failedLoginAttempts > 0').getCount(),
-      this.auditRepo.createQueryBuilder('log')
-        .where("log.action LIKE :s", { s: 'security.%' })
-        .orWhere("log.action LIKE :u", { u: 'user.force_logout%' })
-        .orWhere("log.action = :ul", { ul: 'user.unlocked' })
-        .orWhere("log.action = :da", { da: 'user.deactivated' })
+      this.userRepo
+        .createQueryBuilder('u')
+        .where('u.failedLoginAttempts > 0')
+        .getCount(),
+      this.auditRepo
+        .createQueryBuilder('log')
+        .where('log.action LIKE :s', { s: 'security.%' })
+        .orWhere('log.action LIKE :u', { u: 'user.force_logout%' })
+        .orWhere('log.action = :ul', { ul: 'user.unlocked' })
+        .orWhere('log.action = :da', { da: 'user.deactivated' })
         .orderBy('log.createdAt', 'DESC')
         .take(10)
         .getMany(),
     ]);
-    return { totalUsers, activeUsers, inactiveUsers, failedAttemptUsers, recentSecurityEvents };
+    return {
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      failedAttemptUsers,
+      recentSecurityEvents,
+    };
   }
 
   // ══════════════════════════════════════════════
@@ -1110,10 +1477,12 @@ export class AdminService {
     const users = await this.userRepo.find({ order: { createdAt: 'DESC' } });
     const subs = await this.subRepo.find();
     const subMap: Record<string, any> = {};
-    subs.forEach(s => { subMap[s.userId] = s; });
+    subs.forEach((s) => {
+      subMap[s.userId] = s;
+    });
 
     const header = 'Name,Email,Role,Plan,Status,Signup Date,Last Active';
-    const rows = users.map(u => {
+    const rows = users.map((u) => {
       const sub = subMap[u.id];
       return [
         `"${(u.name || '').replace(/"/g, '""')}"`,
@@ -1135,11 +1504,18 @@ export class AdminService {
   }
 
   async getPublicChangelogs(): Promise<Changelog[]> {
-    return this.changelogRepo.find({ where: { isPublished: true }, order: { createdAt: 'DESC' }, take: 20 });
+    return this.changelogRepo.find({
+      where: { isPublished: true },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
   }
 
   async getNextVersion(): Promise<string> {
-    const latest = await this.changelogRepo.createQueryBuilder('c').orderBy('c.createdAt', 'DESC').getOne();
+    const latest = await this.changelogRepo
+      .createQueryBuilder('c')
+      .orderBy('c.createdAt', 'DESC')
+      .getOne();
     if (latest?.version) {
       const match = latest.version.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
       if (match) return `v${match[1]}.${match[2]}.${parseInt(match[3]) + 1}`;
@@ -1147,22 +1523,41 @@ export class AdminService {
     return 'v2.0.0';
   }
 
-  async createChangelog(data: { title: string; content: string; version?: string }, adminId: string): Promise<Changelog> {
+  async createChangelog(
+    data: { title: string; content: string; version?: string },
+    adminId: string,
+  ): Promise<Changelog> {
     if (!data.version) {
       data.version = await this.getNextVersion();
     }
     const entry = this.changelogRepo.create(data);
     const saved = await this.changelogRepo.save(entry);
-    await this.logAction({ action: 'changelog.created', targetType: 'changelog', targetId: saved.id, targetLabel: saved.title, performedBy: adminId }).catch(() => {});
+    await this.logAction({
+      action: 'changelog.created',
+      targetType: 'changelog',
+      targetId: saved.id,
+      targetLabel: saved.title,
+      performedBy: adminId,
+    }).catch(() => {});
     return saved;
   }
 
-  async updateChangelog(id: string, data: Partial<Changelog>, adminId: string): Promise<Changelog> {
+  async updateChangelog(
+    id: string,
+    data: Partial<Changelog>,
+    adminId: string,
+  ): Promise<Changelog> {
     const entry = await this.changelogRepo.findOneBy({ id });
     if (!entry) throw new NotFoundException('Changelog entry not found');
     Object.assign(entry, data);
     const saved = await this.changelogRepo.save(entry);
-    await this.logAction({ action: 'changelog.updated', targetType: 'changelog', targetId: saved.id, targetLabel: saved.title, performedBy: adminId }).catch(() => {});
+    await this.logAction({
+      action: 'changelog.updated',
+      targetType: 'changelog',
+      targetId: saved.id,
+      targetLabel: saved.title,
+      performedBy: adminId,
+    }).catch(() => {});
     return saved;
   }
 
@@ -1170,39 +1565,68 @@ export class AdminService {
     const entry = await this.changelogRepo.findOneBy({ id });
     if (!entry) throw new NotFoundException('Changelog entry not found');
     await this.changelogRepo.remove(entry);
-    await this.logAction({ action: 'changelog.deleted', targetType: 'changelog', targetId: id, targetLabel: entry.title, performedBy: adminId }).catch(() => {});
+    await this.logAction({
+      action: 'changelog.deleted',
+      targetType: 'changelog',
+      targetId: id,
+      targetLabel: entry.title,
+      performedBy: adminId,
+    }).catch(() => {});
   }
 
   // ── 3. Activity Heatmap ──
 
   async getActivityHeatmap(): Promise<{ date: string; count: number }[]> {
-    const result = await this.auditRepo.createQueryBuilder('log')
+    const result = await this.auditRepo
+      .createQueryBuilder('log')
       .select("TO_CHAR(log.createdAt, 'YYYY-MM-DD')", 'date')
       .addSelect('COUNT(*)', 'count')
       .where("log.createdAt > NOW() - INTERVAL '365 days'")
       .groupBy("TO_CHAR(log.createdAt, 'YYYY-MM-DD')")
       .orderBy('date', 'ASC')
       .getRawMany();
-    return result.map(r => ({ date: r.date, count: parseInt(r.count) }));
+    return result.map((r) => ({ date: r.date, count: parseInt(r.count) }));
   }
 
   // ── 4. Branding ──
 
   async getBranding(): Promise<any> {
-    const keys = ['branding_app_name', 'branding_logo_url', 'branding_accent_color', 'branding_favicon_url'];
-    const settings = await this.settingRepo.findBy(keys.map(k => ({ key: k })));
+    const keys = [
+      'branding_app_name',
+      'branding_logo_url',
+      'branding_accent_color',
+      'branding_favicon_url',
+    ];
+    const settings = await this.settingRepo.findBy(
+      keys.map((k) => ({ key: k })),
+    );
     const result: any = {};
-    settings.forEach(s => { result[s.key.replace('branding_', '')] = s.value; });
+    settings.forEach((s) => {
+      result[s.key.replace('branding_', '')] = s.value;
+    });
     return result;
   }
 
-  async updateBranding(data: Record<string, string>, adminId: string): Promise<any> {
+  async updateBranding(
+    data: Record<string, string>,
+    adminId: string,
+  ): Promise<any> {
     const allowedKeys = ['app_name', 'logo_url', 'accent_color', 'favicon_url'];
     for (const [key, value] of Object.entries(data)) {
       if (!allowedKeys.includes(key)) continue;
-      await this.settingRepo.upsert({ key: `branding_${key}`, value: value || '' }, ['key']);
+      await this.settingRepo.upsert(
+        { key: `branding_${key}`, value: value || '' },
+        ['key'],
+      );
     }
-    await this.logAction({ action: 'branding.updated', targetType: 'system', targetId: 'branding', targetLabel: 'Branding', performedBy: adminId, details: data }).catch(() => {});
+    await this.logAction({
+      action: 'branding.updated',
+      targetType: 'system',
+      targetId: 'branding',
+      targetLabel: 'Branding',
+      performedBy: adminId,
+      details: data,
+    }).catch(() => {});
     return this.getBranding();
   }
 
@@ -1211,33 +1635,67 @@ export class AdminService {
   async getWebhookConfig(): Promise<any> {
     const setting = await this.settingRepo.findOneBy({ key: 'webhook_config' });
     if (!setting?.value) return { url: '', events: [], enabled: false };
-    try { return JSON.parse(setting.value); } catch { return { url: '', events: [], enabled: false }; }
+    try {
+      return JSON.parse(setting.value);
+    } catch {
+      return { url: '', events: [], enabled: false };
+    }
   }
 
-  async updateWebhookConfig(config: { url: string; events: string[]; enabled: boolean }, adminId: string): Promise<any> {
-    await this.settingRepo.upsert({ key: 'webhook_config', value: JSON.stringify(config) }, ['key']);
-    await this.logAction({ action: 'webhook.updated', targetType: 'system', targetId: 'webhook_config', targetLabel: 'Webhook Config', performedBy: adminId, details: config }).catch(() => {});
+  async updateWebhookConfig(
+    config: { url: string; events: string[]; enabled: boolean },
+    adminId: string,
+  ): Promise<any> {
+    await this.settingRepo.upsert(
+      { key: 'webhook_config', value: JSON.stringify(config) },
+      ['key'],
+    );
+    await this.logAction({
+      action: 'webhook.updated',
+      targetType: 'system',
+      targetId: 'webhook_config',
+      targetLabel: 'Webhook Config',
+      performedBy: adminId,
+      details: config,
+    }).catch(() => {});
     return config;
   }
 
   async fireWebhook(event: string, payload: any): Promise<void> {
     try {
       const config = await this.getWebhookConfig();
-      if (!config.enabled || !config.url || !config.events.includes(event)) return;
+      if (!config.enabled || !config.url || !config.events.includes(event))
+        return;
       fetch(config.url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-JetAPI-Event': event },
-        body: JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-JetAPI-Event': event,
+        },
+        body: JSON.stringify({
+          event,
+          timestamp: new Date().toISOString(),
+          data: payload,
+        }),
       }).catch(() => {});
     } catch {}
   }
 
-  async testWebhook(url: string): Promise<{ success: boolean; status?: number; error?: string }> {
+  async testWebhook(
+    url: string,
+  ): Promise<{ success: boolean; status?: number; error?: string }> {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-JetAPI-Event': 'test' },
-        body: JSON.stringify({ event: 'test', timestamp: new Date().toISOString(), data: { message: 'Test webhook from JetAPI' } }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-JetAPI-Event': 'test',
+        },
+        body: JSON.stringify({
+          event: 'test',
+          timestamp: new Date().toISOString(),
+          data: { message: 'Test webhook from JetAPI' },
+        }),
       });
       return { success: res.ok, status: res.status };
     } catch (e: any) {
@@ -1247,8 +1705,20 @@ export class AdminService {
 
   // ── Feedback Tickets ──
 
-  async createTicket(data: { subject: string; description: string; type?: string; priority?: string; tags?: string }, userId: string) {
-    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'name'] });
+  async createTicket(
+    data: {
+      subject: string;
+      description: string;
+      type?: string;
+      priority?: string;
+      tags?: string;
+    },
+    userId: string,
+  ) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'name'],
+    });
     const ticket = this.ticketRepo.create({
       subject: data.subject,
       description: data.description,
@@ -1267,11 +1737,29 @@ export class AdminService {
     return this.ticketRepo.find({
       where: { userId },
       order: { createdAt: 'DESC' },
-      select: ['id', 'subject', 'type', 'priority', 'status', 'adminReply', 'repliedAt', 'resolvedAt', 'createdAt', 'updatedAt'],
+      select: [
+        'id',
+        'subject',
+        'type',
+        'priority',
+        'status',
+        'adminReply',
+        'repliedAt',
+        'resolvedAt',
+        'createdAt',
+        'updatedAt',
+      ],
     });
   }
 
-  async getTickets(params: { page?: number; limit?: number; search?: string; status?: string; type?: string; priority?: string }) {
+  async getTickets(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    type?: string;
+    priority?: string;
+  }) {
     const page = params.page || 1;
     const limit = Math.min(params.limit || 20, 100);
     const query = this.ticketRepo.createQueryBuilder('ticket');
@@ -1289,12 +1777,17 @@ export class AdminService {
       query.andWhere('ticket.type = :type', { type: params.type });
     }
     if (params.priority && params.priority !== 'all') {
-      query.andWhere('ticket.priority = :priority', { priority: params.priority });
+      query.andWhere('ticket.priority = :priority', {
+        priority: params.priority,
+      });
     }
 
     query.orderBy('ticket.createdAt', 'DESC');
     const total = await query.getCount();
-    const tickets = await query.skip((page - 1) * limit).take(limit).getMany();
+    const tickets = await query
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
 
     return { tickets, total, page, totalPages: Math.ceil(total / limit) };
   }
@@ -1316,20 +1809,40 @@ export class AdminService {
     return ticket;
   }
 
-  async updateTicket(id: string, data: { status?: string; priority?: string; assignedTo?: string; assignedName?: string; adminNotes?: string; tags?: string }, adminId: string) {
+  async updateTicket(
+    id: string,
+    data: {
+      status?: string;
+      priority?: string;
+      assignedTo?: string;
+      assignedName?: string;
+      adminNotes?: string;
+      tags?: string;
+    },
+    adminId: string,
+  ) {
     const ticket = await this.ticketRepo.findOne({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
 
     if (data.status) ticket.status = data.status;
     if (data.priority) ticket.priority = data.priority;
     if (data.assignedTo !== undefined) ticket.assignedTo = data.assignedTo;
-    if (data.assignedName !== undefined) ticket.assignedName = data.assignedName;
+    if (data.assignedName !== undefined)
+      ticket.assignedName = data.assignedName;
     if (data.adminNotes !== undefined) ticket.adminNotes = data.adminNotes;
     if (data.tags !== undefined) ticket.tags = data.tags;
-    if (data.status === 'resolved' && !ticket.resolvedAt) ticket.resolvedAt = new Date();
+    if (data.status === 'resolved' && !ticket.resolvedAt)
+      ticket.resolvedAt = new Date();
 
     const saved = await this.ticketRepo.save(ticket);
-    await this.logAction({ action: 'ticket.updated', targetType: 'ticket', targetId: id, targetLabel: ticket.subject, performedBy: adminId, details: data }).catch(() => {});
+    await this.logAction({
+      action: 'ticket.updated',
+      targetType: 'ticket',
+      targetId: id,
+      targetLabel: ticket.subject,
+      performedBy: adminId,
+      details: data,
+    }).catch(() => {});
     return saved;
   }
 
@@ -1342,7 +1855,14 @@ export class AdminService {
     if (ticket.status === 'open') ticket.status = 'in_progress';
 
     const saved = await this.ticketRepo.save(ticket);
-    await this.logAction({ action: 'ticket.replied', targetType: 'ticket', targetId: id, targetLabel: ticket.subject, performedBy: adminId, details: { reply } }).catch(() => {});
+    await this.logAction({
+      action: 'ticket.replied',
+      targetType: 'ticket',
+      targetId: id,
+      targetLabel: ticket.subject,
+      performedBy: adminId,
+      details: { reply },
+    }).catch(() => {});
     return saved;
   }
 
@@ -1350,26 +1870,47 @@ export class AdminService {
     const ticket = await this.ticketRepo.findOne({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
     await this.ticketRepo.remove(ticket);
-    await this.logAction({ action: 'ticket.deleted', targetType: 'ticket', targetId: id, targetLabel: ticket.subject, performedBy: adminId }).catch(() => {});
+    await this.logAction({
+      action: 'ticket.deleted',
+      targetType: 'ticket',
+      targetId: id,
+      targetLabel: ticket.subject,
+      performedBy: adminId,
+    }).catch(() => {});
     return { deleted: true };
   }
 
   // ── Rate Limiting ──
 
   async getRateLimitConfig() {
-    const setting = await this.settingRepo.findOne({ where: { key: 'rate_limit_config' } });
+    const setting = await this.settingRepo.findOne({
+      where: { key: 'rate_limit_config' },
+    });
     if (!setting) {
-      return { enabled: false, windowMs: 3600000, limits: { FREE: 100, PRO: 1000, TEAM: 5000 }, overrides: {} };
+      return {
+        enabled: false,
+        windowMs: 3600000,
+        limits: { FREE: 100, PRO: 1000, TEAM: 5000 },
+        overrides: {},
+      };
     }
     try {
       return JSON.parse(setting.value);
     } catch {
-      return { enabled: false, windowMs: 3600000, limits: { FREE: 100, PRO: 1000, TEAM: 5000 }, overrides: {} };
+      return {
+        enabled: false,
+        windowMs: 3600000,
+        limits: { FREE: 100, PRO: 1000, TEAM: 5000 },
+        overrides: {},
+      };
     }
   }
 
   async setRateLimitConfig(config: any, adminId: string) {
-    await this.settingRepo.upsert({ key: 'rate_limit_config', value: JSON.stringify(config) }, ['key']);
+    await this.settingRepo.upsert(
+      { key: 'rate_limit_config', value: JSON.stringify(config) },
+      ['key'],
+    );
     await this.logAction({
       action: 'rate_limit.config_updated',
       targetType: 'system',
@@ -1380,7 +1921,9 @@ export class AdminService {
     return config;
   }
 
-  async getRateLimitUsage(usageData: Array<{ userId: string; count: number; windowStart: number }>) {
+  async getRateLimitUsage(
+    usageData: Array<{ userId: string; count: number; windowStart: number }>,
+  ) {
     // Enrich with user info
     const enriched = await Promise.all(
       usageData.map(async (entry) => {
@@ -1412,8 +1955,14 @@ export class AdminService {
     const config = await this.getRateLimitConfig();
     if (!config.overrides) config.overrides = {};
     config.overrides[userId] = limit;
-    await this.settingRepo.upsert({ key: 'rate_limit_config', value: JSON.stringify(config) }, ['key']);
-    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['email'] });
+    await this.settingRepo.upsert(
+      { key: 'rate_limit_config', value: JSON.stringify(config) },
+      ['key'],
+    );
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['email'],
+    });
     await this.logAction({
       action: 'rate_limit.user_override',
       targetType: 'user',
@@ -1430,8 +1979,14 @@ export class AdminService {
     if (config.overrides) {
       delete config.overrides[userId];
     }
-    await this.settingRepo.upsert({ key: 'rate_limit_config', value: JSON.stringify(config) }, ['key']);
-    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['email'] });
+    await this.settingRepo.upsert(
+      { key: 'rate_limit_config', value: JSON.stringify(config) },
+      ['key'],
+    );
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['email'],
+    });
     await this.logAction({
       action: 'rate_limit.user_override_removed',
       targetType: 'user',
@@ -1447,106 +2002,296 @@ export class AdminService {
   private async seedDefaultPlugins() {
     const defaults = [
       {
-        slug: 'slack', name: 'Slack', description: 'Send notifications to Slack channels when events occur.',
-        category: 'notification', icon: 'MessageSquare',
+        slug: 'slack',
+        name: 'Slack',
+        description: 'Send notifications to Slack channels when events occur.',
+        category: 'notification',
+        icon: 'MessageSquare',
         configSchema: JSON.stringify([
-          { key: 'webhookUrl', label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.slack.com/services/...' },
-          { key: 'channel', label: 'Channel', type: 'text', placeholder: '#general' },
+          {
+            key: 'webhookUrl',
+            label: 'Webhook URL',
+            type: 'url',
+            placeholder: 'https://hooks.slack.com/services/...',
+          },
+          {
+            key: 'channel',
+            label: 'Channel',
+            type: 'text',
+            placeholder: '#general',
+          },
         ]),
       },
       {
-        slug: 'discord', name: 'Discord', description: 'Post notifications to Discord channels via webhooks.',
-        category: 'notification', icon: 'MessageSquare',
+        slug: 'discord',
+        name: 'Discord',
+        description: 'Post notifications to Discord channels via webhooks.',
+        category: 'notification',
+        icon: 'MessageSquare',
         configSchema: JSON.stringify([
-          { key: 'webhookUrl', label: 'Webhook URL', type: 'url', placeholder: 'https://discord.com/api/webhooks/...' },
+          {
+            key: 'webhookUrl',
+            label: 'Webhook URL',
+            type: 'url',
+            placeholder: 'https://discord.com/api/webhooks/...',
+          },
         ]),
       },
       {
-        slug: 'github', name: 'GitHub', description: 'Sync collections with GitHub repos, trigger workflows.',
-        category: 'ci-cd', icon: 'Globe',
+        slug: 'github',
+        name: 'GitHub',
+        description: 'Sync collections with GitHub repos, trigger workflows.',
+        category: 'ci-cd',
+        icon: 'Globe',
         configSchema: JSON.stringify([
-          { key: 'token', label: 'Personal Access Token', type: 'password', placeholder: 'ghp_...' },
-          { key: 'org', label: 'Organization', type: 'text', placeholder: 'my-org' },
-          { key: 'repo', label: 'Repository', type: 'text', placeholder: 'my-repo' },
+          {
+            key: 'token',
+            label: 'Personal Access Token',
+            type: 'password',
+            placeholder: 'ghp_...',
+          },
+          {
+            key: 'org',
+            label: 'Organization',
+            type: 'text',
+            placeholder: 'my-org',
+          },
+          {
+            key: 'repo',
+            label: 'Repository',
+            type: 'text',
+            placeholder: 'my-repo',
+          },
         ]),
       },
       {
-        slug: 'gitlab', name: 'GitLab', description: 'Connect with GitLab for CI/CD pipeline integration.',
-        category: 'ci-cd', icon: 'Globe',
+        slug: 'gitlab',
+        name: 'GitLab',
+        description: 'Connect with GitLab for CI/CD pipeline integration.',
+        category: 'ci-cd',
+        icon: 'Globe',
         configSchema: JSON.stringify([
-          { key: 'token', label: 'Access Token', type: 'password', placeholder: 'glpat-...' },
-          { key: 'projectUrl', label: 'Project URL', type: 'url', placeholder: 'https://gitlab.com/group/project' },
+          {
+            key: 'token',
+            label: 'Access Token',
+            type: 'password',
+            placeholder: 'glpat-...',
+          },
+          {
+            key: 'projectUrl',
+            label: 'Project URL',
+            type: 'url',
+            placeholder: 'https://gitlab.com/group/project',
+          },
         ]),
       },
       {
-        slug: 'jira', name: 'Jira', description: 'Create issues and track bugs directly from API test failures.',
-        category: 'project-mgmt', icon: 'CheckSquare',
+        slug: 'jira',
+        name: 'Jira',
+        description:
+          'Create issues and track bugs directly from API test failures.',
+        category: 'project-mgmt',
+        icon: 'CheckSquare',
         configSchema: JSON.stringify([
-          { key: 'baseUrl', label: 'Base URL', type: 'url', placeholder: 'https://your-domain.atlassian.net' },
-          { key: 'email', label: 'Email', type: 'email', placeholder: 'user@example.com' },
-          { key: 'apiToken', label: 'API Token', type: 'password', placeholder: '' },
-          { key: 'projectKey', label: 'Project Key', type: 'text', placeholder: 'PROJ' },
+          {
+            key: 'baseUrl',
+            label: 'Base URL',
+            type: 'url',
+            placeholder: 'https://your-domain.atlassian.net',
+          },
+          {
+            key: 'email',
+            label: 'Email',
+            type: 'email',
+            placeholder: 'user@example.com',
+          },
+          {
+            key: 'apiToken',
+            label: 'API Token',
+            type: 'password',
+            placeholder: '',
+          },
+          {
+            key: 'projectKey',
+            label: 'Project Key',
+            type: 'text',
+            placeholder: 'PROJ',
+          },
         ]),
       },
       {
-        slug: 'zapier', name: 'Zapier', description: 'Automate workflows by triggering Zapier zaps on events.',
-        category: 'automation', icon: 'Webhook',
+        slug: 'zapier',
+        name: 'Zapier',
+        description: 'Automate workflows by triggering Zapier zaps on events.',
+        category: 'automation',
+        icon: 'Webhook',
         configSchema: JSON.stringify([
-          { key: 'webhookUrl', label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.zapier.com/hooks/...' },
+          {
+            key: 'webhookUrl',
+            label: 'Webhook URL',
+            type: 'url',
+            placeholder: 'https://hooks.zapier.com/hooks/...',
+          },
         ]),
       },
       {
-        slug: 'webhook', name: 'Custom Webhook', description: 'Send event data to any custom HTTP endpoint.',
-        category: 'automation', icon: 'Webhook',
+        slug: 'webhook',
+        name: 'Custom Webhook',
+        description: 'Send event data to any custom HTTP endpoint.',
+        category: 'automation',
+        icon: 'Webhook',
         configSchema: JSON.stringify([
-          { key: 'url', label: 'Endpoint URL', type: 'url', placeholder: 'https://api.example.com/webhook' },
-          { key: 'method', label: 'Method', type: 'select', options: ['POST', 'PUT', 'PATCH'], placeholder: 'POST' },
-          { key: 'secret', label: 'Secret Key', type: 'password', placeholder: 'Optional signing secret' },
+          {
+            key: 'url',
+            label: 'Endpoint URL',
+            type: 'url',
+            placeholder: 'https://api.example.com/webhook',
+          },
+          {
+            key: 'method',
+            label: 'Method',
+            type: 'select',
+            options: ['POST', 'PUT', 'PATCH'],
+            placeholder: 'POST',
+          },
+          {
+            key: 'secret',
+            label: 'Secret Key',
+            type: 'password',
+            placeholder: 'Optional signing secret',
+          },
         ]),
       },
       {
-        slug: 'datadog', name: 'Datadog', description: 'Forward API metrics and events to Datadog for monitoring.',
-        category: 'monitoring', icon: 'BarChart3',
+        slug: 'datadog',
+        name: 'Datadog',
+        description:
+          'Forward API metrics and events to Datadog for monitoring.',
+        category: 'monitoring',
+        icon: 'BarChart3',
         configSchema: JSON.stringify([
-          { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '' },
-          { key: 'appKey', label: 'Application Key', type: 'password', placeholder: '' },
-          { key: 'site', label: 'Site', type: 'select', options: ['datadoghq.com', 'datadoghq.eu', 'us3.datadoghq.com', 'us5.datadoghq.com'] },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            placeholder: '',
+          },
+          {
+            key: 'appKey',
+            label: 'Application Key',
+            type: 'password',
+            placeholder: '',
+          },
+          {
+            key: 'site',
+            label: 'Site',
+            type: 'select',
+            options: [
+              'datadoghq.com',
+              'datadoghq.eu',
+              'us3.datadoghq.com',
+              'us5.datadoghq.com',
+            ],
+          },
         ]),
       },
       {
-        slug: 'pagerduty', name: 'PagerDuty', description: 'Trigger PagerDuty incidents on critical API failures.',
-        category: 'monitoring', icon: 'Bell',
+        slug: 'pagerduty',
+        name: 'PagerDuty',
+        description: 'Trigger PagerDuty incidents on critical API failures.',
+        category: 'monitoring',
+        icon: 'Bell',
         configSchema: JSON.stringify([
-          { key: 'routingKey', label: 'Routing Key', type: 'password', placeholder: '' },
-          { key: 'severity', label: 'Default Severity', type: 'select', options: ['critical', 'error', 'warning', 'info'] },
+          {
+            key: 'routingKey',
+            label: 'Routing Key',
+            type: 'password',
+            placeholder: '',
+          },
+          {
+            key: 'severity',
+            label: 'Default Severity',
+            type: 'select',
+            options: ['critical', 'error', 'warning', 'info'],
+          },
         ]),
       },
       {
-        slug: 'sentry', name: 'Sentry', description: 'Track errors and exceptions with Sentry monitoring.',
-        category: 'monitoring', icon: 'AlertTriangle',
+        slug: 'sentry',
+        name: 'Sentry',
+        description: 'Track errors and exceptions with Sentry monitoring.',
+        category: 'monitoring',
+        icon: 'AlertTriangle',
         configSchema: JSON.stringify([
-          { key: 'dsn', label: 'DSN', type: 'url', placeholder: 'https://examplePublicKey@o0.ingest.sentry.io/0' },
+          {
+            key: 'dsn',
+            label: 'DSN',
+            type: 'url',
+            placeholder: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+          },
         ]),
       },
       {
-        slug: 's3', name: 'AWS S3', description: 'Store response exports and backups in Amazon S3.',
-        category: 'storage', icon: 'Download',
+        slug: 's3',
+        name: 'AWS S3',
+        description: 'Store response exports and backups in Amazon S3.',
+        category: 'storage',
+        icon: 'Download',
         configSchema: JSON.stringify([
-          { key: 'bucket', label: 'Bucket Name', type: 'text', placeholder: 'my-bucket' },
-          { key: 'region', label: 'Region', type: 'text', placeholder: 'us-east-1' },
-          { key: 'accessKey', label: 'Access Key ID', type: 'password', placeholder: '' },
-          { key: 'secretKey', label: 'Secret Access Key', type: 'password', placeholder: '' },
+          {
+            key: 'bucket',
+            label: 'Bucket Name',
+            type: 'text',
+            placeholder: 'my-bucket',
+          },
+          {
+            key: 'region',
+            label: 'Region',
+            type: 'text',
+            placeholder: 'us-east-1',
+          },
+          {
+            key: 'accessKey',
+            label: 'Access Key ID',
+            type: 'password',
+            placeholder: '',
+          },
+          {
+            key: 'secretKey',
+            label: 'Secret Access Key',
+            type: 'password',
+            placeholder: '',
+          },
         ]),
       },
       {
-        slug: 'smtp', name: 'Email (SMTP)', description: 'Configure SMTP for sending email notifications and alerts.',
-        category: 'notification', icon: 'Send',
+        slug: 'smtp',
+        name: 'Email (SMTP)',
+        description:
+          'Configure SMTP for sending email notifications and alerts.',
+        category: 'notification',
+        icon: 'Send',
         configSchema: JSON.stringify([
-          { key: 'host', label: 'SMTP Host', type: 'text', placeholder: 'smtp.gmail.com' },
+          {
+            key: 'host',
+            label: 'SMTP Host',
+            type: 'text',
+            placeholder: 'smtp.gmail.com',
+          },
           { key: 'port', label: 'Port', type: 'number', placeholder: '587' },
           { key: 'user', label: 'Username', type: 'text', placeholder: '' },
-          { key: 'password', label: 'Password', type: 'password', placeholder: '' },
-          { key: 'from', label: 'From Address', type: 'email', placeholder: 'noreply@example.com' },
+          {
+            key: 'password',
+            label: 'Password',
+            type: 'password',
+            placeholder: '',
+          },
+          {
+            key: 'from',
+            label: 'From Address',
+            type: 'email',
+            placeholder: 'noreply@example.com',
+          },
         ]),
       },
     ];
@@ -1562,7 +2307,10 @@ export class AdminService {
   async getPlugins(category?: string) {
     const where: any = {};
     if (category) where.category = category;
-    return this.pluginRepo.find({ where, order: { category: 'ASC', name: 'ASC' } });
+    return this.pluginRepo.find({
+      where,
+      order: { category: 'ASC', name: 'ASC' },
+    });
   }
 
   async getPlugin(slug: string) {
@@ -1571,16 +2319,27 @@ export class AdminService {
     return plugin;
   }
 
-  async updatePlugin(slug: string, data: { enabled?: boolean; config?: any }, adminId: string) {
+  async updatePlugin(
+    slug: string,
+    data: { enabled?: boolean; config?: any },
+    adminId: string,
+  ) {
     const plugin = await this.pluginRepo.findOne({ where: { slug } });
     if (!plugin) throw new NotFoundException('Plugin not found');
 
     if (data.enabled !== undefined) plugin.enabled = data.enabled;
-    if (data.config !== undefined) plugin.config = typeof data.config === 'string' ? data.config : JSON.stringify(data.config);
+    if (data.config !== undefined)
+      plugin.config =
+        typeof data.config === 'string'
+          ? data.config
+          : JSON.stringify(data.config);
 
     await this.pluginRepo.save(plugin);
     await this.logAction({
-      action: data.enabled !== undefined ? `plugin.${data.enabled ? 'enabled' : 'disabled'}` : 'plugin.config_updated',
+      action:
+        data.enabled !== undefined
+          ? `plugin.${data.enabled ? 'enabled' : 'disabled'}`
+          : 'plugin.config_updated',
       targetType: 'plugin',
       targetId: plugin.id,
       targetLabel: plugin.name,
@@ -1594,13 +2353,20 @@ export class AdminService {
     if (!plugin) throw new NotFoundException('Plugin not found');
 
     let config: any = {};
-    try { config = JSON.parse(plugin.config); } catch {}
+    try {
+      config = JSON.parse(plugin.config);
+    } catch {}
 
     // Basic validation: check if any config fields are filled
     const schema = JSON.parse(plugin.configSchema || '[]');
-    const missingFields = schema.filter((f: any) => !config[f.key] && f.type !== 'select');
+    const missingFields = schema.filter(
+      (f: any) => !config[f.key] && f.type !== 'select',
+    );
     if (missingFields.length > 0) {
-      return { success: false, message: `Missing required fields: ${missingFields.map((f: any) => f.label).join(', ')}` };
+      return {
+        success: false,
+        message: `Missing required fields: ${missingFields.map((f: any) => f.label).join(', ')}`,
+      };
     }
 
     // Plugin-specific test logic
@@ -1610,35 +2376,223 @@ export class AdminService {
         case 'discord':
         case 'zapier':
           // Test webhook URL with a HEAD request
-          if (!config.webhookUrl) return { success: false, message: 'Webhook URL is required' };
-          return { success: true, message: `Webhook URL configured. Test event ready to send.` };
+          if (!config.webhookUrl)
+            return { success: false, message: 'Webhook URL is required' };
+          return {
+            success: true,
+            message: `Webhook URL configured. Test event ready to send.`,
+          };
 
         case 'smtp':
-          if (!config.host || !config.port) return { success: false, message: 'Host and port are required' };
-          return { success: true, message: `SMTP configured: ${config.host}:${config.port}` };
+          if (!config.host || !config.port)
+            return { success: false, message: 'Host and port are required' };
+          return {
+            success: true,
+            message: `SMTP configured: ${config.host}:${config.port}`,
+          };
 
         case 'github':
         case 'gitlab':
-          if (!config.token) return { success: false, message: 'Access token is required' };
-          return { success: true, message: 'Token configured. Connection ready.' };
+          if (!config.token)
+            return { success: false, message: 'Access token is required' };
+          return {
+            success: true,
+            message: 'Token configured. Connection ready.',
+          };
 
         case 'datadog':
-          if (!config.apiKey) return { success: false, message: 'API key is required' };
+          if (!config.apiKey)
+            return { success: false, message: 'API key is required' };
           return { success: true, message: 'Datadog keys configured.' };
 
         case 'sentry':
-          if (!config.dsn) return { success: false, message: 'DSN is required' };
+          if (!config.dsn)
+            return { success: false, message: 'DSN is required' };
           return { success: true, message: 'Sentry DSN configured.' };
 
         case 's3':
-          if (!config.bucket || !config.accessKey) return { success: false, message: 'Bucket and Access Key required' };
-          return { success: true, message: `S3 bucket "${config.bucket}" configured.` };
+          if (!config.bucket || !config.accessKey)
+            return {
+              success: false,
+              message: 'Bucket and Access Key required',
+            };
+          return {
+            success: true,
+            message: `S3 bucket "${config.bucket}" configured.`,
+          };
 
         default:
-          return { success: true, message: 'Plugin configuration looks valid.' };
+          return {
+            success: true,
+            message: 'Plugin configuration looks valid.',
+          };
       }
     } catch (err: any) {
-      return { success: false, message: err.message || 'Connection test failed' };
+      return {
+        success: false,
+        message: err.message || 'Connection test failed',
+      };
     }
+  }
+
+  onApplicationBootstrap() {
+    this.cleanOldApiHits();
+    setInterval(
+      () => {
+        this.cleanOldApiHits();
+      },
+      24 * 60 * 60 * 1000,
+    ); // Daily auto-purge
+  }
+
+  async cleanOldApiHits() {
+    try {
+      const dateLimit = new Date();
+      dateLimit.setDate(dateLimit.getDate() - 50); // 50 days retention
+      await this.apiHitRepo
+        .createQueryBuilder()
+        .delete()
+        .where('createdAt < :dateLimit', { dateLimit })
+        .execute();
+      console.log('Successfully cleaned up API hits older than 50 days');
+    } catch (e) {
+      console.error('Failed to clean up old API hits:', e);
+    }
+  }
+
+  async getApiHits(
+    page = 1,
+    limit = 25,
+    search?: string,
+    method?: string,
+    statusCode?: number,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    const query = this.apiHitRepo.createQueryBuilder('hit');
+
+    if (search) {
+      query.andWhere(
+        '(hit.userEmail ILIKE :s OR hit.endpoint ILIKE :s OR hit.destinationUrl ILIKE :s OR hit.ipAddress ILIKE :s)',
+        { s: `%${search}%` },
+      );
+    }
+
+    if (method && method !== 'all') {
+      query.andWhere('hit.method = :method', { method });
+    }
+
+    if (statusCode) {
+      query.andWhere('hit.statusCode = :statusCode', { statusCode });
+    }
+
+    if (startDate) {
+      query.andWhere('hit.createdAt >= :startDate', {
+        startDate: new Date(startDate),
+      });
+    }
+
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.andWhere('hit.createdAt <= :endDate', { endDate: end });
+    }
+
+    query.orderBy('hit.createdAt', 'DESC');
+
+    const total = await query.getCount();
+    const logs = await query
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    // Calculate summary statistics on the filtered query
+    const statsQuery = this.apiHitRepo.createQueryBuilder('hit')
+      .select('COUNT(*)', 'totalCount')
+      .addSelect('AVG(hit.durationMs)', 'avgLatency')
+      .addSelect('COUNT(CASE WHEN hit.statusCode >= 200 AND hit.statusCode < 300 THEN 1 END)', 'successCount')
+      .addSelect('COUNT(CASE WHEN hit.statusCode >= 400 THEN 1 END)', 'errorCount');
+
+    if (search) {
+      statsQuery.andWhere(
+        '(hit.userEmail ILIKE :s OR hit.endpoint ILIKE :s OR hit.destinationUrl ILIKE :s OR hit.ipAddress ILIKE :s)',
+        { s: `%${search}%` },
+      );
+    }
+    if (method && method !== 'all') {
+      statsQuery.andWhere('hit.method = :method', { method });
+    }
+    if (statusCode) {
+      statsQuery.andWhere('hit.statusCode = :statusCode', { statusCode });
+    }
+    if (startDate) {
+      statsQuery.andWhere('hit.createdAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      statsQuery.andWhere('hit.createdAt <= :endDate', { endDate: end });
+    }
+
+    const rawStats = await statsQuery.getRawOne();
+    const stats = {
+      totalCount: parseInt(rawStats.totalCount || '0', 10),
+      avgLatency: Math.round(parseFloat(rawStats.avgLatency || '0')),
+      successCount: parseInt(rawStats.successCount || '0', 10),
+      errorCount: parseInt(rawStats.errorCount || '0', 10),
+    };
+
+    return { 
+      logs, 
+      total, 
+      page, 
+      totalPages: Math.ceil(total / limit),
+      stats
+    };
+  }
+
+  async exportApiHitsCsv(
+    search?: string,
+    method?: string,
+    statusCode?: number,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<string> {
+    const query = this.apiHitRepo.createQueryBuilder('hit');
+
+    if (search) {
+      query.andWhere(
+        '(hit.userEmail ILIKE :s OR hit.endpoint ILIKE :s OR hit.destinationUrl ILIKE :s OR hit.ipAddress ILIKE :s)',
+        { s: `%${search}%` },
+      );
+    }
+    if (method && method !== 'all') {
+      query.andWhere('hit.method = :method', { method });
+    }
+    if (statusCode) {
+      query.andWhere('hit.statusCode = :statusCode', { statusCode });
+    }
+    if (startDate) {
+      query.andWhere('hit.createdAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.andWhere('hit.createdAt <= :endDate', { endDate: end });
+    }
+
+    query.orderBy('hit.createdAt', 'DESC').take(10000); // Limit to top 10k logs
+    const logs = await query.getMany();
+
+    const header = 'Date,User,Method,Endpoint,Status,Latency (ms),IP Address\n';
+    const rows = logs
+      .map((l) => {
+        const d = l.createdAt ? new Date(l.createdAt).toISOString() : '';
+        const endpoint = (l.destinationUrl || l.endpoint || '').replace(/"/g, '""');
+        return `"${d}","${l.userEmail || 'Guest'}","${l.method || ''}","${endpoint}",${l.statusCode || 0},${l.durationMs || 0},"${l.ipAddress || ''}"`;
+      })
+      .join('\n');
+
+    return header + rows;
   }
 }

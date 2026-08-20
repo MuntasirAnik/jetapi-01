@@ -18,12 +18,12 @@ import {
   MessageSquare, Tag, User, ArrowUpDown, Gauge, Plug,
 } from "lucide-react";
 
-type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog" | "tickets" | "rate-limits" | "plugins";
+type Tab = "overview" | "users" | "organizations" | "subscriptions" | "plans" | "payments" | "banners" | "audit-log" | "reports" | "settings" | "security" | "changelog" | "tickets" | "rate-limits" | "plugins" | "api-hits";
 
 export default function AdminPage() {
   const router = useRouter();
   const { confirmDialog } = useDialog();
-  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog", "tickets", "rate-limits", "plugins"];
+  const validTabs: Tab[] = ["overview", "users", "organizations", "subscriptions", "plans", "payments", "banners", "audit-log", "reports", "settings", "security", "changelog", "tickets", "rate-limits", "plugins", "api-hits"];
   const [tab, setTabState] = useState<Tab>("overview");
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -286,6 +286,7 @@ export default function AdminPage() {
     { id: "payments", label: "Payments", icon: <DollarSign className="w-4 h-4" /> },
     { id: "banners", label: "Announcements", icon: <Megaphone className="w-4 h-4" /> },
     { id: "audit-log", label: "Audit Log", icon: <Activity className="w-4 h-4" /> },
+    { id: "api-hits", label: "API Hits", icon: <Clock className="w-4 h-4" /> },
     { id: "reports", label: "Reports", icon: <BarChart3 className="w-4 h-4" /> },
     { id: "security", label: "Security", icon: <ShieldCheck className="w-4 h-4" /> },
     { id: "changelog", label: "Changelog", icon: <FileText className="w-4 h-4" /> },
@@ -306,7 +307,7 @@ export default function AdminPage() {
           <p className="text-xs text-[var(--muted)] ml-7 mt-0.5">Platform Control</p>
         </div>
 
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1 overflow-y-auto flex-1 pr-1 select-none mb-4 custom-scrollbar">
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -358,6 +359,7 @@ export default function AdminPage() {
           {tab === "payments" && <PaymentsTab data={payments} onReload={loadTabData} />}
           {tab === "banners" && <BannersTab banners={banners} onReload={loadTabData} />}
           {tab === "audit-log" && <AuditLogTab />}
+          {tab === "api-hits" && <ApiHitsTab />}
           {tab === "reports" && <ReportsTab />}
           {tab === "settings" && <SettingsTab flags={featureFlags} onReload={loadTabData} />}
           {tab === "security" && <SecurityTab />}
@@ -3660,6 +3662,523 @@ function PluginsTab() {
         </div>,
         document.body
       )}
+    </div>
+  );
+}
+
+function ApiHitsTab() {
+  const [data, setData] = useState<any>({ logs: [], total: 0, page: 1, totalPages: 1 });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const [search, setSearch] = useState("");
+  const [method, setMethod] = useState("all");
+  const [statusCode, setStatusCode] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const loadHits = async (p = page, s = search, m = method, sc = statusCode, start = startDate, end = endDate) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(p));
+      params.set("limit", String(limit));
+      if (s) params.set("search", s);
+      if (m !== "all") params.set("method", m);
+      if (sc !== "all") params.set("statusCode", sc);
+      if (start) params.set("startDate", start);
+      if (end) params.set("endDate", end);
+
+      const res = await apiFetch(`/admin/api-hits?${params}`);
+      if (res.ok) {
+        const d = await res.json();
+        setData(d);
+        setPage(d.page);
+      }
+    } catch (e) {
+      toast.error("Failed to load API hits.");
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadHits(1, search, method, statusCode, startDate, endDate);
+  }, [limit, method, statusCode, startDate, endDate]);
+
+  const handleSearch = () => loadHits(1, search, method, statusCode, startDate, endDate);
+
+  const clearFilters = () => {
+    setSearch("");
+    setMethod("all");
+    setStatusCode("all");
+    setStartDate("");
+    setEndDate("");
+    loadHits(1, "", "all", "all", "", "");
+  };
+
+  const handleExport = async (format: "csv" | "excel") => {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (method !== "all") params.set("method", method);
+      if (statusCode !== "all") params.set("statusCode", statusCode);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const res = await apiFetch(`/admin/api-hits/export?${params}`);
+      if (res.ok) {
+        const csvContent = await res.text();
+        const dateStr = new Date().toISOString().split("T")[0];
+        
+        if (format === "csv") {
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `jetapi_api-hits_${dateStr}.csv`;
+          a.click();
+          toast.success("API hits exported as CSV");
+        } else {
+          // Format as Excel XLS HTML representation to allow styled columns and proper import without CSV parsing issues
+          const rows = csvContent.split("\n").filter(Boolean);
+          const headers = rows[0].split(",");
+          const dataRows = rows.slice(1);
+          
+          let excelHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
+          excelHtml += `<head><meta charset="utf-8"/><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>API Hits Logs</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>`;
+          excelHtml += `<body><table border="1"><thead><tr>`;
+          headers.forEach(h => {
+            excelHtml += `<th style="background-color: #f2f2f2; font-weight: bold; text-align: left;">${h.replace(/"/g, '')}</th>`;
+          });
+          excelHtml += `</tr></thead><tbody>`;
+          
+          dataRows.forEach(r => {
+            // Split CSV row handling quotes
+            const cols = r.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || r.split(",");
+            excelHtml += `<tr>`;
+            cols.forEach(c => {
+              const cleanVal = c.replace(/^"|"$/g, '').trim();
+              excelHtml += `<td style="text-align: left;">${cleanVal}</td>`;
+            });
+            excelHtml += `</tr>`;
+          });
+          
+          excelHtml += `</tbody></table></body></html>`;
+          
+          const blob = new Blob([excelHtml], { type: "application/vnd.ms-excel;charset=utf-8;" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `jetapi_api-hits_${dateStr}.xls`;
+          a.click();
+          toast.success("API hits exported as Excel (.xls)");
+        }
+      } else {
+        toast.error("Failed to generate export file");
+      }
+    } catch (e) {
+      toast.error("Export failed");
+    }
+  };
+
+  const getMethodBadgeClass = (m: string) => {
+    const norm = m.toUpperCase();
+    if (norm === 'GET') return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+    if (norm === 'POST') return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
+    if (norm === 'PUT') return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+    if (norm === 'DELETE') return 'bg-red-500/10 text-red-400 border border-red-500/20';
+    return 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
+  };
+
+  const getStatusBadgeClass = (code: number) => {
+    if (code >= 200 && code < 300) return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+    if (code >= 300 && code < 400) return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
+    if (code >= 400 && code < 500) return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+    return 'bg-red-500/10 text-red-400 border border-red-500/20';
+  };
+
+  const parseUrlDetails = (urlStr: string) => {
+    try {
+      const u = new URL(urlStr);
+      return { host: u.host, path: u.pathname + u.search };
+    } catch {
+      return { host: '', path: urlStr };
+    }
+  };
+
+  const formatTimeDetails = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const datePart = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const timePart = date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return { datePart, timePart };
+  };
+
+  const getLatencyColor = (ms: number) => {
+    if (ms < 200) return 'text-emerald-400';
+    if (ms < 1000) return 'text-amber-400';
+    return 'text-red-400';
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Clock className="w-5 h-5 text-[var(--color-brand-500)]" /> API Hits Report
+            {loading && data.logs.length > 0 && (
+              <Loader2 className="w-4 h-4 animate-spin text-[var(--color-brand-500)] ml-1" />
+            )}
+          </h1>
+          <p className="text-[var(--muted)] text-xs mt-0.5">Audit log of all API requests and internal execution metrics</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => handleExport("csv")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--sidebar)] hover:bg-[var(--border)] border border-[var(--border)] transition-colors text-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <Download className="w-3.5 h-3.5 text-[var(--color-brand-500)]" /> Export CSV
+          </button>
+          <button 
+            onClick={() => handleExport("excel")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--sidebar)] hover:bg-[var(--border)] border border-[var(--border)] transition-colors text-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <Download className="w-3.5 h-3.5 text-[var(--color-brand-500)]" /> Export Excel
+          </button>
+          <button 
+            onClick={() => loadHits(page)} 
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--sidebar)] hover:bg-[var(--border)] transition-colors text-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Dashboard Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        {/* Total Hits */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-2.5 px-3 flex items-center gap-2.5 shadow-sm">
+          <div className="p-1.5 rounded-lg bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]">
+            <Activity className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-[9px] uppercase font-bold text-[var(--muted)] block leading-none">Total Requests</span>
+            <div className="text-base font-bold text-[var(--foreground)] mt-0.5 leading-none">
+              {loading && data.logs.length === 0 ? "..." : data.total.toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        {/* Success Rate */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-2.5 px-3 flex items-center gap-2.5 shadow-sm">
+          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+            <CheckCircle className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-[9px] uppercase font-bold text-[var(--muted)] block leading-none">Success Rate</span>
+            <div className={`text-base font-bold mt-0.5 leading-none ${data.stats && (data.stats.successCount / Math.max(1, data.stats.totalCount)) >= 0.9 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {loading && data.logs.length === 0 ? "..." : data.stats ? `${Math.round((data.stats.successCount / Math.max(1, data.stats.totalCount)) * 100)}%` : "0%"}
+            </div>
+          </div>
+        </div>
+
+        {/* Avg Latency */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-2.5 px-3 flex items-center gap-2.5 shadow-sm">
+          <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+            <Gauge className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-[9px] uppercase font-bold text-[var(--muted)] block leading-none">Avg Latency</span>
+            <div className="text-base font-bold text-[var(--foreground)] mt-0.5 leading-none">
+              {loading && data.logs.length === 0 ? "..." : data.stats ? `${data.stats.avgLatency}ms` : "0ms"}
+            </div>
+          </div>
+        </div>
+
+        {/* Total Errors */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-2.5 px-3 flex items-center gap-2.5 shadow-sm">
+          <div className="p-1.5 rounded-lg bg-red-500/10 text-red-400">
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-[9px] uppercase font-bold text-[var(--muted)] block leading-none">Errors</span>
+            <div className={`text-base font-bold mt-0.5 leading-none ${data.stats && data.stats.errorCount > 0 ? 'text-red-400' : 'text-[var(--muted)]'}`}>
+              {loading && data.logs.length === 0 ? "..." : data.stats ? data.stats.errorCount.toLocaleString() : "0"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters Area */}
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-2.5 mb-3 flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2 items-end">
+          {/* Search Input */}
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[10px] uppercase font-bold text-[var(--muted)] mb-1.5">Search</label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--muted)]" />
+              <input 
+                type="text" 
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+                onKeyDown={e => { if (e.key === "Enter") handleSearch(); }} 
+                placeholder="Search user, endpoint, IP..." 
+                className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:border-[var(--color-brand-500)] transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* HTTP Method Dropdown */}
+          <div className="w-32">
+            <label className="block text-[10px] uppercase font-bold text-[var(--muted)] mb-1.5">Method</label>
+            <select 
+              value={method} 
+              onChange={e => setMethod(e.target.value)}
+              className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg py-1.5 px-2 text-xs focus:outline-none focus:border-[var(--color-brand-500)] transition-colors text-[var(--foreground)] font-medium"
+            >
+              <option value="all">All Methods</option>
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+          </div>
+
+          {/* Status Code Dropdown */}
+          <div className="w-36">
+            <label className="block text-[10px] uppercase font-bold text-[var(--muted)] mb-1.5">Status Code</label>
+            <select 
+              value={statusCode} 
+              onChange={e => setStatusCode(e.target.value)}
+              className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg py-1.5 px-2 text-xs focus:outline-none focus:border-[var(--color-brand-500)] transition-colors text-[var(--foreground)] font-medium"
+            >
+              <option value="all">All Statuses</option>
+              <option value="200">200 OK</option>
+              <option value="201">201 Created</option>
+              <option value="400">400 Bad Request</option>
+              <option value="401">401 Unauthorized</option>
+              <option value="403">403 Forbidden</option>
+              <option value="404">404 Not Found</option>
+              <option value="500">500 Server Error</option>
+            </select>
+          </div>
+
+          {/* Date Range: Start */}
+          <div className="w-40">
+            <label className="block text-[10px] uppercase font-bold text-[var(--muted)] mb-1.5">Start Date</label>
+            <div className="relative">
+              <Calendar className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--muted)] pointer-events-none" />
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)}
+                className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:border-[var(--color-brand-500)] transition-colors text-[var(--foreground)]"
+              />
+            </div>
+          </div>
+
+          {/* Date Range: End */}
+          <div className="w-40">
+            <label className="block text-[10px] uppercase font-bold text-[var(--muted)] mb-1.5">End Date</label>
+            <div className="relative">
+              <Calendar className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--muted)] pointer-events-none" />
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded-lg py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:border-[var(--color-brand-500)] transition-colors text-[var(--foreground)]"
+              />
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-2">
+            <button 
+              onClick={handleSearch} 
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] transition-colors text-white"
+            >
+              Filter
+            </button>
+            <button 
+              onClick={clearFilters} 
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--sidebar)] hover:bg-[var(--border)] transition-colors text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Table view */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--sidebar)]/30 text-[var(--muted)] font-semibold uppercase tracking-wider text-[9px]">
+                <th className="py-1.5 px-3 w-12 text-center">SL</th>
+                <th className="py-1.5 px-3">Time</th>
+                <th className="py-1.5 px-3">User</th>
+                <th className="py-1.5 px-3">Method</th>
+                <th className="py-1.5 px-3">Endpoint</th>
+                <th className="py-1.5 px-3">Status</th>
+                <th className="py-1.5 px-3">Latency</th>
+                <th className="py-1.5 px-3">IP Address</th>
+              </tr>
+            </thead>
+            <tbody className={loading ? "opacity-60 transition-opacity duration-200" : "transition-opacity duration-200"}>
+              {loading && data.logs.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-[var(--muted)] text-sm">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-[var(--color-brand-500)]" />
+                    Loading API hits...
+                  </td>
+                </tr>
+              ) : data.logs.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-[var(--muted)]">
+                    No API hits recorded matching the filters.
+                  </td>
+                </tr>
+              ) : (
+                data.logs.map((log: any, index: number) => {
+                  const { host, path } = parseUrlDetails(log.destinationUrl || log.endpoint);
+                  const { datePart, timePart } = formatTimeDetails(log.createdAt);
+
+                  return (
+                    <tr key={log.id} className="border-b border-[var(--border)] hover:bg-[var(--sidebar)]/20 transition-colors">
+                      <td className="py-1.5 px-3 text-center font-mono text-[var(--muted)] text-[11px] w-12">
+                        {((page - 1) * limit) + index + 1}
+                      </td>
+                      <td className="py-1.5 px-3 whitespace-nowrap text-[11px] font-mono text-[var(--muted)]">
+                        <span className="text-[var(--foreground)] font-sans font-medium mr-1.5">{datePart}</span>
+                        {timePart}
+                      </td>
+                      <td className="py-1.5 px-3 text-[11px] font-medium text-[var(--foreground)]">
+                        {log.userEmail ? (
+                          <div className="flex items-center gap-1.5" title={`ID: ${log.userId}`}>
+                            <User className="w-3 h-3 text-[var(--muted)]" />
+                            <span>{log.userEmail}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[var(--muted)] font-normal italic">Guest</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider ${getMethodBadgeClass(log.method)}`}>
+                          {log.method}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-3 font-mono max-w-[340px]">
+                        <div className="flex flex-col gap-0">
+                          <span className="font-mono text-[11px] font-semibold text-[var(--foreground)] truncate block" title={log.destinationUrl || log.endpoint}>
+                            {path}
+                          </span>
+                          {host && (
+                            <span className="text-[9px] text-[var(--muted)] font-mono tracking-tight font-normal leading-none">
+                              {host}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-1.5 px-3">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${getStatusBadgeClass(log.statusCode)}`}>
+                          <span className={`w-1 h-1 rounded-full ${
+                            log.statusCode >= 200 && log.statusCode < 300 
+                              ? 'bg-emerald-400' 
+                              : log.statusCode >= 300 && log.statusCode < 400 
+                                ? 'bg-blue-400' 
+                                : log.statusCode >= 400 && log.statusCode < 500 
+                                  ? 'bg-amber-400' 
+                                  : 'bg-red-400'
+                          }`} />
+                          {log.statusCode}
+                        </span>
+                      </td>
+                      <td className={`py-1.5 px-3 font-semibold font-mono text-[11px] ${getLatencyColor(log.durationMs)}`}>
+                        {log.durationMs}ms
+                      </td>
+                      <td className="py-1.5 px-3 font-mono text-[var(--muted)] text-[11px]">
+                        {log.ipAddress || '—'}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {data.total > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--border)] bg-[var(--sidebar)]/10 text-xs">
+            <div className="text-[var(--muted)]">
+              Showing <span className="font-semibold text-[var(--foreground)]">{((page - 1) * limit) + 1}</span> to{' '}
+              <span className="font-semibold text-[var(--foreground)]">{Math.min(page * limit, data.total)}</span> of{' '}
+              <span className="font-semibold text-[var(--foreground)]">{data.total}</span> hits
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Limit Selector */}
+              <div className="flex items-center gap-1.5 text-[var(--muted)]">
+                Show
+                <select 
+                  value={limit} 
+                  onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
+                  className="bg-[var(--sidebar)] border border-[var(--border)] rounded px-1.5 py-0.5 text-xs text-[var(--foreground)] outline-none"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+
+              {/* Prev / Next controls */}
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => loadHits(page - 1)}
+                  disabled={page === 1}
+                  className="px-2.5 py-1 rounded border border-[var(--border)] hover:bg-[var(--sidebar)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  Prev
+                </button>
+                {Array.from({ length: Math.min(5, data.totalPages) }, (_, i) => {
+                  let pageNum = page;
+                  if (page <= 3) pageNum = i + 1;
+                  else if (page >= data.totalPages - 2) pageNum = data.totalPages - 4 + i;
+                  else pageNum = page - 2 + i;
+
+                  if (pageNum <= 0 || pageNum > data.totalPages) return null;
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => loadHits(pageNum)}
+                      className={`px-2.5 py-1 rounded border transition-all font-semibold ${
+                        page === pageNum
+                          ? 'border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white'
+                          : 'border-[var(--border)] hover:bg-[var(--sidebar)] text-[var(--muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => loadHits(page + 1)}
+                  disabled={page === data.totalPages}
+                  className="px-2.5 py-1 rounded border border-[var(--border)] hover:bg-[var(--sidebar)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

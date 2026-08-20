@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { EnvironmentsService } from './environments.service';
 import { Environment } from './environment.entity';
 import { AuthGuard } from '../auth/auth.guard';
@@ -18,7 +29,10 @@ export class EnvironmentsController {
     if (!workspaceId) {
       throw new Error('workspaceId query parameter is required');
     }
-    return this.environmentsService.findAllByWorkspace(workspaceId, req.user.sub);
+    return this.environmentsService.findAllByWorkspace(
+      workspaceId,
+      req.user.sub,
+    );
   }
 
   @Get(':id')
@@ -27,7 +41,11 @@ export class EnvironmentsController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() data: Partial<Environment>, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() data: Partial<Environment>,
+    @Request() req: any,
+  ) {
     return this.environmentsService.update(id, data, req.user.sub);
   }
 

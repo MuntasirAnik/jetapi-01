@@ -402,10 +402,110 @@ const getMethodColor = (method: string) => {
     });
   };
 
+  const stripJsonComments = (jsonString: string): string => {
+    return jsonString.replace(/("([^\\"]|\\.)*")|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (match, g1) => {
+      if (g1) return match;
+      if (match.startsWith('//')) {
+        return "";
+      }
+      return match.replace(/[^\n]/g, ''); // Keep only newlines for multi-line comments
+    });
+  };
+
+  const handleCommentToggle = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    text: string,
+    onTextChange: (newText: string) => void
+  ) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+      e.preventDefault();
+      
+      const textarea = e.currentTarget;
+      const selectionStart = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      
+      const lines = text.split('\n');
+      
+      let charCount = 0;
+      const lineRanges = lines.map((line) => {
+        const start = charCount;
+        const end = charCount + line.length;
+        charCount = end + 1; // +1 for the newline
+        return { start, end };
+      });
+      
+      let startLineIdx = 0;
+      let endLineIdx = 0;
+      for (let i = 0; i < lineRanges.length; i++) {
+        if (selectionStart >= lineRanges[i].start && selectionStart <= lineRanges[i].end) {
+          startLineIdx = i;
+        }
+        if (selectionEnd >= lineRanges[i].start && selectionEnd <= lineRanges[i].end) {
+          endLineIdx = i;
+        }
+      }
+      
+      let allCommented = true;
+      for (let i = startLineIdx; i <= endLineIdx; i++) {
+        const line = lines[i];
+        if (line.trim().length > 0 && !line.trim().startsWith('//')) {
+          allCommented = false;
+          break;
+        }
+      }
+      
+      let newLines = [...lines];
+      let newSelectionStart = selectionStart;
+      let newSelectionEnd = selectionEnd;
+      
+      for (let i = startLineIdx; i <= endLineIdx; i++) {
+        const line = lines[i];
+        if (allCommented) {
+          const commentMatch = line.match(/^(\s*)\/\/ ?(.*)$/);
+          if (commentMatch) {
+            const leadingSpaces = commentMatch[1];
+            const rest = commentMatch[2];
+            newLines[i] = leadingSpaces + rest;
+            
+            const diff = line.length - newLines[i].length;
+            if (i === startLineIdx) {
+              newSelectionStart = Math.max(lineRanges[startLineIdx].start, selectionStart - diff);
+            }
+            newSelectionEnd -= diff;
+          }
+        } else {
+          const spaceMatch = line.match(/^(\s*)(.*)$/);
+          if (spaceMatch) {
+            const leadingSpaces = spaceMatch[1];
+            const rest = spaceMatch[2];
+            newLines[i] = leadingSpaces + '// ' + rest;
+            
+            const diff = newLines[i].length - line.length;
+            if (i === startLineIdx) {
+              newSelectionStart = selectionStart + diff;
+            }
+            newSelectionEnd += diff;
+          }
+        }
+      }
+      
+      const newText = newLines.join('\n');
+      onTextChange(newText);
+      
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(newSelectionStart, newSelectionEnd);
+      }, 0);
+    }
+  };
+
   const renderHighlightedJson = (str: string) => {
     let htmlContent = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const htmlRegex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
+    const htmlRegex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\/\/.*|\/\*[\s\S]*?\*\/|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
     htmlContent = htmlContent.replace(htmlRegex, (match) => {
+      if (match.startsWith('//') || match.startsWith('/*')) {
+        return `<span class="text-[#6A9955] italic">${match}</span>`;
+      }
       let cls = 'text-[var(--foreground)]';
       if (/^"/.test(match)) {
         if (/:$/.test(match)) {
@@ -841,17 +941,17 @@ const getMethodColor = (method: string) => {
                 <button 
                   onClick={() => {
                      try {
-                        const parsed = JSON.parse(bodyState.raw.data || '');
+                        const parsed = JSON.parse(stripJsonComments(bodyState.raw.data || ''));
                         updateBodyObj({ raw: { ...bodyState.raw, data: JSON.stringify(parsed, null, 2) } });
                         toast.success("JSON formatted!");
                      } catch(e) {
                         toast.error("Invalid JSON. Cannot format.");
                      }
                   }}
-                  className="text-[var(--muted)] hover:text-[var(--color-brand-500)] flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-[var(--sidebar)] border border-[var(--border)] transition-colors hover:border-[var(--color-brand-500)]"
+                  className="text-[var(--muted)] hover:text-[var(--color-brand-500)] flex items-center justify-center p-1.5 rounded bg-[var(--sidebar)] border border-[var(--border)] transition-colors hover:border-[var(--color-brand-500)]"
                   title="Format JSON"
                 >
-                  <Wand2 className="w-3 h-3" /> Prettier
+                  <Wand2 className="w-3.5 h-3.5" />
                 </button>
               )}
               <StyledSelect
@@ -866,6 +966,7 @@ const getMethodColor = (method: string) => {
                 onChange={(val) => updateBodyObj({ raw: { ...bodyState.raw, language: val } })}
                 size="xs"
                 showCheckmark={false}
+                dropdownClassName="right-0"
               />
             </div>
           )}
@@ -893,6 +994,15 @@ const getMethodColor = (method: string) => {
                      if (overlay) {
                        overlay.scrollTop = e.currentTarget.scrollTop;
                        overlay.scrollLeft = e.currentTarget.scrollLeft;
+                     }
+                   }}
+                   onKeyDown={e => handleCommentToggle(e, bodyState.raw.data || '', val => updateBodyObj({ raw: { ...bodyState.raw, data: val } }))}
+                   onBlur={() => {
+                     if (bodyState.raw.language === 'json' && bodyState.raw.data) {
+                       try {
+                         const parsed = JSON.parse(stripJsonComments(bodyState.raw.data));
+                         updateBodyObj({ raw: { ...bodyState.raw, data: JSON.stringify(parsed, null, 2) } });
+                       } catch (e) {}
                      }
                    }}
                    className={`absolute inset-0 w-full h-full p-3 text-xs font-mono outline-none resize-none z-10 bg-transparent ${bodyState.raw.language === 'json' ? 'text-transparent caret-[var(--foreground)] selection:bg-[var(--color-brand-500)]/30' : 'text-[var(--foreground)]'}`}
@@ -957,8 +1067,9 @@ const getMethodColor = (method: string) => {
   };
 
   // Convert array back to object for Axios request
-  const formatRequestForAxios = () => {
-    const params = (request.params || []).reduce((acc: any, curr: any) => { if(curr.key && curr.enabled !== false) acc[curr.key] = curr.value; return acc; }, {});
+  const formatRequestForAxios = (reqOverride?: any) => {
+    const activeRequestObj = reqOverride || request;
+    const params = (activeRequestObj.params || []).reduce((acc: any, curr: any) => { if(curr.key && curr.enabled !== false) acc[curr.key] = curr.value; return acc; }, {});
     
     // Pre-seed system default headers, overridden by user headers if keys perfectly match
     const headers = {
@@ -968,14 +1079,14 @@ const getMethodColor = (method: string) => {
       'Connection': 'keep-alive'
     } as any;
     
-    (request.headers || []).forEach((curr: any) => { 
+    (activeRequestObj.headers || []).forEach((curr: any) => { 
       if(curr.key && curr.enabled !== false) headers[curr.key] = curr.value; 
     });
     
     // Inject Path Variables into URL safely
-    let finalUrl = request.url;
-    if (request.pathVariables && request.pathVariables.length > 0) {
-      request.pathVariables.forEach((pv: any) => {
+    let finalUrl = activeRequestObj.url;
+    if (activeRequestObj.pathVariables && activeRequestObj.pathVariables.length > 0) {
+      activeRequestObj.pathVariables.forEach((pv: any) => {
         if (pv.key) {
            // simple string replace the exact marker, assuming pv.value is URL safe or handle encoding on execution
            finalUrl = finalUrl.replace(`:${pv.key}`, pv.value || `:${pv.key}`);
@@ -984,21 +1095,30 @@ const getMethodColor = (method: string) => {
     }
     
     let bodyData = undefined;
-    if(request.method !== 'GET' && request.method !== 'DELETE') {
+    if(activeRequestObj.method !== 'GET' && activeRequestObj.method !== 'DELETE') {
       try {
-        bodyData = request.body ? JSON.parse(request.body) : undefined;
+        const bodyRaw = activeRequestObj.body;
+        if (bodyRaw) {
+          if (typeof bodyRaw === 'string') {
+            bodyData = JSON.parse(bodyRaw);
+          } else if (bodyRaw.mode === 'raw') {
+            bodyData = bodyRaw.raw?.data ? JSON.parse(stripJsonComments(bodyRaw.raw.data)) : undefined;
+          } else {
+            bodyData = bodyRaw;
+          }
+        }
       } catch(e) {
-        bodyData = request.body; // send as raw string if JSON fails
+        bodyData = activeRequestObj.body; // send as raw string if JSON fails
       }
     }
 
     return {
-      method: request.method,
+      method: activeRequestObj.method,
       url: finalUrl,
       params,
       headers,
       body: bodyData,
-      auth: request.auth
+      auth: activeRequestObj.auth
     };
   };
 
@@ -1095,7 +1215,20 @@ const getMethodColor = (method: string) => {
             
             <div className="flex bg-[var(--sidebar)] border border-[var(--border)] rounded overflow-hidden shadow-sm">
             <button 
-              onClick={() => onSave?.(request)}
+              onClick={() => {
+                const bodyState = getBodyObj();
+                let finalRequest = request;
+                if (bodyState.mode === 'raw' && bodyState.raw.language === 'json' && bodyState.raw.data) {
+                  try {
+                    const parsed = JSON.parse(stripJsonComments(bodyState.raw.data));
+                    const formattedData = JSON.stringify(parsed, null, 2);
+                    const updatedBody = { ...bodyState, raw: { ...bodyState.raw, data: formattedData } };
+                    finalRequest = { ...request, body: updatedBody };
+                    onChange(finalRequest);
+                  } catch (e) {}
+                }
+                onSave?.(finalRequest);
+              }}
               disabled={isSaving}
               className="flex items-center gap-1.5 text-[13px] font-medium hover:bg-[#333] px-3 py-1.5 transition-colors text-[var(--foreground)] disabled:opacity-50"
               title="Save"
@@ -1105,7 +1238,20 @@ const getMethodColor = (method: string) => {
             </button>
             <div className="w-[1px] bg-[var(--border)]" />
             <button 
-              onClick={() => onSaveAs?.(request)}
+              onClick={() => {
+                const bodyState = getBodyObj();
+                let finalRequest = request;
+                if (bodyState.mode === 'raw' && bodyState.raw.language === 'json' && bodyState.raw.data) {
+                  try {
+                    const parsed = JSON.parse(stripJsonComments(bodyState.raw.data));
+                    const formattedData = JSON.stringify(parsed, null, 2);
+                    const updatedBody = { ...bodyState, raw: { ...bodyState.raw, data: formattedData } };
+                    finalRequest = { ...request, body: updatedBody };
+                    onChange(finalRequest);
+                  } catch (e) {}
+                }
+                onSaveAs?.(finalRequest);
+              }}
               className="flex items-center text-[13px] font-medium hover:bg-[#333] px-2 py-1.5 transition-colors text-[var(--foreground)]"
               title="Save As..."
             >
@@ -1219,7 +1365,18 @@ const getMethodColor = (method: string) => {
                  setTimeout(() => setHighlightedFields(new Set()), 2500);
                  return;
               }
-              onSend(formatRequestForAxios());
+              const bodyState = getBodyObj();
+              let finalRequest = request;
+              if (bodyState.mode === 'raw' && bodyState.raw.language === 'json' && bodyState.raw.data) {
+                try {
+                  const parsed = JSON.parse(stripJsonComments(bodyState.raw.data));
+                  const formattedData = JSON.stringify(parsed, null, 2);
+                  const updatedBody = { ...bodyState, raw: { ...bodyState.raw, data: formattedData } };
+                  finalRequest = { ...request, body: updatedBody };
+                  onChange(finalRequest);
+                } catch (e) {}
+              }
+              onSend(formatRequestForAxios(finalRequest));
             }}
             disabled={!loading && !request.url}
             className={`btn-spring ${loading ? 'bg-red-500 hover:bg-red-600' : 'bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)]'} text-white px-4 py-1.5 rounded font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -1253,7 +1410,11 @@ const getMethodColor = (method: string) => {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto bg-[var(--sidebar)]/30 pb-12">
+      <div className={`flex-1 bg-[var(--sidebar)]/30 ${
+        ["Body", "Pre-request Script", "Tests"].includes(activeTab) 
+          ? "flex flex-col overflow-hidden pb-0" 
+          : "overflow-y-auto pb-6"
+      }`}>
         {activeTab === "Params" && (
           <div className="flex flex-col gap-4">
             {renderKVPTable("params", "Query Params")}
@@ -1299,6 +1460,7 @@ const getMethodColor = (method: string) => {
             <textarea 
               value={request.preRequestScript || ""}
               onChange={e => onChange({...request, preRequestScript: e.target.value})}
+              onKeyDown={e => handleCommentToggle(e, request.preRequestScript || "", val => onChange({...request, preRequestScript: val}))}
               className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
               placeholder="// Write Javascript code to execute before this request runs&#10;console.log('Running pre-request...');" />
           </div>
@@ -1343,6 +1505,7 @@ const getMethodColor = (method: string) => {
                 <textarea 
                   value={request.testScript || ""}
                   onChange={e => onChange({...request, testScript: e.target.value})}
+                  onKeyDown={e => handleCommentToggle(e, request.testScript || "", val => onChange({...request, testScript: val}))}
                   className="w-full flex-1 bg-[var(--sidebar)] border border-[var(--border)] rounded-md p-4 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] resize-none"
                   placeholder={"// Write Javascript tests to execute after response is received\npm.test('Status code is 200', function () {\n    pm.response.to.have.status(200);\n});"} />
               </div>

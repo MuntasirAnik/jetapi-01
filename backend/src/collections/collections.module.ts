@@ -15,7 +15,13 @@ import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Collection, CollectionShare, Workspace, OrganizationUser, UserPlugin]),
+    TypeOrmModule.forFeature([
+      Collection,
+      CollectionShare,
+      Workspace,
+      OrganizationUser,
+      UserPlugin,
+    ]),
     UsersModule,
     NotificationsModule,
     SubscriptionsModule,
