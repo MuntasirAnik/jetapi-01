@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Collection } from '../collections/collection.entity';
 import { Organization } from '../organizations/organization.entity';
+import { WorkspaceUser } from './workspace-user.entity';
 
 @Entity()
 export class Workspace {
@@ -13,8 +14,14 @@ export class Workspace {
   @Column({ nullable: true })
   description: string;
 
+  @Column({ default: 'TEAM' })
+  visibility: string; // 'PERSONAL', 'TEAM', 'PARTNER', 'PUBLIC'
+
   @OneToMany(() => Collection, (collection) => collection.workspace, { cascade: true })
   collections: Collection[];
+
+  @OneToMany(() => WorkspaceUser, (wsUser) => wsUser.workspace, { cascade: true })
+  members: WorkspaceUser[];
 
   @Column()
   organizationId: string;

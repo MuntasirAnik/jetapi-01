@@ -6,6 +6,7 @@ import { X, Save, Search, Folder, ChevronRight, ChevronDown, Plus, FolderPlus, L
 import dynamic from "next/dynamic";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 import Sidebar from "@/components/Sidebar";
+import InvitationBanner from "@/components/InvitationBanner";
 import RequestPanel from "@/components/RequestPanel";
 import ResponsePanel from "@/components/ResponsePanel";
 // Dynamically import non-critical panels to reduce initial JS bundle
@@ -660,6 +661,9 @@ export default function Home() {
 
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
+
+        {/* Invitation Banner */}
+        <InvitationBanner />
 
         <div className="flex flex-1 flex-col overflow-hidden" ref={containerRef}>
           {/* Tab Bar */}

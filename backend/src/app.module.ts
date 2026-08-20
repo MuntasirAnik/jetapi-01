@@ -9,6 +9,7 @@ import { CollectionsModule } from './collections/collections.module';
 import { RequestsModule } from './requests/requests.module';
 import { ProxyModule } from './proxy/proxy.module';
 import { Workspace } from './workspaces/workspace.entity';
+import { WorkspaceUser } from './workspaces/workspace-user.entity';
 import { Collection } from './collections/collection.entity';
 import { CollectionShare } from './collections/collection-share.entity';
 import { RequestItem } from './requests/request.entity';
@@ -20,6 +21,8 @@ import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { Organization } from './organizations/organization.entity';
 import { OrganizationUser } from './organizations/organization-user.entity';
+import { InviteLink } from './organizations/invite-link.entity';
+import { Invitation } from './organizations/invitation.entity';
 import { Notification } from './notifications/notification.entity';
 import { NotificationsModule } from './notifications/notifications.module';
 import { InitModule } from './init/init.module';
@@ -65,7 +68,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
               rejectUnauthorized: false,
             },
           },
-          entities: [Workspace, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, Notification, Activity, Comment, PlanOverride, Plan, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket, Plugin, UserPlugin],
+          entities: [Workspace, WorkspaceUser, Collection, CollectionShare, RequestItem, Environment, User, Organization, OrganizationUser, InviteLink, Invitation, Notification, Activity, Comment, PlanOverride, Plan, Subscription, Payment, Banner, AuditLog, SystemSetting, Changelog, FeedbackTicket, Plugin, UserPlugin],
           synchronize: true, // Use carefully in production
         };
       },

@@ -2,7 +2,8 @@
 import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
-import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink } from "lucide-react";
+import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink, UserPlus, X as XIcon, Loader2 } from "lucide-react";
+import { toast } from "react-toastify";
 import dynamic from 'next/dynamic';
 const EnvironmentManager = dynamic(() => import('./EnvironmentManager'), { ssr: false });
 const TeamSettingsModal = dynamic(() => import('./TeamSettingsModal'), { ssr: false });
@@ -373,9 +374,9 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                       notifications.map(n => (
                         <div 
                            key={n.id} 
-                           className={`px-4 py-3 border-b border-[var(--border)] last:border-0 hover:bg-[var(--sidebar)]/50 transition-colors cursor-pointer flex flex-col gap-1 ${!n.isRead ? 'bg-[var(--color-brand-500)]/5' : ''}`}
+                           className={`px-4 py-3 border-b border-[var(--border)] last:border-0 hover:bg-[var(--sidebar)]/50 transition-colors flex flex-col gap-1.5 ${!n.isRead ? 'bg-[var(--color-brand-500)]/5' : ''}`}
                            onClick={async () => {
-                             if (!n.isRead) {
+                             if (!n.isRead && n.type !== 'TEAM_INVITE') {
                                await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
                                setNotifications(notifications.map(x => x.id === n.id ? { ...x, isRead: true } : x));
                              }
@@ -387,6 +388,42 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                           <span className="text-[10px] text-[var(--muted)] opacity-70">
                             {new Date(n.createdAt).toLocaleDateString()}
                           </span>
+                          {/* Accept/Decline buttons for team invitations */}
+                          {n.type === 'TEAM_INVITE' && n.metadata?.invitationId && !n.isRead && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await apiFetch(`/organizations/invitations/${n.metadata.invitationId}/accept`, { method: 'POST' });
+                                    if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed'); }
+                                    toast.success(`You've joined ${n.metadata.organizationName || 'the team'}!`);
+                                    await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
+                                    setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x));
+                                    window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+                                  } catch (err: any) { toast.error(err.message); }
+                                }}
+                                className="flex items-center gap-1 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-2.5 py-1 rounded text-[10px] font-semibold transition-colors"
+                              >
+                                <Check className="w-3 h-3" /> Accept
+                              </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await apiFetch(`/organizations/invitations/${n.metadata.invitationId}/decline`, { method: 'POST' });
+                                    if (!res.ok) throw new Error('Failed');
+                                    toast.info('Invitation declined');
+                                    await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
+                                    setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x));
+                                  } catch (err: any) { toast.error(err.message); }
+                                }}
+                                className="flex items-center gap-1 text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded text-[10px] font-medium transition-colors"
+                              >
+                                <XIcon className="w-3 h-3" /> Decline
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}

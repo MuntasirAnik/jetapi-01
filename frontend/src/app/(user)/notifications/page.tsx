@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import {
   Bell, Check, CheckCheck, Trash2, Loader2, ChevronLeft, ChevronRight,
-  Filter, Inbox, BellOff, X,
+  Filter, Inbox, BellOff, X, UserPlus, Users,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import UserSidebar from "@/components/UserSidebar";
@@ -338,6 +338,51 @@ export default function NotificationsPage() {
                       <p className="text-[10px] text-[var(--muted)] mt-1 opacity-70">
                         {formatDate(n.createdAt)}
                       </p>
+                      {/* Accept/Decline buttons for team invitations */}
+                      {(n as any).type === 'TEAM_INVITE' && (n as any).metadata?.invitationId && !n.isRead && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setActionLoading(n.id);
+                              try {
+                                const res = await apiFetch(`/organizations/invitations/${(n as any).metadata.invitationId}/accept`, { method: 'POST' });
+                                if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Failed'); }
+                                toast.success(`You've joined ${(n as any).metadata.organizationName || 'the team'}!`);
+                                await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
+                                setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x));
+                                setUnreadCount(c => Math.max(0, c - 1));
+                                window.dispatchEvent(new Event('postclone-refresh-sidebar'));
+                              } catch (err: any) { toast.error(err.message); }
+                              finally { setActionLoading(null); }
+                            }}
+                            disabled={actionLoading === n.id}
+                            className="flex items-center gap-1 bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+                          >
+                            {actionLoading === n.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                            Accept Invitation
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setActionLoading(n.id);
+                              try {
+                                const res = await apiFetch(`/organizations/invitations/${(n as any).metadata.invitationId}/decline`, { method: 'POST' });
+                                if (!res.ok) throw new Error('Failed');
+                                toast.info('Invitation declined');
+                                await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
+                                setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x));
+                                setUnreadCount(c => Math.max(0, c - 1));
+                              } catch (err: any) { toast.error(err.message); }
+                              finally { setActionLoading(null); }
+                            }}
+                            disabled={actionLoading === n.id}
+                            className="flex items-center gap-1 text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            <X className="w-3 h-3" /> Decline
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}

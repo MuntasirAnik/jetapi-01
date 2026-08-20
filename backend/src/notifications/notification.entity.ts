@@ -9,6 +9,12 @@ export class Notification {
   @Column()
   message: string;
 
+  @Column({ default: 'GENERAL' })
+  type: string; // 'GENERAL', 'TEAM_INVITE', 'TEAM_INVITE_ACCEPTED', 'TEAM_INVITE_DECLINED'
+
+  @Column({ type: 'simple-json', nullable: true, default: null })
+  metadata: any; // e.g. { invitationId: '...', organizationName: '...' }
+
   @Column({ default: false })
   isRead: boolean;
 

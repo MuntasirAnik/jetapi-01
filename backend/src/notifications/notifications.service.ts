@@ -10,8 +10,13 @@ export class NotificationsService {
     private readonly notificationRepository: Repository<Notification>,
   ) {}
 
-  async create(userId: string, message: string): Promise<Notification> {
-    const notification = this.notificationRepository.create({ userId, message });
+  async create(userId: string, message: string, type?: string, metadata?: any): Promise<Notification> {
+    const notification = this.notificationRepository.create({
+      userId,
+      message,
+      type: type || 'GENERAL',
+      metadata: metadata || null,
+    });
     return this.notificationRepository.save(notification);
   }
 
