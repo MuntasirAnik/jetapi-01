@@ -4,7 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Brackets } from 'typeorm';
 import { Workspace } from './workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
 
@@ -19,7 +19,7 @@ export class WorkspacesService {
 
   async create(data: Partial<Workspace>, userId: string): Promise<Workspace> {
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: data.organizationId, userId },
+      where: { organizationId: data.organizationId, userId, status: 'ACCEPTED' },
     });
     if (
       !membership ||
@@ -35,24 +35,54 @@ export class WorkspacesService {
 
   async findAllByOrg(orgId: string, userId: string): Promise<Workspace[]> {
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: orgId, userId },
+      where: { organizationId: orgId, userId, status: 'ACCEPTED' },
     });
     if (!membership) throw new ForbiddenException('Access denied');
 
-    const workspaces = await this.workspaceRepository.find({
-      where: { organizationId: orgId },
-    });
+    const isOrgAdminOrOwner = membership.role === 'OWNER' || membership.role === 'ADMIN';
 
-    if (workspaces.length === 0) return [];
-
-    const workspaceIds = workspaces.map((w) => w.id);
-    const collections = await this.workspaceRepository.manager
+    // Retrieve collections for these workspaces based on role
+    const collectionQuery = this.workspaceRepository.manager
       .getRepository('Collection')
       .createQueryBuilder('col')
       .leftJoinAndSelect('col.shares', 'share')
       .leftJoinAndSelect('share.user', 'sharedUser')
-      .where('col.workspaceId IN (:...workspaceIds)', { workspaceIds })
-      .getMany();
+      .leftJoinAndSelect('col.orgShares', 'orgShare');
+
+    if (!isOrgAdminOrOwner) {
+      collectionQuery.where(
+        new Brackets((qb) => {
+          qb.where('col.ownerId = :userId', { userId })
+            .orWhere('share.userId = :userId', { userId })
+            .orWhere('orgShare.organizationId = :orgId', { orgId });
+        }),
+      );
+    } else {
+      // For admin/owner, just fetch collections belonging to organization's workspaces
+      collectionQuery.where(
+        'col."workspaceId" IN (SELECT w.id FROM workspace w WHERE w."organizationId" = :orgId)',
+        { orgId },
+      );
+    }
+
+    const collections = await collectionQuery.getMany();
+    const accessibleWorkspaceIds = [...new Set(collections.map((c) => c.workspaceId).filter(Boolean))];
+
+    // Find the workspaces
+    let workspaces: Workspace[] = [];
+    if (isOrgAdminOrOwner) {
+      workspaces = await this.workspaceRepository.find({
+        where: { organizationId: orgId },
+      });
+    } else {
+      if (accessibleWorkspaceIds.length > 0) {
+        workspaces = await this.workspaceRepository.createQueryBuilder('ws')
+          .where('ws.organizationId = :orgId AND ws.id IN (:...accessibleWorkspaceIds)', { orgId, accessibleWorkspaceIds })
+          .getMany();
+      }
+    }
+
+    if (workspaces.length === 0) return [];
 
     const collectionIds = collections.map((c) => c.id);
     let requests: any[] = [];
@@ -86,16 +116,48 @@ export class WorkspacesService {
     if (!workspace) throw new NotFoundException('Workspace not found');
 
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: workspace.organizationId, userId },
+      where: { organizationId: workspace.organizationId, userId, status: 'ACCEPTED' },
     });
 
-    const collections = await this.workspaceRepository.manager
+    const isOrgAdminOrOwner = membership && (membership.role === 'OWNER' || membership.role === 'ADMIN');
+
+    // Retrieve collections for this workspace
+    const collectionQuery = this.workspaceRepository.manager
       .getRepository('Collection')
       .createQueryBuilder('col')
       .leftJoinAndSelect('col.shares', 'share')
       .leftJoinAndSelect('share.user', 'sharedUser')
-      .where('col.workspaceId = :id', { id })
-      .getMany();
+      .leftJoinAndSelect('col.orgShares', 'orgShare')
+      .leftJoinAndSelect('orgShare.organization', 'sharedOrg')
+      .where('col.workspaceId = :id', { id });
+
+    if (!isOrgAdminOrOwner) {
+      collectionQuery.andWhere(
+        new Brackets((qb) => {
+          qb.where('col.ownerId = :userId', { userId })
+            .orWhere('share.userId = :userId', { userId })
+            .orWhere('orgShare.organizationId = :orgId', { orgId: workspace.organizationId });
+        }),
+      );
+    }
+
+    const collections = await collectionQuery.getMany();
+
+    const userOrgs = await this.orgUserRepo.find({ where: { userId, status: 'ACCEPTED' } });
+    const userOrgIds = userOrgs.map((ou) => ou.organizationId);
+
+    // Access check: must be owner/admin OR must have access to at least one collection
+    let hasAccess = isOrgAdminOrOwner;
+    if (!hasAccess) {
+      const hasSharedCollection = collections.some((c: any) =>
+        c.ownerId === userId ||
+        c.shares?.some((s: any) => s.userId === userId) ||
+        c.orgShares?.some((os: any) => userOrgIds.includes(os.organizationId))
+      );
+      hasAccess = hasSharedCollection;
+    }
+
+    if (!hasAccess) throw new ForbiddenException('Access denied');
 
     const collectionIds = collections.map((c) => c.id);
     let requests: any[] = [];
@@ -113,22 +175,6 @@ export class WorkspacesService {
 
     workspace.collections = collections as any;
 
-    let hasAccess = !!membership;
-    if (!hasAccess) {
-      const hasSharedCollection = workspace.collections?.some((c: any) =>
-        c.shares?.some((s: any) => s.userId === userId),
-      );
-      hasAccess = !!hasSharedCollection;
-    }
-
-    if (!hasAccess) throw new ForbiddenException('Access denied');
-
-    if (!membership && workspace.collections) {
-      workspace.collections = workspace.collections.filter((c: any) =>
-        c.shares?.some((s: any) => s.userId === userId),
-      ) as any;
-    }
-
     return workspace;
   }
 
@@ -140,7 +186,7 @@ export class WorkspacesService {
     const workspace = await this.findOne(id, userId);
 
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: workspace.organizationId, userId },
+      where: { organizationId: workspace.organizationId, userId, status: 'ACCEPTED' },
     });
     if (
       !membership ||
@@ -159,7 +205,7 @@ export class WorkspacesService {
     const workspace = await this.findOne(id, userId);
 
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: workspace.organizationId, userId },
+      where: { organizationId: workspace.organizationId, userId, status: 'ACCEPTED' },
     });
     if (!membership || membership.role !== 'OWNER') {
       throw new ForbiddenException('Only owners can delete workspaces');

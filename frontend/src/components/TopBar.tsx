@@ -2,6 +2,7 @@
 import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from 'next/navigation';
 import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink } from "lucide-react";
 import dynamic from 'next/dynamic';
 const EnvironmentManager = dynamic(() => import('./EnvironmentManager'), { ssr: false });
@@ -13,6 +14,7 @@ import ThemeToggle from "./ThemeToggle";
 import { useAppContext } from "@/lib/AppContext";
 
 export default function TopBar({ organizations = [], activeOrganizationId, onOrganizationChange, workspaceId, workspaces = [], onWorkspaceChange, activeEnvId, onEnvChange, onEnvRefresh, sharedCollections = [] }: any) {
+  const router = useRouter();
   const { confirmDialog, promptDialog } = useDialog();
   const { environments, setEnvironments, setEnvVariables, setActiveEnvId } = useAppContext();
   const [isManagerOpen, setIsManagerOpen] = useState(false);
@@ -204,10 +206,10 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
               {isOrgDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 w-64 bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl z-[9999] overflow-hidden flex flex-col">
                   <div className="max-h-64 overflow-y-auto p-1 flex flex-col gap-0.5">
-                     <div className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Teams</div>
-                     {organizations.map((org: any) => (
+                     <div key="teams-header" className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Teams</div>
+                     {organizations.map((org: any, idx: number) => (
                        <div 
-                         key={org.id}
+                         key={org.id || `org-${idx}`}
                          className={`flex items-center justify-between w-full px-2 py-2 rounded text-xs group transition-colors ${activeOrganizationId === org.id ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
                        >
                          <button
@@ -280,10 +282,10 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                      />
                   </div>
                   <div className="max-h-64 overflow-y-auto p-1 flex flex-col gap-0.5">
-                     <div className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Workspaces</div>
-                     {workspaces.filter((w: any) => (w.name || "").toLowerCase().includes(wsSearch.toLowerCase())).map((ws: any) => (
+                     <div key="workspaces-header" className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Workspaces</div>
+                     {workspaces.filter((w: any) => (w.name || "").toLowerCase().includes(wsSearch.toLowerCase())).map((ws: any, idx: number) => (
                        <div 
-                         key={ws.id}
+                         key={ws.id || `ws-${idx}`}
                          className={`flex items-center justify-between w-full px-2 py-2 rounded text-xs group transition-colors ${workspaceId === ws.id ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
                        >
                          <button
@@ -374,12 +376,14 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                         <div 
                            key={n.id} 
                            className={`px-4 py-3 border-b border-[var(--border)] last:border-0 hover:bg-[var(--sidebar)]/50 transition-colors cursor-pointer flex flex-col gap-1 ${!n.isRead ? 'bg-[var(--color-brand-500)]/5' : ''}`}
-                           onClick={async () => {
-                             if (!n.isRead) {
-                               await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
-                               setNotifications(notifications.map(x => x.id === n.id ? { ...x, isRead: true } : x));
-                             }
-                           }}
+                            onClick={async () => {
+                              if (!n.isRead) {
+                                await apiFetch(`/notifications/${n.id}/read`, { method: "PUT" });
+                                setNotifications(notifications.map(x => x.id === n.id ? { ...x, isRead: true } : x));
+                              }
+                              setIsNotificationsOpen(false);
+                              router.push('/notifications');
+                            }}
                         >
                           <span className={`text-xs ${!n.isRead ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'}`}>
                             {n.message}

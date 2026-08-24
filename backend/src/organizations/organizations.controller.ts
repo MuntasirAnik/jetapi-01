@@ -28,6 +28,21 @@ export class OrganizationsController {
     return this.organizationsService.findAllForUser(req.user.sub);
   }
 
+  @Get('pending')
+  findPending(@Request() req: any) {
+    return this.organizationsService.findAllPendingForUser(req.user.sub);
+  }
+
+  @Post('pending/:orgUserId/accept')
+  acceptInvite(@Param('orgUserId') orgUserId: string, @Request() req: any) {
+    return this.organizationsService.acceptInvite(orgUserId, req.user.sub);
+  }
+
+  @Post('pending/:orgUserId/decline')
+  declineInvite(@Param('orgUserId') orgUserId: string, @Request() req: any) {
+    return this.organizationsService.declineInvite(orgUserId, req.user.sub);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.organizationsService.findOne(id, req.user.sub);

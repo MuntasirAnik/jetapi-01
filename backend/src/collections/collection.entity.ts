@@ -12,6 +12,7 @@ import { Workspace } from '../workspaces/workspace.entity';
 import { RequestItem } from '../requests/request.entity';
 import { User } from '../users/user.entity';
 import { CollectionShare } from './collection-share.entity';
+import { CollectionOrgShare } from './collection-org-share.entity';
 
 @Entity()
 export class Collection {
@@ -50,11 +51,18 @@ export class Collection {
   })
   shares: CollectionShare[];
 
+  @OneToMany(() => CollectionOrgShare, (orgShare) => orgShare.collection, {
+    cascade: true,
+  })
+  orgShares: CollectionOrgShare[];
+
   @Column({ default: true })
   isActive: boolean;
 
   // Virtual property for backward compatibility — populated in service layer
   sharedUsers?: User[];
+
+  sharedOrganizations?: any[];
 
   @CreateDateColumn()
   createdAt: Date;

@@ -11,6 +11,7 @@ import { ProxyModule } from './proxy/proxy.module';
 import { Workspace } from './workspaces/workspace.entity';
 import { Collection } from './collections/collection.entity';
 import { CollectionShare } from './collections/collection-share.entity';
+import { CollectionOrgShare } from './collections/collection-org-share.entity';
 import { RequestItem } from './requests/request.entity';
 import { EnvironmentsModule } from './environments/environments.module';
 import { Environment } from './environments/environment.entity';
@@ -74,6 +75,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
             Workspace,
             Collection,
             CollectionShare,
+            CollectionOrgShare,
             RequestItem,
             Environment,
             User,

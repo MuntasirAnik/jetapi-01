@@ -130,4 +130,43 @@ export class CollectionsController {
   remove(@Param('id') id: string, @Request() req: any) {
     return this.collectionsService.remove(id, req.user.sub);
   }
+
+  @Post(':id/share-org')
+  shareOrg(
+    @Param('id') id: string,
+    @Body('organizationId') orgId: string,
+    @Body('role') role: 'viewer' | 'editor' | 'admin',
+    @Request() req: any,
+  ) {
+    return this.collectionsService.shareOrg(
+      id,
+      orgId,
+      req.user.sub,
+      role || 'viewer',
+    );
+  }
+
+  @Put(':id/share-org/:orgId')
+  updateShareOrgRole(
+    @Param('id') id: string,
+    @Param('orgId') orgId: string,
+    @Body('role') role: 'viewer' | 'editor' | 'admin',
+    @Request() req: any,
+  ) {
+    return this.collectionsService.updateShareOrgRole(
+      id,
+      orgId,
+      role,
+      req.user.sub,
+    );
+  }
+
+  @Delete(':id/share-org/:orgId')
+  unshareOrg(
+    @Param('id') id: string,
+    @Param('orgId') orgId: string,
+    @Request() req: any,
+  ) {
+    return this.collectionsService.unshareOrg(id, orgId, req.user.sub);
+  }
 }

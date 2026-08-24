@@ -122,12 +122,12 @@ export default function UserSidebar({ activePage, userName, activeTab, onTabChan
       </nav>
 
       <div className="mt-auto flex flex-col gap-2">
-        <button
-          onClick={() => router.push("/")}
-          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] flex items-center gap-2 border-t border-[var(--border)] pt-4 px-2"
+        <a
+          href="/"
+          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] flex items-center gap-2 border-t border-[var(--border)] pt-4 px-2 cursor-pointer"
         >
           <ChevronLeft className="w-4 h-4" /> Back to App
-        </button>
+        </a>
         <button
           onClick={handleLogout}
           className="text-sm text-red-500 hover:text-white hover:bg-red-500 flex items-center gap-2 px-2 py-2 rounded transition-colors mt-1"

@@ -21,28 +21,42 @@ export class InitService {
 
   async getInitData(userId: string) {
     // ═══════════════════════════════════════════════════════════════
-    // PHASE 1 — All independent queries fire simultaneously.
-    //   • orgUsers     → depends on nothing
-    //   • colIds       → depends on nothing (single query replaces two)
+    // PHASE 1 — All independent queries fire.
     // ═══════════════════════════════════════════════════════════════
-    const [orgUsers, accessibleColIds] = await Promise.all([
-      this.orgUserRepo.find({
-        where: { userId },
-        relations: ['organization'],
-      }),
-
-      // Single query: owned OR shared — replaces two separate queries
-      this.collectionRepo
-        .createQueryBuilder('col')
-        .leftJoin('col.shares', 'share')
-        .select('col.id')
-        .where('col.ownerId = :userId', { userId })
-        .orWhere('share.userId = :userId', { userId })
-        .getMany(),
-    ]);
+    const orgUsers = await this.orgUserRepo.find({
+      where: { userId, status: 'ACCEPTED' },
+      relations: ['organization'],
+    });
 
     const organizations = orgUsers.map((ou) => ou.organization);
-    const orgIds = organizations.map((o) => o.id);
+    const orgIds = [...new Set(organizations.map((o) => o.id))];
+
+    const adminOrgIds = [...new Set(orgUsers
+      .filter((ou) => ou.role === 'OWNER' || ou.role === 'ADMIN')
+      .map((ou) => ou.organizationId))];
+
+    const memberOrgIds = [...new Set(orgUsers
+      .filter((ou) => ou.role === 'MEMBER')
+      .map((ou) => ou.organizationId))];
+
+    const colQuery = this.collectionRepo
+      .createQueryBuilder('col')
+      .leftJoin('col.shares', 'share')
+      .leftJoin('col.orgShares', 'orgShare')
+      .select('col.id');
+
+    colQuery.where('col.ownerId = :userId', { userId })
+      .orWhere('share.userId = :userId', { userId });
+
+    if (adminOrgIds.length > 0) {
+      colQuery.orWhere('col."workspaceId" IN (SELECT w.id FROM workspace w WHERE w."organizationId" IN (:...adminOrgIds))', { adminOrgIds });
+    }
+
+    if (memberOrgIds.length > 0) {
+      colQuery.orWhere('orgShare.organizationId IN (:...memberOrgIds)', { memberOrgIds });
+    }
+
+    const accessibleColIds = await colQuery.getMany();
     const colIds = [...new Set(accessibleColIds.map((c) => c.id))];
 
     // Early exit — nothing to load
@@ -61,13 +75,34 @@ export class InitService {
     //   • collections  → needs colIds
     //   • requests     → needs colIds (independent of collections!)
     // ═══════════════════════════════════════════════════════════════
-    const [workspaces, collections, requests] = await Promise.all([
+    const [workspaces, collections, requests]: [Workspace[], Collection[], any[]] = await Promise.all([
       orgIds.length > 0
-        ? this.workspaceRepo
-            .createQueryBuilder('ws')
-            .where('ws.organizationId IN (:...orgIds)', { orgIds })
-            .getMany()
-        : [],
+        ? (async () => {
+            if (adminOrgIds.length === 0 && colIds.length === 0) {
+              return [];
+            }
+
+            const query = this.workspaceRepo.createQueryBuilder('ws');
+            let hasCondition = false;
+
+            if (adminOrgIds.length > 0) {
+              query.where('ws.organizationId IN (:...adminOrgIds)', { adminOrgIds });
+              hasCondition = true;
+            }
+
+            if (memberOrgIds.length > 0 && colIds.length > 0) {
+              const memberWsClause = 'ws.organizationId IN (:...memberOrgIds) AND ws.id IN (SELECT col."workspaceId" FROM collection col WHERE col.id IN (:...colIds))';
+              const params = { memberOrgIds, colIds };
+              if (hasCondition) {
+                query.orWhere(memberWsClause, params);
+              } else {
+                query.where(memberWsClause, params);
+              }
+            }
+
+            return query.getMany();
+          })()
+        : Promise.resolve([]),
 
       colIds.length > 0
         ? this.collectionRepo
@@ -80,6 +115,8 @@ export class InitService {
               'sharedUser.name',
               'sharedUser.avatarMimeType',
             ])
+            .leftJoinAndSelect('col.orgShares', 'orgShare')
+            .leftJoinAndSelect('orgShare.organization', 'sharedOrg')
             .leftJoin('col.owner', 'owner')
             .addSelect([
               'owner.id',
@@ -97,8 +134,14 @@ export class InitService {
                   ...s.user,
                   shareRole: s.role,
                 })) as any;
-                // Strip shares array to reduce payload — frontend only uses sharedUsers
+                // Hydrate virtual sharedOrganizations from orgShares
+                c.sharedOrganizations = (c.orgShares || []).map((os) => ({
+                  ...os.organization,
+                  shareRole: os.role,
+                })) as any;
+                // Strip shares array to reduce payload
                 delete (c as any).shares;
+                delete (c as any).orgShares;
                 return c;
               }),
             )
@@ -177,14 +220,25 @@ export class InitService {
       ws.collections = (colsByWs.get(ws.id) || []) as any;
     }
 
-    // Shared collections: user has a share record but is NOT the owner
+    // Shared collections: user has a share record OR team share but is NOT the owner
     const sharedCollections = collections.filter(
-      (c) => c.ownerId !== userId && c.shares?.some((s) => s.userId === userId),
+      (c) => c.ownerId !== userId && (
+        c.sharedUsers?.some((s: any) => s.id === userId) ||
+        c.sharedOrganizations?.some((so: any) => orgIds.includes(so.id))
+      ),
+    );
+
+    const uniqueOrgs = organizations.filter((org, index, self) =>
+      self.findIndex((o) => o.id === org.id) === index
+    );
+
+    const uniqueWorkspaces = allWorkspaces.filter((ws, index, self) =>
+      self.findIndex((w) => w.id === ws.id) === index
     );
 
     return {
-      organizations,
-      workspaces: allWorkspaces,
+      organizations: uniqueOrgs,
+      workspaces: uniqueWorkspaces,
       sharedCollections,
       environments,
     };

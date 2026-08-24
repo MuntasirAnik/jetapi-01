@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import {
   Bell, Check, CheckCheck, Trash2, Loader2, ChevronLeft, ChevronRight,
-  Filter, Inbox, BellOff, X,
+  Filter, Inbox, BellOff, X, Users,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import UserSidebar from "@/components/UserSidebar";
+import { useAppContext } from "@/lib/AppContext";
+import { useDialog } from "@/components/DialogProvider";
 
 interface Notification {
   id: string;
@@ -28,6 +30,9 @@ interface PaginatedResponse {
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { refreshInit } = useAppContext();
+  const { confirmDialog } = useDialog();
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -40,6 +45,48 @@ export default function NotificationsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectAllRef = useRef<HTMLInputElement>(null);
+
+  // Pending Invites state
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [loadingInvites, setLoadingInvites] = useState(true);
+
+  const fetchPendingInvites = async () => {
+    try {
+      const res = await apiFetch("/organizations/pending");
+      if (res.ok) setPendingInvites(await res.json());
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingInvites(false);
+    }
+  };
+
+  const handleAcceptInvite = async (id: string, name: string) => {
+    try {
+      const res = await apiFetch(`/organizations/pending/${id}/accept`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to accept invite");
+      }
+      toast.success(`Joined team "${name}"!`);
+      fetchPendingInvites();
+      refreshInit();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleDeclineInvite = async (id: string, name: string) => {
+    if (!await confirmDialog(`Are you sure you want to decline the invitation to join "${name}"?`)) return;
+    try {
+      const res = await apiFetch(`/organizations/pending/${id}/decline`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      toast.success(`Declined invitation to join "${name}"`);
+      fetchPendingInvites();
+    } catch {
+      toast.error("Failed to decline invite");
+    }
+  };
 
   const fetchNotifications = useCallback(async (p: number, f: string) => {
     setLoading(true);
@@ -62,6 +109,7 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     fetchNotifications(page, filter);
+    fetchPendingInvites();
   }, [page, filter, fetchNotifications]);
 
   // Update select-all indeterminate state
@@ -206,6 +254,43 @@ export default function NotificationsPage() {
             )}
           </div>
 
+          {/* Pending Team Invitations */}
+          {pendingInvites.length > 0 && (
+            <div className="mb-6 bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm animate-in fade-in duration-300">
+              <h2 className="text-xs font-bold text-[var(--muted)] uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Users className="w-3.5 h-3.5 text-[var(--color-brand-500)]" />
+                Pending Team Invitations ({pendingInvites.length})
+              </h2>
+              <div className="flex flex-col gap-2">
+                {pendingInvites.map((invite: any) => (
+                  <div key={invite.id} className="flex items-center justify-between bg-[var(--sidebar)]/35 border border-[var(--border)]/40 p-3 rounded-lg text-sm">
+                    <div>
+                      <p className="font-semibold text-[var(--foreground)]">{invite.organization?.name}</p>
+                      <p className="text-xs text-[var(--muted)] flex items-center gap-1.5 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                        Invited to join as a Member
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleAcceptInvite(invite.id, invite.organization?.name)}
+                        className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Accept
+                      </button>
+                      <button
+                        onClick={() => handleDeclineInvite(invite.id, invite.organization?.name)}
+                        className="hover:bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" /> Decline
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Filter Tabs */}
           <div className="flex items-center gap-1 mb-4 bg-[var(--sidebar)] rounded-lg p-1 border border-[var(--border)]">
             {filterTabs.map(tab => (
@@ -335,6 +420,31 @@ export default function NotificationsPage() {
                       <p className={`text-sm leading-relaxed ${!n.isRead ? "text-[var(--foreground)] font-medium" : "text-[var(--muted)]"}`}>
                         {n.message}
                       </p>
+
+                      {(() => {
+                        const match = n.message.match(/You have been invited to join the team "(.*?)"/);
+                        const orgName = match ? match[1] : null;
+                        const invite = orgName ? pendingInvites.find((i: any) => i.organization?.name === orgName) : null;
+                        if (!invite) return null;
+
+                        return (
+                          <div className="flex items-center gap-2 mt-2 mb-1">
+                            <button
+                              onClick={() => handleAcceptInvite(invite.id, invite.organization?.name)}
+                              className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-colors"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Accept
+                            </button>
+                            <button
+                              onClick={() => handleDeclineInvite(invite.id, invite.organization?.name)}
+                              className="hover:bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" /> Decline
+                            </button>
+                          </div>
+                        );
+                      })()}
+
                       <p className="text-[10px] text-[var(--muted)] mt-1 opacity-70">
                         {formatDate(n.createdAt)}
                       </p>

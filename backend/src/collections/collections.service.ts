@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Collection } from './collection.entity';
 import { CollectionShare } from './collection-share.entity';
+import { CollectionOrgShare } from './collection-org-share.entity';
 import { UsersService } from '../users/users.service';
 import { Workspace } from '../workspaces/workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
@@ -20,6 +21,8 @@ export class CollectionsService {
     private readonly collectionRepository: Repository<Collection>,
     @InjectRepository(CollectionShare)
     private readonly shareRepository: Repository<CollectionShare>,
+    @InjectRepository(CollectionOrgShare)
+    private readonly orgShareRepository: Repository<CollectionOrgShare>,
     private readonly usersService: UsersService,
     @InjectRepository(Workspace)
     private readonly workspaceRepository: Repository<Workspace>,
@@ -44,6 +47,24 @@ export class CollectionsService {
           shareRole: s.role,
         };
       }) as any;
+    }
+    return collection;
+  }
+
+  private hydrateSharedData(collection: Collection): Collection {
+    this.hydrateSharedUsers(collection);
+    if (collection.orgShares) {
+      collection.sharedOrganizations = collection.orgShares.map((os) => {
+        const {
+          ...safeOrg
+        } = (os.organization || {}) as any;
+        return {
+          ...safeOrg,
+          shareRole: os.role,
+        };
+      }) as any;
+    } else {
+      collection.sharedOrganizations = [];
     }
     return collection;
   }
@@ -79,6 +100,8 @@ export class CollectionsService {
         'sharedUser.name',
         'sharedUser.avatarMimeType',
       ])
+      .leftJoinAndSelect('collection.orgShares', 'orgShares')
+      .leftJoinAndSelect('orgShares.organization', 'sharedOrg')
       .leftJoin('collection.owner', 'owner')
       .addSelect([
         'owner.id',
@@ -93,29 +116,44 @@ export class CollectionsService {
       .where('collection.workspaceId = :workspaceId', { workspaceId })
       .getMany();
 
-    return collections.map((c) => this.hydrateSharedUsers(c));
+    return collections.map((c) => this.hydrateSharedData(c));
   }
 
   async findAll(
     userId: string,
     includeRequests: boolean = false,
   ): Promise<Collection[]> {
-    // Phase 1: Find IDs of owned + shared collections
-    const ownedCols = await this.collectionRepository.find({
-      where: { ownerId: userId },
-      select: ['id'],
-    });
-    const sharedCols = await this.shareRepository.find({
-      where: { userId },
-      select: ['collectionId'],
-    });
+    // Phase 1: Find IDs of owned + shared + team-shared collections based on roles
+    const orgMemberships = await this.orgUserRepo.find({ where: { userId, status: 'ACCEPTED' } });
+    const orgIds = orgMemberships.map((om) => om.organizationId);
 
-    const allowedIds = [
-      ...new Set([
-        ...ownedCols.map((c) => c.id),
-        ...sharedCols.map((c) => c.collectionId),
-      ]),
-    ];
+    const adminOrgIds = orgMemberships
+      .filter((ou) => ou.role === 'OWNER' || ou.role === 'ADMIN')
+      .map((ou) => ou.organizationId);
+
+    const memberOrgIds = orgMemberships
+      .filter((ou) => ou.role === 'MEMBER')
+      .map((ou) => ou.organizationId);
+
+    const query = this.collectionRepository
+      .createQueryBuilder('col')
+      .leftJoin('col.shares', 'share')
+      .leftJoin('col.orgShares', 'orgShare')
+      .select('col.id');
+
+    query.where('col.ownerId = :userId', { userId })
+      .orWhere('share.userId = :userId', { userId });
+
+    if (adminOrgIds.length > 0) {
+      query.orWhere('col."workspaceId" IN (SELECT w.id FROM workspace w WHERE w."organizationId" IN (:...adminOrgIds))', { adminOrgIds });
+    }
+
+    if (memberOrgIds.length > 0) {
+      query.orWhere('orgShare.organizationId IN (:...memberOrgIds)', { memberOrgIds });
+    }
+
+    const accessibleColIds = await query.getMany();
+    const allowedIds = accessibleColIds.map((c) => c.id);
     if (allowedIds.length === 0) return [];
 
     // Phase 2: Fetch collections with shares
@@ -129,6 +167,8 @@ export class CollectionsService {
         'sharedUser.name',
         'sharedUser.avatarMimeType',
       ])
+      .leftJoinAndSelect('collection.orgShares', 'orgShares')
+      .leftJoinAndSelect('orgShares.organization', 'sharedOrg')
       .leftJoin('collection.owner', 'owner')
       .addSelect([
         'owner.id',
@@ -159,7 +199,7 @@ export class CollectionsService {
       });
     }
 
-    return collections.map((c) => this.hydrateSharedUsers(c));
+    return collections.map((c) => this.hydrateSharedData(c));
   }
 
   async findOne(
@@ -169,23 +209,26 @@ export class CollectionsService {
     const collection = await this.collectionRepository.findOne({
       where: { id },
       relationLoadStrategy: 'query',
-      relations: ['requests', 'shares', 'shares.user', 'workspace'],
+      relations: ['requests', 'shares', 'shares.user', 'orgShares', 'orgShares.organization', 'workspace'],
     });
 
     if (!collection) throw new NotFoundException('Collection not found');
-    this.hydrateSharedUsers(collection);
+    this.hydrateSharedData(collection);
     const workspace = await this.workspaceRepository.findOne({
       where: { id: collection.workspace.id },
     });
     if (!workspace) throw new NotFoundException('Workspace not found');
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: workspace.organizationId, userId },
+      where: { organizationId: workspace.organizationId, userId, status: 'ACCEPTED' },
     });
 
-    // Allow access if user is an org member OR has a share on this collection
-    const hasShare = collection.shares?.some((s) => s.userId === userId);
+    // Allow access if user is OWNER/ADMIN of organization OR owns collection OR has share OR shared with user's team
     const isOwner = collection.ownerId === userId;
-    if (!membership && !hasShare && !isOwner) {
+    const hasShare = collection.shares?.some((s) => s.userId === userId);
+    const hasOrgShare = collection.orgShares?.some((os) => os.organizationId === workspace.organizationId && membership);
+    const isOrgAdminOrOwner = membership && (membership.role === 'OWNER' || membership.role === 'ADMIN');
+
+    if (!isOwner && !hasShare && !hasOrgShare && !isOrgAdminOrOwner) {
       throw new ForbiddenException('Access denied');
     }
 
@@ -644,5 +687,118 @@ export class CollectionsService {
     });
 
     return this.collectionRepository.save(newCollection);
+  }
+
+  async shareOrg(
+    id: string,
+    orgId: string,
+    userId: string,
+    role: 'viewer' | 'editor' | 'admin' = 'viewer',
+  ): Promise<Collection> {
+    const { collection, membership } = await this.findOne(id, userId);
+
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException(
+        'You do not have permission to share this collection',
+      );
+    }
+
+    // Check if share already exists
+    const existing = await this.orgShareRepository.findOne({
+      where: { collectionId: id, organizationId: orgId },
+    });
+
+    if (existing) {
+      if (existing.role !== role) {
+        existing.role = role;
+        await this.orgShareRepository.save(existing);
+      }
+    } else {
+      const share = this.orgShareRepository.create({
+        collectionId: id,
+        organizationId: orgId,
+        role,
+      });
+      await this.orgShareRepository.save(share);
+
+      // Dispatch notifications to all users in the organization
+      const orgUsers = await this.orgUserRepo.find({ where: { organizationId: orgId, status: 'ACCEPTED' } });
+      for (const ou of orgUsers) {
+        if (ou.userId !== userId) {
+          await this.notificationsService.create(
+            ou.userId,
+            `Collection '${collection.name}' has been shared with your team`,
+          );
+        }
+      }
+    }
+
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
+  }
+
+  async unshareOrg(
+    id: string,
+    orgId: string,
+    userId: string,
+  ): Promise<Collection> {
+    const { collection, membership } = await this.findOne(id, userId);
+
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException(
+        'You do not have permission to manage access to this collection',
+      );
+    }
+
+    const shareRecord = await this.orgShareRepository.findOne({
+      where: { collectionId: id, organizationId: orgId },
+    });
+
+    if (shareRecord) {
+      await this.orgShareRepository.remove(shareRecord);
+
+      // Dispatch notifications to all users in the organization
+      const orgUsers = await this.orgUserRepo.find({ where: { organizationId: orgId, status: 'ACCEPTED' } });
+      for (const ou of orgUsers) {
+        if (ou.userId !== userId) {
+          await this.notificationsService.create(
+            ou.userId,
+            `Access to collection '${collection.name}' has been revoked from your team`,
+          );
+        }
+      }
+    }
+
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
+  }
+
+  async updateShareOrgRole(
+    id: string,
+    orgId: string,
+    newRole: 'viewer' | 'editor' | 'admin',
+    userId: string,
+  ): Promise<Collection> {
+    const { collection, membership } = await this.findOne(id, userId);
+
+    if (!this.canManageSharing(collection, membership, userId)) {
+      throw new ForbiddenException(
+        'You do not have permission to change roles on this collection',
+      );
+    }
+
+    const shareRecord = await this.orgShareRepository.findOne({
+      where: { collectionId: id, organizationId: orgId },
+    });
+
+    if (!shareRecord) {
+      throw new NotFoundException('Team is not shared on this collection');
+    }
+
+    shareRecord.role = newRole;
+    await this.orgShareRepository.save(shareRecord);
+
+    const { collection: updated } = await this.findOne(id, userId);
+    return updated;
   }
 }

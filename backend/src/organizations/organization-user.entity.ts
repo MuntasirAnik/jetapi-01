@@ -31,6 +31,16 @@ export class OrganizationUser {
   @Column({ default: 'MEMBER' })
   role: string; // 'OWNER', 'ADMIN', 'MEMBER'
 
+  @Column({ default: 'ACCEPTED' })
+  status: string; // 'PENDING', 'ACCEPTED'
+
+  @Column({ nullable: true })
+  invitedById: string;
+
+  @ManyToOne(() => User, undefined, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'invitedById' })
+  invitedBy: User;
+
   @CreateDateColumn()
   joinedAt: Date;
 }

@@ -6,6 +6,7 @@ import { CollectionsController } from './collections.controller';
 import { CollectionPluginsController } from './collection-plugins.controller';
 import { Collection } from './collection.entity';
 import { CollectionShare } from './collection-share.entity';
+import { CollectionOrgShare } from './collection-org-share.entity';
 import { UserPlugin } from './user-plugin.entity';
 import { Workspace } from '../workspaces/workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
@@ -18,6 +19,7 @@ import { AdminModule } from '../admin/admin.module';
     TypeOrmModule.forFeature([
       Collection,
       CollectionShare,
+      CollectionOrgShare,
       Workspace,
       OrganizationUser,
       UserPlugin,

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
-import { X, UserPlus, Trash2, ShieldCheck, Mail, Users, AlertCircle } from "lucide-react";
+import { X, UserPlus, Trash2, ShieldCheck, Mail, Users, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useDialog } from "./DialogProvider";
 
@@ -11,10 +11,24 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const [loading, setLoading] = useState(true);
   const [org, setOrg] = useState<any>(null);
   const [planData, setPlanData] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
+
+  const memberEmails = useMemo(() => new Set((users || []).map((u: any) => u.email)), [users]);
+
+  const filteredUsers = useMemo(() => {
+    if (!inviteEmail || !Array.isArray(allUsers)) return [];
+    const lowerQ = inviteEmail.toLowerCase();
+    const results = allUsers.filter(u => 
+      !memberEmails.has(u.email) && 
+      u.email && u.email.toLowerCase().includes(lowerQ)
+    );
+    return results.slice(0, 5);
+  }, [allUsers, inviteEmail, memberEmails]);
 
   const loadData = async (showLoading = true) => {
     try {
@@ -55,6 +69,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail) return;
+    setSaving(true);
     try {
       const res = await apiFetch(`/organizations/${organizationId}/invite`, {
         method: "POST",
@@ -72,6 +87,8 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
       loadData(false);
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -200,30 +217,45 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
 
           {/* Invitation Flow */}
           {isOwnerOrAdmin && (
-            <div className="opacity-60 cursor-not-allowed">
+            <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold">Invite Team Members</h3>
-                <span className="text-[10px] bg-[var(--sidebar)] border border-[var(--border)] px-2 py-0.5 rounded text-[var(--muted)]">Coming Soon</span>
               </div>
-              <form onSubmit={(e) => e.preventDefault()} className="flex items-center gap-2 pointer-events-none">
+              <form onSubmit={handleInvite} className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Mail className="w-4 h-4 absolute left-3 top-2.5 text-[var(--muted)]" />
                   <input
                     type="email"
                     required
+                    list="invite-emails-list"
                     value={inviteEmail}
                     onChange={e => setInviteEmail(e.target.value)}
-                    disabled={true}
+                    onFocus={async () => {
+                      try {
+                        const res = await apiFetch(`/api/auth/users`);
+                        if (res.ok) setAllUsers(await res.json());
+                      } catch {}
+                    }}
+                    disabled={saving || isAtLimit}
                     placeholder="colleague@company.com"
                     className="w-full bg-[var(--sidebar)] border border-[var(--border)] rounded py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-[var(--color-brand-500)] disabled:opacity-50"
                   />
+                  <datalist id="invite-emails-list">
+                    {filteredUsers.map((user: any) => (
+                      <option key={user.id} value={user.email} />
+                    ))}
+                  </datalist>
                 </div>
                 <button
-                  type="button"
-                  disabled={true}
+                  type="submit"
+                  disabled={saving || isAtLimit || !inviteEmail}
                   className="bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  <UserPlus className="w-4 h-4" />
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
                   Invite
                 </button>
               </form>

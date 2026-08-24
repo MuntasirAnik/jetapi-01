@@ -146,12 +146,32 @@ export class AuthService {
 
   async register(name: string, email: string, pass: string) {
     const existing = await this.usersService.findOneByEmail(email);
-    if (existing) throw new BadRequestException('User already exists');
-
+    
     // Enforce password policy
     const policy = await this.getPasswordPolicy();
     const policyError = this.validatePasswordPolicy(pass, policy);
     if (policyError) throw new BadRequestException(policyError);
+
+    if (existing) {
+      if (existing.passwordHash === 'external-invite-no-password') {
+        const passwordHash = await bcrypt.hash(pass, 10);
+        await this.usersService.updateUser(existing.id, {
+          name,
+          passwordHash,
+        });
+        const updatedUser = await this.usersService.findOneById(existing.id);
+        if (!updatedUser) throw new BadRequestException('User not found');
+
+        // Auto-provision Personal Organization
+        await this.organizationsService.create(
+          { name: 'My Team', subscriptionTier: 'FREE' },
+          updatedUser.id,
+        );
+
+        return this.login(updatedUser);
+      }
+      throw new BadRequestException('User already exists');
+    }
 
     const passwordHash = await bcrypt.hash(pass, 10);
     const user = await this.usersService.create({ name, email, passwordHash });

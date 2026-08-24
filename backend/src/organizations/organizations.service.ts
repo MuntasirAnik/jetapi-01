@@ -11,6 +11,7 @@ import { Repository } from 'typeorm';
 import { Organization } from './organization.entity';
 import { OrganizationUser } from './organization-user.entity';
 import { User } from '../users/user.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class OrganizationsService {
@@ -21,6 +22,7 @@ export class OrganizationsService {
     private orgUserRepo: Repository<OrganizationUser>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -35,6 +37,7 @@ export class OrganizationsService {
       organizationId: savedOrg.id,
       userId: userId,
       role: 'OWNER',
+      status: 'ACCEPTED',
     });
     await this.orgUserRepo.save(orgUser);
 
@@ -43,7 +46,7 @@ export class OrganizationsService {
 
   async findAllForUser(userId: string): Promise<Organization[]> {
     const orgUsers = await this.orgUserRepo.find({
-      where: { userId },
+      where: { userId, status: 'ACCEPTED' },
       relations: ['organization'],
     });
     return orgUsers.map((ou) => ou.organization);
@@ -51,7 +54,7 @@ export class OrganizationsService {
 
   async findOne(orgId: string, userId: string): Promise<Organization> {
     const membership = await this.orgUserRepo.findOne({
-      where: { organizationId: orgId, userId },
+      where: { organizationId: orgId, userId, status: 'ACCEPTED' },
     });
     if (!membership) {
       throw new ForbiddenException(
@@ -136,9 +139,14 @@ export class OrganizationsService {
       );
     }
 
-    const targetUser = await this.userRepo.findOne({ where: { email } });
+    let targetUser = await this.userRepo.findOne({ where: { email } });
     if (!targetUser) {
-      throw new NotFoundException('User with that email does not exist.');
+      targetUser = this.userRepo.create({
+        email,
+        name: email.split('@')[0],
+        passwordHash: 'external-invite-no-password',
+      });
+      targetUser = await this.userRepo.save(targetUser);
     }
 
     const existingMembership = await this.orgUserRepo.findOne({
@@ -154,9 +162,103 @@ export class OrganizationsService {
       organizationId: orgId,
       userId: targetUser.id,
       role: 'MEMBER',
+      status: 'PENDING',
+      invitedById: currentUserId,
     });
 
-    return this.orgUserRepo.save(newOrgUser);
+    const savedOrgUser = await this.orgUserRepo.save(newOrgUser);
+
+    try {
+      const sender = await this.userRepo.findOne({ where: { id: currentUserId } });
+      const senderName = sender?.name || sender?.email || 'Someone';
+      await this.notificationsService.create(
+        targetUser.id,
+        `You have been invited to join the team "${org.name}" by ${senderName}.`,
+      );
+    } catch (err) {
+      console.error('Failed to create invitation notification:', err);
+    }
+
+    return savedOrgUser;
+  }
+
+  async findAllPendingForUser(userId: string): Promise<any[]> {
+    const orgUsers = await this.orgUserRepo.find({
+      where: { userId, status: 'PENDING' },
+      relations: ['organization'],
+    });
+    return orgUsers.map((ou) => ({
+      id: ou.id,
+      organization: ou.organization,
+      role: ou.role,
+      joinedAt: ou.joinedAt,
+    }));
+  }
+
+  async acceptInvite(orgUserId: string, userId: string): Promise<any> {
+    const orgUser = await this.orgUserRepo.findOne({
+      where: { id: orgUserId, userId },
+      relations: ['organization'],
+    });
+    if (!orgUser) {
+      throw new NotFoundException('Invitation not found.');
+    }
+
+    // Billing check (respect per-org maxMembers setting)
+    const activeUsersCount = await this.orgUserRepo.count({
+      where: { organizationId: orgUser.organizationId, status: 'ACCEPTED' },
+    });
+    if (activeUsersCount >= orgUser.organization.maxMembers) {
+      throw new HttpException(
+        `This team is limited to ${orgUser.organization.maxMembers} members. Upgrades are required to accept.`,
+        402,
+      );
+    }
+
+    orgUser.status = 'ACCEPTED';
+    const saved = await this.orgUserRepo.save(orgUser);
+
+    if (orgUser.invitedById) {
+      try {
+        const acceptingUser = await this.userRepo.findOne({ where: { id: userId } });
+        const nameOrEmail = acceptingUser?.name || acceptingUser?.email || 'A user';
+        await this.notificationsService.create(
+          orgUser.invitedById,
+          `${nameOrEmail} has accepted your invitation to join the team "${orgUser.organization.name}".`,
+        );
+      } catch (err) {
+        console.error('Failed to send acceptance notification:', err);
+      }
+    }
+
+    return saved;
+  }
+
+  async declineInvite(orgUserId: string, userId: string): Promise<void> {
+    const orgUser = await this.orgUserRepo.findOne({
+      where: { id: orgUserId, userId },
+      relations: ['organization'],
+    });
+    if (!orgUser) {
+      throw new NotFoundException('Invitation not found.');
+    }
+    const invitedById = orgUser.invitedById;
+    const orgName = orgUser.organization?.name;
+
+    await this.orgUserRepo.remove(orgUser);
+
+    if (invitedById) {
+      try {
+        const decliningUser = await this.userRepo.findOne({ where: { id: userId } });
+        const nameOrEmail = decliningUser?.name || decliningUser?.email || 'A user';
+        await this.notificationsService.create(
+          invitedById,
+          `${nameOrEmail} has rejected your invitation to join the team "${orgName}".`,
+        );
+      } catch (err) {
+        console.error('Failed to send decline notification:', err);
+      }
+    }
   }
 
   async removeUser(

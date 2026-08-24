@@ -72,11 +72,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const cachedInit = localStorage.getItem('jetapi_init_cache');
       if (cachedInit) {
         const data = JSON.parse(cachedInit);
-        if (data.organizations) setOrganizations(data.organizations);
+        if (data.organizations) {
+          const uniqueOrgs = data.organizations.filter((org: any, index: number, self: any[]) =>
+            self.findIndex((o: any) => o.id === org.id) === index
+          );
+          setOrganizations(uniqueOrgs);
+        }
         if (data.activeOrganizationId) setActiveOrganizationId(data.activeOrganizationId);
         if (data.workspaces) {
-          setWorkspaces(data.workspaces);
-          setGlobalVariables(extractGlobalVars(data.workspaces));
+          const uniqueWs = data.workspaces.filter((ws: any, index: number, self: any[]) =>
+            self.findIndex((w: any) => w.id === ws.id) === index
+          );
+          setWorkspaces(uniqueWs);
+          setGlobalVariables(extractGlobalVars(uniqueWs));
         }
         if (data.activeWorkspaceId) setActiveWorkspaceId(data.activeWorkspaceId);
         if (data.sharedCollections) setSharedCollections(data.sharedCollections);
@@ -121,7 +129,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       // ── Organizations ──
-      const orgs = data.organizations || [];
+      const orgs = (data.organizations || []).filter((org: any, index: number, self: any[]) =>
+        self.findIndex((o: any) => o.id === org.id) === index
+      );
       setOrganizations(orgs);
 
       const savedOrg = localStorage.getItem("postclone_orgId");
@@ -132,7 +142,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // ── Workspaces ──
-      const allWs = data.workspaces || [];
+      const allWs = (data.workspaces || []).filter((ws: any, index: number, self: any[]) =>
+        self.findIndex((w: any) => w.id === ws.id) === index
+      );
       const orgWs = defaultOrgId ? allWs.filter((w: any) => w.organizationId === defaultOrgId) : [];
       // Shared workspaces = workspaces from other orgs (contain shared collections)
       const sharedWs = allWs.filter((w: any) => w.organizationId !== defaultOrgId);
@@ -146,7 +158,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({ name: "My Workspace", organizationId: defaultOrgId })
         });
         const newWs = await createRes.json();
-        setWorkspaces([newWs, ...sharedWs]);
+        const uniqueCombinedWs = [newWs, ...sharedWs].filter((ws: any, index: number, self: any[]) =>
+          self.findIndex((w: any) => w.id === ws.id) === index
+        );
+        setWorkspaces(uniqueCombinedWs);
         setActiveWorkspaceId(newWs.id);
       } else {
         setWorkspaces(combinedWs);
@@ -202,7 +217,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const fetchOrganizations = useCallback(() => {
     apiFetch("/organizations")
       .then(res => res.json())
-      .then(data => { if (Array.isArray(data)) setOrganizations(data); })
+      .then(data => {
+        if (Array.isArray(data)) {
+          const uniqueOrgs = data.filter((org: any, index: number, self: any[]) =>
+            self.findIndex((o: any) => o.id === org.id) === index
+          );
+          setOrganizations(uniqueOrgs);
+        }
+      })
       .catch(console.error);
   }, []);
 
@@ -210,7 +232,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!activeOrganizationId) return;
     apiFetch(`/workspaces?organizationId=${activeOrganizationId}`)
       .then(res => res.json())
-      .then(data => { if (Array.isArray(data)) setWorkspaces(data); })
+      .then(data => {
+        if (Array.isArray(data)) {
+          const uniqueWs = data.filter((ws: any, index: number, self: any[]) =>
+            self.findIndex((w: any) => w.id === ws.id) === index
+          );
+          setWorkspaces(uniqueWs);
+        }
+      })
       .catch(console.error);
   }, [activeOrganizationId]);
 

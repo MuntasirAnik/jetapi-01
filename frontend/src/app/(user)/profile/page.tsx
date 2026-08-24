@@ -18,7 +18,7 @@ import UserSidebar from "@/components/UserSidebar";
 
 export default function UserDashboard() {
   const router = useRouter();
-  const { activeOrganizationId, workspaces, sharedCollections: ctxSharedCollections, refreshInit } = useAppContext();
+  const { activeOrganizationId, workspaces, sharedCollections: ctxSharedCollections, refreshInit, organizations } = useAppContext();
   const { confirmDialog } = useDialog();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'collections' | 'access'>('overview');
@@ -48,6 +48,9 @@ export default function UserDashboard() {
   const [expandedSharedCols, setExpandedSharedCols] = useState<Record<string, boolean>>({});
   const [togglingColId, setTogglingColId] = useState<string | null>(null);
   const [expandedAccessCols, setExpandedAccessCols] = useState<Record<string, boolean>>({});
+  const [selectedTeams, setSelectedTeams] = useState<Record<string, string>>({});
+  const [shareTypes, setShareTypes] = useState<Record<string, 'people' | 'teams'>>({});
+  const [revokingOrgId, setRevokingOrgId] = useState<string | null>(null);
 
   // Password Change State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -195,20 +198,39 @@ export default function UserDashboard() {
   };
 
   const handleShare = async (colId: string) => {
-    const email = shareEmails[colId];
-    if (!email) return;
+    const shareType = shareTypes[colId] || 'people';
     const role = shareEmails[`${colId}_role`] || 'viewer';
     setSharingColId(colId);
     try {
-      const res = await apiFetch(`/collections/${colId}/share`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role })
-      });
-      if (!res.ok) throw new Error((await res.json()).message || "Share failed");
-      setShareEmails({ ...shareEmails, [colId]: "" });
+      if (shareType === 'teams') {
+        const orgId = selectedTeams[colId];
+        if (!orgId) throw new Error("Please select a team");
+        const res = await apiFetch(`/collections/${colId}/share-org`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationId: orgId, role })
+        });
+        if (!res.ok) throw new Error((await res.json()).message || "Share failed");
+        setSelectedTeams({ ...selectedTeams, [colId]: "" });
+        toast.success("Shared with team successfully");
+      } else {
+        const email = shareEmails[colId];
+        if (!email) return;
+        const res = await apiFetch(`/collections/${colId}/share`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, role })
+        });
+        if (!res.ok) throw new Error((await res.json()).message || "Share failed");
+        setShareEmails({ ...shareEmails, [colId]: "" });
+        toast.success("Shared successfully");
+      }
       refreshCollections();
-    } catch (err: any) { toast.error(err.message); }
-    finally { setSharingColId(null); }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSharingColId(null);
+    }
   };
 
   const handleUnshare = async (colId: string, userId: string) => {
@@ -219,6 +241,20 @@ export default function UserDashboard() {
       refreshCollections();
     } catch { toast.error("Revoke failed."); }
     finally { setRevokingUserId(null); }
+  };
+
+  const handleUnshareOrg = async (colId: string, orgId: string) => {
+    setRevokingOrgId(orgId);
+    try {
+      const res = await apiFetch(`/collections/${colId}/share-org/${orgId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Team access revoked");
+      refreshCollections();
+    } catch {
+      toast.error("Failed to revoke team access");
+    } finally {
+      setRevokingOrgId(null);
+    }
   };
 
   const handleToggleActive = async (colId: string, newActive: boolean) => {
@@ -899,17 +935,60 @@ export default function UserDashboard() {
                       <div className="border-t border-[var(--border)]">
                         {/* Share form for managers */}
                         {canManage && (
-                          <div className="bg-[var(--sidebar)]/30 px-4 py-2.5 border-b border-[var(--border)] flex justify-end">
-                            <form onSubmit={e => { e.preventDefault(); handleShare(col.id); }} className="flex gap-2 items-center">
-                              <div className="relative">
-                                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                                <input type="email" list={`sys-users-${col.id}`} placeholder="Email to share..." className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] w-48 font-medium placeholder-[var(--muted)]" value={shareEmails[col.id] || ''} onChange={(e) => setShareEmails({ ...shareEmails, [col.id]: e.target.value })} required />
-                                <datalist id={`sys-users-${col.id}`}>{systemUsers.filter(u => u.id !== col.ownerId && !col.sharedUsers?.some((su: any) => su.id === u.id)).map(u => (<option key={u.id} value={u.email} />))}</datalist>
-                              </div>
+                          <div className="bg-[var(--sidebar)]/30 px-4 py-2.5 border-b border-[var(--border)] flex flex-col md:flex-row gap-3 items-end md:items-center justify-between">
+                            {/* Share Mode Toggle */}
+                            <div className="flex bg-[var(--sidebar)] p-0.5 rounded border border-[var(--border)] text-[10px]">
+                              <button
+                                type="button"
+                                onClick={() => setShareTypes({ ...shareTypes, [col.id]: 'people' })}
+                                className={`px-2.5 py-1 rounded font-semibold transition-all ${
+                                  (shareTypes[col.id] || 'people') === 'people'
+                                    ? 'bg-[var(--background)] shadow text-[var(--foreground)]'
+                                    : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                                }`}
+                              >
+                                People
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShareTypes({ ...shareTypes, [col.id]: 'teams' })}
+                                className={`px-2.5 py-1 rounded font-semibold transition-all ${
+                                  shareTypes[col.id] === 'teams'
+                                    ? 'bg-[var(--background)] shadow text-[var(--foreground)]'
+                                    : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                                }`}
+                              >
+                                Teams
+                              </button>
+                            </div>
+
+                            <form onSubmit={e => { e.preventDefault(); handleShare(col.id); }} className="flex gap-2 items-center flex-wrap">
+                              {/* Form controls based on Share Mode */}
+                              {(shareTypes[col.id] || 'people') === 'teams' ? (
+                                <select
+                                  value={selectedTeams[col.id] || ''}
+                                  onChange={e => setSelectedTeams({ ...selectedTeams, [col.id]: e.target.value })}
+                                  className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md px-2.5 py-1.5 outline-none focus:border-[var(--color-brand-500)] font-medium text-[var(--foreground)] cursor-pointer w-48"
+                                  required
+                                >
+                                  <option value="">Select a team...</option>
+                                  {(organizations || []).map((o: any) => (
+                                    <option key={o.id} value={o.id}>{o.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="relative">
+                                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+                                  <input type="email" list={`sys-users-${col.id}`} placeholder="Email to share..." className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md pl-8 pr-3 py-1.5 outline-none focus:border-[var(--color-brand-500)] w-48 font-medium placeholder-[var(--muted)]" value={shareEmails[col.id] || ''} onChange={(e) => setShareEmails({ ...shareEmails, [col.id]: e.target.value })} required />
+                                  <datalist id={`sys-users-${col.id}`}>{systemUsers.filter(u => u.id !== col.ownerId && !col.sharedUsers?.some((su: any) => su.id === u.id)).map(u => (<option key={u.id} value={u.email} />))}</datalist>
+                                </div>
+                              )}
+                              
                               <select value={shareEmails[`${col.id}_role`] || 'viewer'} onChange={e => setShareEmails({ ...shareEmails, [`${col.id}_role`]: e.target.value })} className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-md px-2 py-1.5 outline-none focus:border-[var(--color-brand-500)] font-medium text-[var(--foreground)] cursor-pointer">
                                 <option value="viewer">Viewer</option><option value="editor">Editor</option><option value="admin">Admin</option>
                               </select>
-                              <button type="submit" disabled={!shareEmails[col.id] || sharingColId === col.id} className="bg-[var(--color-brand-500)] text-white px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1 disabled:opacity-50 min-w-[65px] justify-center">
+                              
+                              <button type="submit" disabled={(((shareTypes[col.id] || 'people') === 'teams') ? !selectedTeams[col.id] : !shareEmails[col.id]) || sharingColId === col.id} className="bg-[var(--color-brand-500)] text-white px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1 disabled:opacity-50 min-w-[65px] justify-center">
                                 {sharingColId === col.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><UserPlus className="w-3.5 h-3.5" /> Share</>}
                               </button>
                             </form>
@@ -934,6 +1013,52 @@ export default function UserDashboard() {
                               <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center gap-1 flex-shrink-0"><Crown className="w-2.5 h-2.5" /> Owner</span>
                             </div>
                           )}
+
+                          {/* Shared Teams */}
+                          {col.sharedOrganizations?.map((o: any) => (
+                            <div key={o.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 last:border-b-0 group">
+                              <div className="w-7 h-7 rounded-full bg-[var(--color-brand-500)]/10 flex items-center justify-center text-[9px] font-bold uppercase text-[var(--color-brand-500)] border border-[var(--color-brand-500)]/20 flex-shrink-0">
+                                <Users className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">{o.name} <span className="text-[10px] text-[var(--muted)] font-normal">(Team)</span></p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {canManage ? (
+                                  <>
+                                    <select 
+                                      value={o.shareRole || 'viewer'} 
+                                      onChange={async (e) => { 
+                                        try { 
+                                          const res = await apiFetch(`/collections/${col.id}/share-org/${o.id}`, { 
+                                            method: "PUT", 
+                                            headers: { "Content-Type": "application/json" }, 
+                                            body: JSON.stringify({ role: e.target.value }) 
+                                          }); 
+                                          if (!res.ok) throw new Error(); 
+                                          toast.success(`Team role updated`); 
+                                          refreshCollections(); 
+                                        } catch { 
+                                          toast.error("Failed to update team role"); 
+                                        } 
+                                      }} 
+                                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border-0 outline-none cursor-pointer ${o.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' : o.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}`}
+                                    >
+                                      <option value="viewer">Viewer</option>
+                                      <option value="editor">Editor</option>
+                                      <option value="admin">Admin</option>
+                                    </select>
+                                    <button onClick={() => handleUnshareOrg(col.id, o.id)} disabled={revokingOrgId === o.id} className="text-red-500 hover:bg-red-500 hover:text-white p-1 rounded transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100">
+                                      {revokingOrgId === o.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${o.shareRole === 'admin' ? 'bg-purple-500/10 text-purple-400' : o.shareRole === 'editor' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}`}>{o.shareRole || 'viewer'}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+
                           {/* Shared users */}
                           {col.sharedUsers?.filter((u: any) => u.id !== user.id || canManage).map((u: any) => (
                             <div key={u.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)]/50 last:border-b-0 group">
@@ -964,7 +1089,7 @@ export default function UserDashboard() {
                               </div>
                             </div>
                           ))}
-                          {(!col.sharedUsers || col.sharedUsers.length === 0) && (
+                          {(!col.sharedUsers || col.sharedUsers.length === 0) && (!col.sharedOrganizations || col.sharedOrganizations.length === 0) && (
                             <p className="text-xs text-[var(--muted)] italic px-4 py-3">Not shared with anyone.</p>
                           )}
                         </div>
