@@ -83,8 +83,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const uniqueWs = data.workspaces.filter((ws: any, index: number, self: any[]) =>
             self.findIndex((w: any) => w.id === ws.id) === index
           );
-          setWorkspaces(uniqueWs);
-          setGlobalVariables(extractGlobalVars(uniqueWs));
+
+          const localUserStr = localStorage.getItem("user");
+          const localUser = localUserStr ? JSON.parse(localUserStr) : null;
+          const activeOrg = (data.organizations || []).find((o: any) => o.id === data.activeOrganizationId);
+          const isPersonalOrg = activeOrg && localUser && activeOrg.ownerId === localUser.id;
+
+          const filteredWs = uniqueWs.filter((w: any) => {
+            if (w.organizationId === data.activeOrganizationId) return true;
+            if (isPersonalOrg && w.organizationId !== data.activeOrganizationId) return true;
+            return false;
+          });
+
+          setWorkspaces(filteredWs);
+          setGlobalVariables(extractGlobalVars(filteredWs));
         }
         if (data.activeWorkspaceId) setActiveWorkspaceId(data.activeWorkspaceId);
         if (data.sharedCollections) setSharedCollections(data.sharedCollections);
@@ -148,8 +160,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const orgWs = defaultOrgId ? allWs.filter((w: any) => w.organizationId === defaultOrgId) : [];
       // Shared workspaces = workspaces from other orgs (contain shared collections)
       const sharedWs = allWs.filter((w: any) => w.organizationId !== defaultOrgId);
-      // Combined: own org workspaces first, then shared ones
-      const combinedWs = [...orgWs, ...sharedWs];
+
+      const localUserStr = localStorage.getItem("user");
+      const localUser = localUserStr ? JSON.parse(localUserStr) : null;
+      const activeOrg = orgs.find((o: any) => o.id === defaultOrgId);
+      const isPersonalOrg = activeOrg && localUser && activeOrg.ownerId === localUser.id;
+
+      // Combined: own org workspaces first. If it's a personal org, also append shared workspaces.
+      const combinedWs = isPersonalOrg ? [...orgWs, ...sharedWs] : orgWs;
 
       if (orgWs.length === 0 && defaultOrgId) {
         const createRes = await apiFetch("/workspaces", {
@@ -158,7 +176,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({ name: "My Workspace", organizationId: defaultOrgId })
         });
         const newWs = await createRes.json();
-        const uniqueCombinedWs = [newWs, ...sharedWs].filter((ws: any, index: number, self: any[]) =>
+        const rawCombined = isPersonalOrg ? [newWs, ...sharedWs] : [newWs];
+        const uniqueCombinedWs = rawCombined.filter((ws: any, index: number, self: any[]) =>
           self.findIndex((w: any) => w.id === ws.id) === index
         );
         setWorkspaces(uniqueCombinedWs);
