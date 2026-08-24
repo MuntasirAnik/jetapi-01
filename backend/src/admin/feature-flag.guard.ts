@@ -32,6 +32,7 @@ export class FeatureFlagGuard implements CanActivate {
     require_email_verification: false,
     allow_collection_upload: true,
     allow_variable_upload: true,
+    allow_messaging: true,
   };
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

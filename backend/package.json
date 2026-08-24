@@ -26,7 +26,9 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.2.1",
     "@nestjs/typeorm": "^11.0.0",
+    "@nestjs/websockets": "^11.2.1",
     "@types/compression": "^1.8.1",
     "@types/sharp": "^0.31.1",
     "axios": "^1.13.6",
@@ -39,6 +41,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
+    "socket.io": "^4.8.3",
     "sqlite3": "^5.1.7",
     "stripe": "^22.1.0",
     "typeorm": "^0.3.28"

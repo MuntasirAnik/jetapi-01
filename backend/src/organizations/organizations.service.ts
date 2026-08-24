@@ -103,6 +103,7 @@ export class OrganizationsService {
     return memberships.map((m) => ({
       id: m.userId,
       email: m.user.email,
+      name: m.user.name,
       role: m.role,
       joinedAt: m.joinedAt,
       avatarMimeType: m.user.avatarMimeType,

@@ -11,6 +11,7 @@ type FeatureFlags = {
   allow_collection_upload: boolean;
   allow_variable_upload: boolean;
   show_announcements: boolean;
+  allow_messaging: boolean;
   [key: string]: boolean;
 };
 
@@ -23,6 +24,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   allow_collection_upload: true,
   allow_variable_upload: true,
   show_announcements: true,
+  allow_messaging: true,
 };
 
 const FeatureFlagContext = createContext<FeatureFlags>(DEFAULT_FLAGS);

@@ -42,6 +42,8 @@ import { Payment } from './subscriptions/payment.entity';
 import { Plan } from './subscriptions/plan.entity';
 import { ApiHit } from './admin/api-hit.entity';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { Message } from './chat/message.entity';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -96,6 +98,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
             Plugin,
             UserPlugin,
             ApiHit,
+            Message,
           ],
           synchronize: true, // Use carefully in production
         };
@@ -116,6 +119,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     CommentsModule,
     AdminModule,
     SubscriptionsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

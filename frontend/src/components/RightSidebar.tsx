@@ -1,10 +1,14 @@
-import { Code2, FileText, MessageSquare, Info, Layers, ArrowLeftRight } from "lucide-react";
+import { Code2, FileText, MessageSquare, MessageCircle, Info, Layers, ArrowLeftRight } from "lucide-react";
 import { toast } from "react-toastify";
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: { activeTab?: string, activePanel: string | null, onTogglePanel: (p: string) => void }) {
   const notImplemented = (name: string) => {
     toast.info(`${name} panel coming soon!`);
   };
+
+  const flags = useFeatureFlags();
+  const isChatEnabled = flags.allow_messaging !== false;
 
   return (
     <div className="w-10 bg-[var(--background)] border-l border-[var(--border)] flex flex-col items-center py-4 gap-3 flex-shrink-0 z-10 transition-all h-full">
@@ -21,6 +25,25 @@ export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: 
         title="Comments"
       >
         <MessageSquare className="w-[18px] h-[18px]" strokeWidth={2.5} />
+      </button>
+      <button 
+        onClick={() => {
+          if (!isChatEnabled) {
+            toast.warn("Chat is disabled by the administrator.");
+            return;
+          }
+          onTogglePanel("chat");
+        }}
+        className={`p-1.5 rounded transition-colors ${
+          !isChatEnabled 
+            ? 'opacity-40 cursor-not-allowed text-[var(--muted)]'
+            : activePanel === 'chat' 
+            ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' 
+            : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]'
+        }`} 
+        title={isChatEnabled ? "Workspace Chat" : "Workspace Chat (Disabled by Admin)"}
+      >
+        <MessageCircle className="w-[18px] h-[18px]" strokeWidth={2.5} />
       </button>
       <div className="w-4 h-[1px] bg-[var(--border)] my-1" />
       <button 

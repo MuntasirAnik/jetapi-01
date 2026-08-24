@@ -24,6 +24,25 @@ export default function FeedbackWidget() {
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
+  // Offset layout position if the right sidebar drawer panel is open
+  const [isShifted, setIsShifted] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkPanel = () => {
+      const hasPanel = document.body.classList.contains("right-panel-open");
+      setIsShifted(hasPanel);
+    };
+
+    checkPanel();
+
+    const observer = new MutationObserver(checkPanel);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+
+    return () => observer.disconnect();
+  }, []);
+
   const loadMyTickets = async () => {
     setLoadingTickets(true);
     try {
@@ -87,7 +106,9 @@ export default function FeedbackWidget() {
       {/* Floating Button */}
       <button
         onClick={() => { setIsOpen(true); setView("form"); setSelectedTicket(null); }}
-        className="fixed bottom-6 right-6 z-[900] w-12 h-12 rounded-full bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 btn-spring"
+        className={`fixed bottom-6 z-[900] w-12 h-12 rounded-full bg-[var(--color-brand-500)] hover:bg-[var(--color-brand-600)] text-white shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 btn-spring ${
+          isShifted ? 'right-[404px]' : 'right-6'
+        }`}
         title="Send Feedback"
       >
         <MessageSquare className="w-5 h-5" />

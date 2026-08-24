@@ -1174,6 +1174,11 @@ export class AdminService implements OnApplicationBootstrap {
       label: 'Announcements Ticker',
       description: 'Show the scrolling announcement ticker bar to all users',
     },
+    allow_messaging: {
+      enabled: true,
+      label: 'Workspace & Team Messaging',
+      description: 'Allow real-time group chat and DMs within workspaces and teams',
+    },
   };
 
   async getFeatureFlags() {

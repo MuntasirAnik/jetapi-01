@@ -14,6 +14,7 @@ const CodeSnippetPanel = dynamic(() => import("@/components/CodeSnippetPanel"), 
 const VariablesPanel = dynamic(() => import("@/components/VariablesPanel"), { ssr: false });
 const DocumentationPanel = dynamic(() => import("@/components/DocumentationPanel"), { ssr: false });
 const CommentsPanel = dynamic(() => import("@/components/CommentsPanel"), { ssr: false });
+const ChatPanel = dynamic(() => import("@/components/ChatPanel"), { ssr: false });
 const ResponseDiffPanel = dynamic(() => import("@/components/ResponseDiffPanel"), { ssr: false });
 const CommandPalette = dynamic(() => import("@/components/CommandPalette"), { ssr: false });
 import StyledSelect from "@/components/StyledSelect";
@@ -21,6 +22,8 @@ import { toast } from "react-toastify";
 import { useDialog } from "@/components/DialogProvider";
 import { useAppContext } from "@/lib/AppContext";
 import { runTestScript, TestResult } from "@/lib/testRunner";
+
+import { useFeatureFlags } from "@/lib/FeatureFlagContext";
 
 export default function Home() {
   const router = useRouter();
@@ -288,6 +291,21 @@ export default function Home() {
     isAppReady,
     globalVariables,
   } = useAppContext();
+
+  const flags = useFeatureFlags();
+  const isChatEnabled = flags.allow_messaging !== false;
+
+  // Toggle body class to signal layout shifts to overlays (e.g. FeedbackWidget)
+  useEffect(() => {
+    if (rightPanelOpen) {
+      document.body.classList.add("right-panel-open");
+    } else {
+      document.body.classList.remove("right-panel-open");
+    }
+    return () => {
+      document.body.classList.remove("right-panel-open");
+    };
+  }, [rightPanelOpen]);
 
   // Load pinned tabs from localStorage
   useEffect(() => {
@@ -1278,6 +1296,14 @@ export default function Home() {
       {rightPanelOpen === 'comments' && activeRequest && (
         <CommentsPanel
           request={activeRequest}
+          onClose={() => setRightPanelOpen(null)}
+        />
+      )}
+
+      {rightPanelOpen === 'chat' && isChatEnabled && activeWorkspaceId && (
+        <ChatPanel
+          workspaceId={activeWorkspaceId}
+          activeRequest={activeRequest}
           onClose={() => setRightPanelOpen(null)}
         />
       )}
