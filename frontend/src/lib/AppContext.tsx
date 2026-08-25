@@ -329,11 +329,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!activeOrganizationId) return;
     const token = localStorage.getItem("token");
-    if (!token) return;
+    const getSocketUrl = () => {
+      if (process.env.NEXT_PUBLIC_API_URL) {
+        return process.env.NEXT_PUBLIC_API_URL;
+      }
+      if (typeof window !== 'undefined') {
+        const { protocol, hostname, port } = window.location;
+        if (port === '3000') {
+          return `${protocol}//${hostname}:3001`;
+        }
+        return window.location.origin;
+      }
+      return "http://localhost:3001";
+    };
 
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001", {
+    const socket = io(getSocketUrl(), {
       auth: { token },
-      transports: ["websocket"],
+      transports: ["polling", "websocket"],
     });
 
     socket.on("connect", () => {
