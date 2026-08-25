@@ -350,20 +350,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return "http://localhost:3001";
     };
 
-    const socket = io(getSocketUrl(), {
+    const url = getSocketUrl();
+    console.log("[Socket AppContext] Initializing connection to:", url);
+
+    const socket = io(url, {
       auth: { token },
       transports: ["websocket"],
       path: "/api/socket.io",
     });
 
     socket.on("connect", () => {
+      console.log("[Socket AppContext] Connected successfully, socket ID:", socket.id);
       socket.emit("subscribe_notifications", {
         organizationId: activeOrganizationId,
         workspaceId: activeWorkspaceId || undefined,
       });
     });
 
+    socket.on("connect_error", (err) => {
+      console.error("[Socket AppContext] Connection error details:", err.message, err);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.warn("[Socket AppContext] Disconnected, reason:", reason);
+    });
+
     socket.on("notification", (data: any) => {
+      console.log("[Socket AppContext] Received notification event:", data);
       const localUserStr = localStorage.getItem("user");
       const localUser = localUserStr ? JSON.parse(localUserStr) : null;
       if (localUser && data.sender === localUser.id) return;
@@ -377,6 +390,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      console.log("[Socket AppContext] Cleaning up / disconnecting socket");
       socket.disconnect();
     };
   }, [activeOrganizationId, activeWorkspaceId]);

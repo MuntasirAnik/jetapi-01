@@ -137,7 +137,10 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
       return "http://localhost:3001";
     };
 
-    const socket = io(getSocketUrl(), {
+    const url = getSocketUrl();
+    console.log("[Socket ChatPanel] Initializing connection to:", url);
+
+    const socket = io(url, {
       auth: { token },
       transports: ["websocket"],
       path: "/api/socket.io",
@@ -146,10 +149,16 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      console.log("[Socket ChatPanel] Connected successfully, socket ID:", socket.id);
       setConnected(true);
     });
 
-    socket.on("disconnect", () => {
+    socket.on("connect_error", (err) => {
+      console.error("[Socket ChatPanel] Connection error details:", err.message, err);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.warn("[Socket ChatPanel] Disconnected, reason:", reason);
       setConnected(false);
     });
 
