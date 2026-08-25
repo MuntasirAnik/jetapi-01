@@ -5,6 +5,8 @@ import { OrganizationUser } from '../organizations/organization-user.entity';
 import { Workspace } from '../workspaces/workspace.entity';
 import { Collection } from '../collections/collection.entity';
 import { Environment } from '../environments/environment.entity';
+import { User } from '../users/user.entity';
+import { Organization } from '../organizations/organization.entity';
 
 @Injectable()
 export class InitService {
@@ -23,10 +25,43 @@ export class InitService {
     // ═══════════════════════════════════════════════════════════════
     // PHASE 1 — All independent queries fire.
     // ═══════════════════════════════════════════════════════════════
-    const orgUsers = await this.orgUserRepo.find({
+    let orgUsers = await this.orgUserRepo.find({
       where: { userId, status: 'ACCEPTED' },
       relations: ['organization'],
     });
+
+    if (orgUsers.length === 0) {
+      const userRepo = this.orgUserRepo.manager.getRepository(User);
+      const orgRepo = this.orgUserRepo.manager.getRepository(Organization);
+
+      const user = await userRepo.findOne({ where: { id: userId } });
+      const name = user?.name || user?.email?.split('@')[0] || 'Personal';
+
+      const newOrg = orgRepo.create({
+        name: `${name}'s Team`,
+        subscriptionTier: 'FREE',
+      });
+      const savedOrg = await orgRepo.save(newOrg);
+
+      const newOrgUser = this.orgUserRepo.create({
+        userId,
+        organizationId: savedOrg.id,
+        role: 'OWNER',
+        status: 'ACCEPTED',
+      });
+      await this.orgUserRepo.save(newOrgUser);
+
+      const newWs = this.workspaceRepo.create({
+        name: 'Default Workspace',
+        organizationId: savedOrg.id,
+      });
+      await this.workspaceRepo.save(newWs);
+
+      orgUsers = await this.orgUserRepo.find({
+        where: { userId, status: 'ACCEPTED' },
+        relations: ['organization'],
+      });
+    }
 
     const organizations = orgUsers.map((ou) => ou.organization);
     const orgIds = [...new Set(organizations.map((o) => o.id))];

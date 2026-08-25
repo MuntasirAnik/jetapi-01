@@ -117,8 +117,15 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
 
     const token = localStorage.getItem("token");
     const getSocketUrl = () => {
-      if (process.env.NEXT_PUBLIC_API_URL) {
-        return process.env.NEXT_PUBLIC_API_URL;
+      let url = process.env.NEXT_PUBLIC_API_URL || "";
+      if (url) {
+        if (url.endsWith('/')) {
+          url = url.slice(0, -1);
+        }
+        if (url.endsWith('/api')) {
+          url = url.slice(0, -4);
+        }
+        return url;
       }
       if (typeof window !== 'undefined') {
         const { protocol, hostname, port } = window.location;
