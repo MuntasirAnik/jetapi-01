@@ -47,7 +47,7 @@ export default function AnnouncementTicker() {
     if (!token) return;
 
     const fetchBanners = () => {
-      apiFetch("/banners/active")
+      apiFetch("/api/banners/active")
         .then(res => res.ok ? res.json() : [])
         .then((data: any[]) => {
           if (Array.isArray(data)) {

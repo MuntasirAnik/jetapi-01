@@ -21,6 +21,7 @@ import { ChatService } from './chat.service';
     origin: '*',
   },
   maxHttpBufferSize: 1e8, // 100MB
+  path: '/api/socket.io',
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
