@@ -2,7 +2,7 @@
 import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink } from "lucide-react";
 import dynamic from 'next/dynamic';
 const EnvironmentManager = dynamic(() => import('./EnvironmentManager'), { ssr: false });
@@ -15,6 +15,7 @@ import { useAppContext } from "@/lib/AppContext";
 
 export default function TopBar({ organizations = [], activeOrganizationId, onOrganizationChange, workspaceId, workspaces = [], onWorkspaceChange, activeEnvId, onEnvChange, onEnvRefresh, sharedCollections = [] }: any) {
   const router = useRouter();
+  const pathname = usePathname();
   const { confirmDialog, promptDialog } = useDialog();
   const { environments, setEnvironments, setEnvVariables, setActiveEnvId } = useAppContext();
   const [isManagerOpen, setIsManagerOpen] = useState(false);
@@ -191,8 +192,8 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
               <span>JetAPI</span>
             </a>
 
-           {/* Team & Workspace Dropdowns - hidden for admins */}
-           {organizations.length > 0 && localUser?.role !== 'SUPER_ADMIN' && localUser?.role !== 'ADMIN' ? (<>
+           {/* Team & Workspace Dropdowns - hidden on admin dashboard routes */}
+           {organizations.length > 0 && !pathname?.startsWith('/admin') ? (<>
            <div className="relative" ref={orgDropdownRef}>
               <div 
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded cursor-pointer transition-colors ${isOrgDropdownOpen ? 'bg-[var(--sidebar)] text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
