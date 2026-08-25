@@ -139,7 +139,7 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
 
     const socket = io(getSocketUrl(), {
       auth: { token },
-      transports: ["polling", "websocket"],
+      transports: ["websocket"],
       path: "/api/socket.io",
     });
 
