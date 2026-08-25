@@ -29,6 +29,8 @@ type AppContextType = {
   unreadRooms: string[];
   markRoomAsRead: (room: string) => void;
   clearUnreadMessages: () => void;
+  globalVariables: any[];
+
 };
 
 const AppContext = createContext<AppContextType | null>(null);
