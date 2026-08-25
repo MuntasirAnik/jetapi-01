@@ -20,7 +20,7 @@ export class User {
   @Column()
   passwordHash: string;
 
-  @Column({ type: 'bytea', nullable: true })
+  @Column({ type: 'bytea', nullable: true, select: false })
   avatarData: Buffer;
 
   @Column({ nullable: true })

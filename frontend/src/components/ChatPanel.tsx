@@ -14,6 +14,8 @@ interface MessageItem {
     id: string;
     name: string;
     email: string;
+    avatarMimeType?: string;
+    avatar?: string;
   };
   createdAt: string;
 }
@@ -122,32 +124,53 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
       setConnected(false);
     });
 
-    socket.on("chat_history", (history: MessageItem[]) => {
-      setMessages(history);
-      if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
+    socket.on("chat_history", (data: { roomName: string; history: MessageItem[] } | MessageItem[]) => {
+      if (Array.isArray(data)) {
+        setMessages(data);
+        if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
+      } else if (data && data.history) {
+        if (data.roomName === activeRoomRef.current) {
+          setMessages(data.history);
+          markRoomAsRead(data.roomName);
+        }
+      }
     });
 
-    socket.on("new_message", (msg: MessageItem) => {
-      setMessages((prev) => [...prev, msg]);
-      if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
+    socket.on("new_message", (msg: any) => {
+      // Check if message belongs to current room
+      if (msg.roomName && activeRoomRef.current) {
+        if (msg.roomName === activeRoomRef.current) {
+          setMessages((prev) => [...prev, msg]);
+          markRoomAsRead(activeRoomRef.current);
+        }
+      } else {
+        setMessages((prev) => [...prev, msg]);
+        if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
+      }
     });
 
-    socket.on("message_edited", (data: { messageId: string; content: string; codeSnippet?: string }) => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === data.messageId
-            ? { ...msg, content: data.content, codeSnippet: data.codeSnippet }
-            : msg
-        )
-      );
+    socket.on("message_edited", (data: { roomName?: string; messageId: string; content: string; codeSnippet?: string }) => {
+      if (!data.roomName || data.roomName === activeRoomRef.current) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === data.messageId
+              ? { ...msg, content: data.content, codeSnippet: data.codeSnippet }
+              : msg
+          )
+        );
+      }
     });
 
-    socket.on("message_deleted", (data: { messageId: string }) => {
-      setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
+    socket.on("message_deleted", (data: { roomName?: string; messageId: string }) => {
+      if (!data.roomName || data.roomName === activeRoomRef.current) {
+        setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
+      }
     });
 
-    socket.on("presence_update", (data: { onlineUsers: string[] }) => {
-      setOnlineUsers(data.onlineUsers || []);
+    socket.on("presence_update", (data: { room?: string; organizationId?: string; onlineUsers: string[] }) => {
+      if (data?.onlineUsers) {
+        setOnlineUsers(data.onlineUsers);
+      }
     });
 
     return () => {
@@ -464,6 +487,7 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
             members.map((member) => {
               const dmRoomId = currentUser ? `dm_${[currentUser.id, member.id].sort().join('_')}` : '';
               const hasUnread = unreadRooms?.includes(dmRoomId);
+              const isOnline = onlineUsers.includes(member.id);
 
               return (
                 <button
@@ -471,17 +495,22 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
                   onClick={() => setActiveRecipient(member)}
                   className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-[var(--border)]/30 text-left transition-colors relative"
                 >
-                  {member.avatarMimeType || member.avatar ? (
-                    <img src={member.avatar || `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/auth/users/${member.id}/avatar`} alt="Avatar" className="w-7 h-7 rounded-full object-cover shrink-0 border border-[var(--brand-500)]/30" onError={(e) => { e.currentTarget.style.display = 'none'; if(e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex'; }} />
-                  ) : null}
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-brand-500)]/20 to-[var(--color-brand-600)]/20 border border-[var(--brand-500)]/30 flex items-center justify-center shrink-0" style={{ display: (member.avatarMimeType || member.avatar) ? 'none' : 'flex' }}>
-                    <span className="text-[9px] font-bold text-[var(--color-brand-500)]">{getInitials(member.name || member.email)}</span>
+                  <div className="relative shrink-0">
+                    {member.avatarMimeType || member.avatar ? (
+                      <img src={member.avatar || `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/auth/users/${member.id}/avatar`} alt="Avatar" className="w-7 h-7 rounded-full object-cover shrink-0 border border-[var(--brand-500)]/30" onError={(e) => { e.currentTarget.style.display = 'none'; if(e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex'; }} />
+                    ) : null}
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-brand-500)]/20 to-[var(--color-brand-600)]/20 border border-[var(--brand-500)]/30 flex items-center justify-center shrink-0" style={{ display: (member.avatarMimeType || member.avatar) ? 'none' : 'flex' }}>
+                      <span className="text-[9px] font-bold text-[var(--color-brand-500)]">{getInitials(member.name || member.email)}</span>
+                    </div>
+                    {isOnline && (
+                      <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border-[1.5px] border-[var(--sidebar)] rounded-full" title="Online" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={`text-xs truncate ${hasUnread ? 'font-bold text-[var(--foreground)]' : 'font-semibold text-[var(--foreground)]'}`}>
                       {member.name || member.email}
                     </p>
-                    <p className="text-[9px] text-[var(--muted)] truncate">{member.email}</p>
+                    <p className="text-[9px] text-[var(--muted)] truncate">{isOnline ? <span className="text-green-500 font-medium">Online</span> : member.email}</p>
                   </div>
                   {hasUnread && (
                     <span className="w-2 h-2 bg-red-500 rounded-full shrink-0"></span>

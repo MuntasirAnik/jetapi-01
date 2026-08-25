@@ -27,6 +27,14 @@ export class UsersService {
     return this.userRepository.findOneBy({ id });
   }
 
+  async findOneWithAvatar(id: string): Promise<User | null> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.avatarData')
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
   async create(user: Partial<User>): Promise<User> {
     const newUser = this.userRepository.create(user);
     return this.userRepository.save(user);

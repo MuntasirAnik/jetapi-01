@@ -153,7 +153,7 @@ export class AuthController {
 
   @Get('users/:id/avatar')
   async getAvatar(@Param('id') id: string, @Res() res: any) {
-    const user = await this.usersService.findOneById(id);
+    const user = await this.usersService.findOneWithAvatar(id);
     if (!user || !user.avatarData) {
       throw new NotFoundException('Avatar not found');
     }

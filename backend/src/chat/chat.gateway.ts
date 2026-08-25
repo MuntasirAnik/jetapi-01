@@ -20,13 +20,23 @@ import { ChatService } from './chat.service';
   cors: {
     origin: '*',
   },
+  maxHttpBufferSize: 1e8, // 100MB
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  // Track online users in each room: roomName -> Set of userId
-  private activeUsers = new Map<string, Set<string>>();
+  // Track socket to user mapping: socketId -> { userId: string, orgIds: Set<string>, rooms: Set<string> }
+  private socketData = new Map<string, { userId: string; orgIds: Set<string>; rooms: Set<string> }>();
+
+  // Track user to socket count: userId -> Set of socketIds
+  private userSockets = new Map<string, Set<string>>();
+
+  // Track online users per organization: orgId -> Set of userIds
+  private orgOnlineUsers = new Map<string, Set<string>>();
+
+  // Track online users per room: roomName -> Set of userIds
+  private roomOnlineUsers = new Map<string, Set<string>>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -49,45 +59,132 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return flags.allow_messaging !== undefined ? flags.allow_messaging : true;
   }
 
+  private async authenticateSocket(client: Socket): Promise<any> {
+    if (client.data.user) return client.data.user;
+    try {
+      const authHeader = client.handshake.headers.authorization;
+      const token = authHeader?.split(' ')[1] || client.handshake.auth?.token;
+      if (!token) return null;
+
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret: 'YOUR_SECRET_KEY',
+      });
+      client.data.user = payload;
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  private registerUserSocket(socketId: string, userId: string, orgId?: string) {
+    let sData = this.socketData.get(socketId);
+    if (!sData) {
+      sData = { userId, orgIds: new Set<string>(), rooms: new Set<string>() };
+      this.socketData.set(socketId, sData);
+    }
+    if (orgId) {
+      sData.orgIds.add(orgId);
+      let orgUsers = this.orgOnlineUsers.get(orgId);
+      if (!orgUsers) {
+        orgUsers = new Set<string>();
+        this.orgOnlineUsers.set(orgId, orgUsers);
+      }
+      orgUsers.add(userId);
+    }
+
+    let sockets = this.userSockets.get(userId);
+    if (!sockets) {
+      sockets = new Set<string>();
+      this.userSockets.set(userId, sockets);
+    }
+    sockets.add(socketId);
+  }
+
+  private broadcastOrgPresence(orgId: string) {
+    const online = Array.from(this.orgOnlineUsers.get(orgId) || []);
+    const payload = {
+      organizationId: orgId,
+      room: `team_${orgId}`,
+      onlineUsers: online,
+    };
+    this.server.to(`notify_org_${orgId}`).emit('presence_update', payload);
+    this.server.to(`team_${orgId}`).emit('presence_update', payload);
+  }
+
   async handleConnection(client: Socket) {
     try {
-      // ── Admin Override Check ──
       const isEnabled = await this.isMessagingEnabled();
       if (!isEnabled) {
         client.disconnect();
         return;
       }
 
-      const authHeader = client.handshake.headers.authorization;
-      const token = authHeader?.split(' ')[1] || client.handshake.auth?.token;
-      
-      if (!token) {
+      const user = await this.authenticateSocket(client);
+      if (!user) {
         client.disconnect();
         return;
       }
 
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: 'YOUR_SECRET_KEY',
-      });
-      client.data.user = payload;
+      this.registerUserSocket(client.id, user.sub);
     } catch (err) {
       client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    const user = client.data.user;
+    const sData = this.socketData.get(client.id);
+    if (!sData) return;
+
+    const { userId, orgIds, rooms } = sData;
+    this.socketData.delete(client.id);
+
+    // Remove socket from userSockets
+    const sockets = this.userSockets.get(userId);
+    if (sockets) {
+      sockets.delete(client.id);
+      if (sockets.size === 0) {
+        this.userSockets.delete(userId);
+
+        // User is fully offline: remove from all orgs and rooms
+        for (const orgId of orgIds) {
+          const orgUsers = this.orgOnlineUsers.get(orgId);
+          if (orgUsers) {
+            orgUsers.delete(userId);
+            this.broadcastOrgPresence(orgId);
+          }
+        }
+
+        for (const roomName of rooms) {
+          const roomUsers = this.roomOnlineUsers.get(roomName);
+          if (roomUsers) {
+            roomUsers.delete(userId);
+            this.server.to(roomName).emit('presence_update', {
+              room: roomName,
+              onlineUsers: Array.from(roomUsers),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  @SubscribeMessage('subscribe_notifications')
+  async handleSubscribeNotifications(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { organizationId?: string; workspaceId?: string }
+  ) {
+    const user = await this.authenticateSocket(client);
     if (!user) return;
 
-    // Clean up user from presence tracking across all rooms
-    for (const [roomName, usersSet] of this.activeUsers.entries()) {
-      if (usersSet.has(user.sub)) {
-        usersSet.delete(user.sub);
-        this.server.to(roomName).emit('presence_update', {
-          room: roomName,
-          onlineUsers: Array.from(usersSet),
-        });
-      }
+    this.registerUserSocket(client.id, user.sub, data.organizationId);
+
+    client.join(`notify_user_${user.sub}`);
+    if (data.organizationId) {
+      client.join(`notify_org_${data.organizationId}`);
+      this.broadcastOrgPresence(data.organizationId);
+    }
+    if (data.workspaceId) {
+      client.join(`notify_workspace_${data.workspaceId}`);
     }
   }
 
@@ -108,19 +205,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    const user = client.data.user;
+    const user = await this.authenticateSocket(client);
     if (!user || !data?.type) return;
+
+    this.registerUserSocket(client.id, user.sub, data.organizationId);
 
     let roomName = '';
     let history: any[] = [];
+    let effectiveOrgId = data.organizationId;
 
     if (data.type === 'team' && data.organizationId) {
       const membership = await this.orgUserRepo.findOne({
-        where: {
-          organizationId: data.organizationId,
-          userId: user.sub,
-          status: 'ACCEPTED',
-        },
+        where: [
+          { organizationId: data.organizationId, userId: user.sub },
+          { organizationId: data.organizationId, user: { id: user.sub } },
+        ],
       });
       if (!membership) return;
 
@@ -132,12 +231,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
       if (!workspace) return;
 
+      effectiveOrgId = workspace.organizationId;
       const membership = await this.orgUserRepo.findOne({
-        where: {
-          organizationId: workspace.organizationId,
-          userId: user.sub,
-          status: 'ACCEPTED',
-        },
+        where: [
+          { organizationId: workspace.organizationId, userId: user.sub },
+          { organizationId: workspace.organizationId, user: { id: user.sub } },
+        ],
       });
       if (!membership) return;
 
@@ -145,18 +244,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       history = await this.chatService.getWorkspaceMessages(data.workspaceId);
     } else if (data.type === 'dm' && data.recipientId && data.organizationId) {
       const senderMembership = await this.orgUserRepo.findOne({
-        where: {
-          organizationId: data.organizationId,
-          userId: user.sub,
-          status: 'ACCEPTED',
-        },
+        where: [
+          { organizationId: data.organizationId, userId: user.sub },
+          { organizationId: data.organizationId, user: { id: user.sub } },
+        ],
       });
       const recipientMembership = await this.orgUserRepo.findOne({
-        where: {
-          organizationId: data.organizationId,
-          userId: data.recipientId,
-          status: 'ACCEPTED',
-        },
+        where: [
+          { organizationId: data.organizationId, userId: data.recipientId },
+          { organizationId: data.organizationId, user: { id: data.recipientId } },
+        ],
       });
       if (!senderMembership || !recipientMembership) return;
 
@@ -169,18 +266,31 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.join(roomName);
 
-    let usersSet = this.activeUsers.get(roomName);
-    if (!usersSet) {
-      usersSet = new Set();
-      this.activeUsers.set(roomName, usersSet);
+    // Track room membership for socket
+    const sData = this.socketData.get(client.id);
+    if (sData) {
+      sData.rooms.add(roomName);
     }
-    usersSet.add(user.sub);
 
-    client.emit('chat_history', history);
+    let roomUsers = this.roomOnlineUsers.get(roomName);
+    if (!roomUsers) {
+      roomUsers = new Set<string>();
+      this.roomOnlineUsers.set(roomName, roomUsers);
+    }
+    roomUsers.add(user.sub);
+
+    // Emit chat history directly to the client
+    client.emit('chat_history', { roomName, history });
+
+    // Broadcast presence: For team chat, use the full list of online members in the organization
+    const orgOnline = effectiveOrgId
+      ? Array.from(this.orgOnlineUsers.get(effectiveOrgId) || [user.sub])
+      : Array.from(roomUsers);
 
     this.server.to(roomName).emit('presence_update', {
       room: roomName,
-      onlineUsers: Array.from(usersSet),
+      organizationId: effectiveOrgId,
+      onlineUsers: orgOnline,
     });
   }
 
@@ -194,13 +304,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.leave(data.roomName);
 
-    const usersSet = this.activeUsers.get(data.roomName);
-    if (usersSet && usersSet.has(user.sub)) {
-      usersSet.delete(user.sub);
-      this.server.to(data.roomName).emit('presence_update', {
-        room: data.roomName,
-        onlineUsers: Array.from(usersSet),
-      });
+    const sData = this.socketData.get(client.id);
+    if (sData) {
+      sData.rooms.delete(data.roomName);
+    }
+
+    const roomUsers = this.roomOnlineUsers.get(data.roomName);
+    if (roomUsers) {
+      roomUsers.delete(user.sub);
     }
   }
 
@@ -223,7 +334,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    const user = client.data.user;
+    const user = await this.authenticateSocket(client);
     if (!user || !data?.type || !data?.content) return;
 
     let roomName = '';
@@ -238,8 +349,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (!roomName) return;
 
-    const isJoined = client.rooms.has(roomName);
-    if (!isJoined) return;
+    // Ensure client has joined room
+    client.join(roomName);
 
     const savedMessage = await this.chatService.createMessage(
       user.sub,
@@ -250,10 +361,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       data.recipientId,
     );
 
-    this.server.to(roomName).emit('new_message', savedMessage);
+    // Attach roomName to payload for seamless frontend dispatching
+    const messagePayload = {
+      ...savedMessage,
+      roomName,
+    };
+
+    this.server.to(roomName).emit('new_message', messagePayload);
 
     // Also emit a notification for the dot indicator
-    const notifyPayload = { room: roomName, sender: user.sub };
+    const notifyPayload = { room: roomName, sender: user.sub, message: messagePayload };
     if (data.type === 'team' && data.organizationId) {
       this.server.to(`notify_org_${data.organizationId}`).emit('notification', notifyPayload);
     } else if (data.type === 'workspace' && data.workspaceId) {
@@ -261,28 +378,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } else if (data.type === 'dm' && data.recipientId) {
       this.server.to(`notify_user_${data.recipientId}`).emit('notification', notifyPayload);
     }
-  }
-
-  @SubscribeMessage('subscribe_notifications')
-  async handleSubscribeNotifications(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { organizationId?: string; workspaceId?: string }
-  ) {
-    let user = client.data.user;
-    if (!user) {
-      try {
-        const authHeader = client.handshake.headers.authorization;
-        const token = authHeader?.split(' ')[1] || client.handshake.auth?.token;
-        if (token) {
-          user = await this.jwtService.verifyAsync(token, { secret: 'YOUR_SECRET_KEY' });
-          client.data.user = user;
-        }
-      } catch (err) {}
-    }
-    if (!user) return;
-    client.join(`notify_user_${user.sub}`);
-    if (data.organizationId) client.join(`notify_org_${data.organizationId}`);
-    if (data.workspaceId) client.join(`notify_workspace_${data.workspaceId}`);
   }
 
   @SubscribeMessage('edit_message')
@@ -296,11 +391,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    const user = client.data.user;
+    const user = await this.authenticateSocket(client);
     if (!user || !data?.messageId || !data?.content || !data?.roomName) return;
 
-    const isJoined = client.rooms.has(data.roomName);
-    if (!isJoined) return;
+    client.join(data.roomName);
 
     try {
       const updated = await this.chatService.editMessage(
@@ -309,6 +403,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         data.content,
       );
       this.server.to(data.roomName).emit('message_edited', {
+        roomName: data.roomName,
         messageId: data.messageId,
         content: updated.content,
         codeSnippet: updated.codeSnippet,
@@ -329,15 +424,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    const user = client.data.user;
+    const user = await this.authenticateSocket(client);
     if (!user || !data?.messageId || !data?.roomName) return;
 
-    const isJoined = client.rooms.has(data.roomName);
-    if (!isJoined) return;
+    client.join(data.roomName);
 
     const success = await this.chatService.deleteMessage(data.messageId, user.sub);
     if (success) {
       this.server.to(data.roomName).emit('message_deleted', {
+        roomName: data.roomName,
         messageId: data.messageId,
       });
     } else {

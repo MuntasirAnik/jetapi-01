@@ -10,6 +10,15 @@ export class ChatService {
     private readonly messageRepo: Repository<Message>,
   ) {}
 
+  private sanitizeMessage(message: Message): Message {
+    if (!message) return message;
+    if (message.sender) {
+      const { passwordHash, avatarData, resetToken, resetTokenExpiry, ...cleanSender } = message.sender as any;
+      message.sender = cleanSender as any;
+    }
+    return message;
+  }
+
   async createMessage(
     senderId: string,
     content: string,
@@ -35,7 +44,7 @@ export class ChatService {
     if (!result) {
       throw new Error('Message not found after save');
     }
-    return result;
+    return this.sanitizeMessage(result);
   }
 
   async getWorkspaceMessages(workspaceId: string, limit = 50): Promise<Message[]> {
@@ -45,7 +54,7 @@ export class ChatService {
       order: { createdAt: 'DESC' },
       take: limit,
     });
-    return messages.reverse();
+    return messages.map((m) => this.sanitizeMessage(m)).reverse();
   }
 
   async getTeamMessages(organizationId: string, limit = 50): Promise<Message[]> {
@@ -59,7 +68,7 @@ export class ChatService {
       order: { createdAt: 'DESC' },
       take: limit,
     });
-    return messages.reverse();
+    return messages.map((m) => this.sanitizeMessage(m)).reverse();
   }
 
   async getDmMessages(userA: string, userB: string, limit = 50): Promise<Message[]> {
@@ -72,7 +81,7 @@ export class ChatService {
       order: { createdAt: 'DESC' },
       take: limit,
     });
-    return messages.reverse();
+    return messages.map((m) => this.sanitizeMessage(m)).reverse();
   }
 
   async editMessage(messageId: string, senderId: string, content: string): Promise<Message> {
@@ -84,11 +93,11 @@ export class ChatService {
       throw new Error('Message not found or unauthorized');
     }
     message.content = content;
-    // If it was a code snippet, we don't necessarily modify codeSnippet flag, or we can also update it:
     if (message.codeSnippet) {
       message.codeSnippet = content;
     }
-    return this.messageRepo.save(message);
+    const saved = await this.messageRepo.save(message);
+    return this.sanitizeMessage(saved);
   }
 
   async deleteMessage(messageId: string, senderId: string): Promise<boolean> {
