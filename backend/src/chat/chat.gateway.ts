@@ -439,4 +439,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Failed to delete message' });
     }
   }
+
+  @SubscribeMessage('react_message')
+  async handleReactMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { messageId: string; emoji: string; roomName: string },
+  ) {
+    const isEnabled = await this.isMessagingEnabled();
+    if (!isEnabled) {
+      client.emit('error', { message: 'Messaging is disabled by the administrator.' });
+      return;
+    }
+
+    const user = await this.authenticateSocket(client);
+    if (!user || !data?.messageId || !data?.emoji || !data?.roomName) return;
+
+    client.join(data.roomName);
+
+    try {
+      const updated = await this.chatService.toggleReaction(
+        data.messageId,
+        user.sub,
+        data.emoji,
+      );
+      this.server.to(data.roomName).emit('message_reacted', {
+        roomName: data.roomName,
+        messageId: data.messageId,
+        reactions: updated.reactions,
+      });
+    } catch (err) {
+      client.emit('error', { message: err.message });
+    }
+  }
 }

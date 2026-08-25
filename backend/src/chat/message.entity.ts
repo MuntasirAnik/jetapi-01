@@ -33,6 +33,9 @@ export class Message {
   @Column({ nullable: true })
   recipientId: string;
 
+  @Column({ type: 'jsonb', default: {} })
+  reactions: Record<string, string[]>;
+
   @CreateDateColumn()
   createdAt: Date;
 

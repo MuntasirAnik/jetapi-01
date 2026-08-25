@@ -18,6 +18,7 @@ interface MessageItem {
     avatar?: string;
   };
   createdAt: string;
+  reactions?: Record<string, string[]>;
 }
 
 export default function ChatPanel({ workspaceId, activeRequest, onClose }: { workspaceId: string; activeRequest: any; onClose: () => void }) {
@@ -33,6 +34,7 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
   
   // Direct Messages state
   const [members, setMembers] = useState<any[]>([]);
+  const [allMembers, setAllMembers] = useState<any[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [activeRecipient, setActiveRecipient] = useState<any | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -40,6 +42,10 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
   // Edit / Delete state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+
+  // Reactions state
+  const [activeReactionMenuId, setActiveReactionMenuId] = useState<string | null>(null);
+  const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "🔥", "🚀", "👀", "💯"];
 
   // Mention state
   const [showMentions, setShowMentions] = useState(false);
@@ -71,6 +77,7 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
       const res = await apiFetch(`/organizations/${activeOrganizationId}/users`);
       if (res.ok) {
         const users = await res.json();
+        setAllMembers(users);
         // Exclude current logged in user from DMs directory
         const localUserStr = localStorage.getItem("user");
         const localUser = localUserStr ? JSON.parse(localUserStr) : null;
@@ -164,6 +171,18 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
     socket.on("message_deleted", (data: { roomName?: string; messageId: string }) => {
       if (!data.roomName || data.roomName === activeRoomRef.current) {
         setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
+      }
+    });
+
+    socket.on("message_reacted", (data: { roomName?: string; messageId: string; reactions: Record<string, string[]> }) => {
+      if (!data.roomName || data.roomName === activeRoomRef.current) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === data.messageId
+              ? { ...msg, reactions: data.reactions }
+              : msg
+          )
+        );
       }
     });
 
@@ -266,6 +285,34 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
       messageId,
       roomName: getRoomName(),
     });
+  };
+
+  const toggleReaction = (messageId: string, emoji: string) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("react_message", {
+      messageId,
+      emoji,
+      roomName: getRoomName(),
+    });
+    setActiveReactionMenuId(null);
+  };
+
+  const getReactorNames = (userIds: string[]): string[] => {
+    return userIds.map((id) => {
+      if (currentUser && id === currentUser.id) return "You";
+      const member = allMembers.find((m) => m.id === id) || members.find((m) => m.id === id);
+      if (member) return member.name || member.email;
+      return "Teammate";
+    });
+  };
+
+  const formatReactorList = (userIds: string[]): string => {
+    const names = getReactorNames(userIds);
+    if (names.length === 0) return "";
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    if (names.length === 3) return `${names[0]}, ${names[1]}, and ${names[2]}`;
+    return `${names[0]}, ${names[1]}, and ${names.length - 2} others`;
   };
 
   // Handle autocomplete mentions lookup trigger
@@ -565,25 +612,92 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
                       <span>•</span>
                       <span>{msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</span>
                       
-                      {/* Action buttons directly in the header to prevent clipping */}
-                      {isMe && !isEditing && (
+                      {/* Header Action buttons */}
+                      {!isEditing && (
                         <div className="flex items-center gap-1 ml-1.5 opacity-60 hover:opacity-100 transition-opacity shrink-0">
-                          <button
-                            onClick={() => startEditing(msg)}
-                            className="hover:text-[var(--color-brand-500)] font-medium transition-colors cursor-pointer"
-                          >
-                            Edit
-                          </button>
-                          <span>|</span>
-                          <button
-                            onClick={() => emitDelete(msg.id)}
-                            className="hover:text-red-500 font-medium transition-colors cursor-pointer"
-                          >
-                            Delete
-                          </button>
+                          {isMe && (
+                            <>
+                              <button
+                                onClick={() => startEditing(msg)}
+                                className="hover:text-[var(--color-brand-500)] font-medium transition-colors cursor-pointer text-[9px]"
+                              >
+                                Edit
+                              </button>
+                              <span>|</span>
+                              <button
+                                onClick={() => emitDelete(msg.id)}
+                                className="hover:text-red-500 font-medium transition-colors cursor-pointer text-[9px]"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
+
+                    {/* Floating Quick Action Toolbar on Hover */}
+                    {!isEditing && (
+                      <div className={`absolute -top-3.5 ${isMe ? 'left-2' : 'right-2'} opacity-0 group-hover:opacity-100 transition-all duration-150 bg-[var(--card)] border border-[var(--border)] rounded-full shadow-md px-1.5 py-0.5 flex items-center gap-0.5 z-20`}>
+                        {/* Quick Reaction Emojis */}
+                        {["👍", "❤️", "🔥"].map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => toggleReaction(msg.id, emoji)}
+                            className="w-5 h-5 flex items-center justify-center hover:bg-[var(--border)]/50 rounded-full text-xs transition-transform hover:scale-125 select-none cursor-pointer"
+                            title={`React with ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        
+                        {/* More Emojis Picker Button */}
+                        <div className="relative">
+                          <button
+                            onClick={() => setActiveReactionMenuId(activeReactionMenuId === msg.id ? null : msg.id)}
+                            className={`w-5 h-5 flex items-center justify-center rounded-full hover:bg-[var(--border)]/50 text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-colors cursor-pointer ${activeReactionMenuId === msg.id ? 'text-[var(--color-brand-500)] bg-[var(--border)]/50' : ''}`}
+                            title="Add Reaction"
+                          >
+                            <Smile className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Full Quick Reactions Popup */}
+                          {activeReactionMenuId === msg.id && (
+                            <div className={`absolute bottom-full mb-1.5 z-30 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-xl p-1.5 flex items-center gap-1 ${isMe ? 'left-0' : 'right-0'}`}>
+                              {QUICK_REACTIONS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  onClick={() => toggleReaction(msg.id, emoji)}
+                                  className="w-6 h-6 flex items-center justify-center hover:bg-[var(--border)]/50 rounded text-xs transition-transform hover:scale-125 select-none cursor-pointer"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {isMe && (
+                          <>
+                            <div className="w-[1px] h-3 bg-[var(--border)] mx-0.5" />
+                            <button
+                              onClick={() => startEditing(msg)}
+                              className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-[var(--border)]/50 text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-colors cursor-pointer"
+                              title="Edit message"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => emitDelete(msg.id)}
+                              className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-[var(--border)]/50 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer"
+                              title="Delete message"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     {/* Chat Bubble / Edit Form */}
                     {isEditing ? (
@@ -626,6 +740,50 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
                           : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-tl-none'
                       }`}>
                         {formatMessageContent(msg.content)}
+                      </div>
+                    )}
+
+                    {/* Reaction Badges */}
+                    {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                      <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {Object.entries(msg.reactions).map(([emoji, userIds]) => {
+                          if (!Array.isArray(userIds) || userIds.length === 0) return null;
+                          const hasReacted = currentUser && userIds.includes(currentUser.id);
+                          const reactorNames = getReactorNames(userIds);
+
+                          return (
+                            <div key={emoji} className="relative group/pill">
+                              <button
+                                onClick={() => toggleReaction(msg.id, emoji)}
+                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] border transition-all select-none cursor-pointer ${
+                                  hasReacted
+                                    ? 'bg-[var(--color-brand-500)]/15 border-[var(--color-brand-500)]/50 text-[var(--color-brand-500)] font-semibold'
+                                    : 'bg-[var(--card)] border-[var(--border)] text-[var(--muted)] hover:border-[var(--color-brand-500)]/30 hover:text-[var(--foreground)]'
+                                }`}
+                              >
+                                <span>{emoji}</span>
+                                <span className="text-[9px] font-medium">{userIds.length}</span>
+                              </button>
+
+                              {/* Hover User List Tooltip */}
+                              <div className={`absolute bottom-full mb-1.5 hidden group-hover/pill:flex flex-col z-30 pointer-events-none ${isMe ? 'right-0 items-end' : 'left-0 items-start'}`}>
+                                <div className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-[10px] rounded-lg px-2 py-1 shadow-xl whitespace-nowrap flex flex-col gap-0.5 min-w-[100px] max-w-[200px]">
+                                  <div className="font-semibold flex items-center gap-1 text-[var(--color-brand-500)] pb-0.5 border-b border-[var(--border)]/50">
+                                    <span className="text-xs">{emoji}</span>
+                                    <span>{userIds.length} reaction{userIds.length > 1 ? 's' : ''}</span>
+                                  </div>
+                                  <div className="flex flex-col gap-0.5 pt-0.5 text-[9px]">
+                                    {reactorNames.map((name, i) => (
+                                      <span key={i} className="truncate font-medium text-[var(--foreground)]">
+                                        {name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

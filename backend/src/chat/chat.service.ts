@@ -100,6 +100,32 @@ export class ChatService {
     return this.sanitizeMessage(saved);
   }
 
+  async toggleReaction(messageId: string, userId: string, emoji: string): Promise<Message> {
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId },
+      relations: ['sender'],
+    });
+    if (!message) {
+      throw new Error('Message not found');
+    }
+    const reactions: Record<string, string[]> = message.reactions ? { ...message.reactions } : {};
+    let users = Array.isArray(reactions[emoji]) ? [...reactions[emoji]] : [];
+    if (users.includes(userId)) {
+      users = users.filter((id) => id !== userId);
+      if (users.length === 0) {
+        delete reactions[emoji];
+      } else {
+        reactions[emoji] = users;
+      }
+    } else {
+      users.push(userId);
+      reactions[emoji] = users;
+    }
+    message.reactions = reactions;
+    const saved = await this.messageRepo.save(message);
+    return this.sanitizeMessage(saved);
+  }
+
   async deleteMessage(messageId: string, senderId: string): Promise<boolean> {
     const result = await this.messageRepo.delete({ id: messageId, senderId });
     return (result.affected || 0) > 0;
