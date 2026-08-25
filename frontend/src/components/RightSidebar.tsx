@@ -1,8 +1,10 @@
 import { Code2, FileText, MessageSquare, MessageCircle, Info, Layers, ArrowLeftRight } from "lucide-react";
 import { toast } from "react-toastify";
 import { useFeatureFlags } from "@/lib/FeatureFlagContext";
+import { useAppContext } from "@/lib/AppContext";
 
 export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: { activeTab?: string, activePanel: string | null, onTogglePanel: (p: string) => void }) {
+  const appContext = useAppContext();
   const notImplemented = (name: string) => {
     toast.info(`${name} panel coming soon!`);
   };
@@ -34,7 +36,7 @@ export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: 
           }
           onTogglePanel("chat");
         }}
-        className={`p-1.5 rounded transition-colors ${
+        className={`p-1.5 rounded transition-colors relative ${
           !isChatEnabled 
             ? 'opacity-40 cursor-not-allowed text-[var(--muted)]'
             : activePanel === 'chat' 
@@ -44,6 +46,9 @@ export default function RightSidebar({ activeTab, activePanel, onTogglePanel }: 
         title={isChatEnabled ? "Workspace Chat" : "Workspace Chat (Disabled by Admin)"}
       >
         <MessageCircle className="w-[18px] h-[18px]" strokeWidth={2.5} />
+        {appContext?.hasUnreadMessages && activePanel !== 'chat' && (
+          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-[1.5px] border-[var(--background)]"></span>
+        )}
       </button>
       <div className="w-4 h-[1px] bg-[var(--border)] my-1" />
       <button 

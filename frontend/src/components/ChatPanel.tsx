@@ -19,7 +19,7 @@ interface MessageItem {
 }
 
 export default function ChatPanel({ workspaceId, activeRequest, onClose }: { workspaceId: string; activeRequest: any; onClose: () => void }) {
-  const { activeOrganizationId } = useAppContext();
+  const { activeOrganizationId, unreadRooms, markRoomAsRead } = useAppContext();
   
   const [activeTab, setActiveTab] = useState<'team' | 'workspace' | 'dm'>('workspace');
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -101,15 +101,12 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
     return '';
   };
 
-  // Establish and manage Socket rooms based on selected channels/users
+  // Establish and manage Socket connection
   useEffect(() => {
     if (!activeOrganizationId) return;
 
-    setMessages([]);
-    setOnlineUsers([]);
-
     const token = localStorage.getItem("token");
-    const socket = io("http://localhost:3001", {
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001", {
       auth: { token },
       transports: ["websocket"],
     });
@@ -118,13 +115,6 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
 
     socket.on("connect", () => {
       setConnected(true);
-      if (activeTab === 'team') {
-        socket.emit("join_room", { type: 'team', organizationId: activeOrganizationId });
-      } else if (activeTab === 'workspace' && workspaceId) {
-        socket.emit("join_room", { type: 'workspace', workspaceId });
-      } else if (activeTab === 'dm' && activeRecipient) {
-        socket.emit("join_room", { type: 'dm', recipientId: activeRecipient.id, organizationId: activeOrganizationId });
-      }
     });
 
     socket.on("disconnect", () => {
@@ -133,10 +123,14 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
 
     socket.on("chat_history", (history: MessageItem[]) => {
       setMessages(history);
+      const roomName = getRoomName();
+      if (roomName) markRoomAsRead(roomName);
     });
 
     socket.on("new_message", (msg: MessageItem) => {
       setMessages((prev) => [...prev, msg]);
+      const roomName = getRoomName();
+      if (roomName) markRoomAsRead(roomName);
     });
 
     socket.on("message_edited", (data: { messageId: string; content: string; codeSnippet?: string }) => {
@@ -158,13 +152,33 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
     });
 
     return () => {
-      const roomName = getRoomName();
-      if (roomName) {
-        socket.emit("leave_room", { roomName });
-      }
       socket.disconnect();
     };
-  }, [workspaceId, activeOrganizationId, activeTab, activeRecipient]);
+  }, [workspaceId, activeOrganizationId]);
+
+  // Manage room joining based on active tab
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !connected) return;
+
+    // Join new room
+    if (activeTab === 'team') {
+      socket.emit("join_room", { type: 'team', organizationId: activeOrganizationId });
+    } else if (activeTab === 'workspace' && workspaceId) {
+      socket.emit("join_room", { type: 'workspace', workspaceId });
+    } else if (activeTab === 'dm' && activeRecipient) {
+      socket.emit("join_room", { type: 'dm', recipientId: activeRecipient.id, organizationId: activeOrganizationId });
+    }
+
+    return () => {
+      const roomName = getRoomName();
+      if (roomName && socket) {
+        socket.emit("leave_room", { roomName });
+      }
+      setMessages([]);
+      setOnlineUsers([]);
+    };
+  }, [activeTab, activeRecipient, connected, activeOrganizationId, workspaceId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -382,21 +396,30 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
       <div className="flex border-b border-[var(--border)] bg-[var(--sidebar)]/40 p-1 gap-1 shrink-0">
         <button
           onClick={() => { setActiveTab('workspace'); setActiveRecipient(null); }}
-          className={`flex-1 py-1 rounded text-[10px] font-semibold transition-all duration-200 ${activeTab === 'workspace' ? 'bg-[var(--color-brand-500)] text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]/20'}`}
+          className={`relative flex-1 py-1 rounded text-[10px] font-semibold transition-all duration-200 ${activeTab === 'workspace' ? 'bg-[var(--color-brand-500)] text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]/20'}`}
         >
           Workspace
+          {unreadRooms?.some(r => r === `workspace_${workspaceId}`) && activeTab !== 'workspace' && (
+            <span className="absolute top-1 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+          )}
         </button>
         <button
           onClick={() => { setActiveTab('team'); setActiveRecipient(null); }}
-          className={`flex-1 py-1 rounded text-[10px] font-semibold transition-all duration-200 ${activeTab === 'team' ? 'bg-[var(--color-brand-500)] text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]/20'}`}
+          className={`relative flex-1 py-1 rounded text-[10px] font-semibold transition-all duration-200 ${activeTab === 'team' ? 'bg-[var(--color-brand-500)] text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]/20'}`}
         >
           Team
+          {unreadRooms?.some(r => r === `team_${activeOrganizationId}`) && activeTab !== 'team' && (
+            <span className="absolute top-1 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('dm')}
-          className={`flex-1 py-1 rounded text-[10px] font-semibold transition-all duration-200 ${activeTab === 'dm' ? 'bg-[var(--color-brand-500)] text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]/20'}`}
+          className={`relative flex-1 py-1 rounded text-[10px] font-semibold transition-all duration-200 ${activeTab === 'dm' ? 'bg-[var(--color-brand-500)] text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]/20'}`}
         >
           Direct
+          {unreadRooms?.some(r => r.startsWith('dm_')) && (activeTab !== 'dm' || !activeRecipient) && (
+            <span className="absolute top-1 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+          )}
         </button>
       </div>
 
@@ -431,22 +454,34 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
               </p>
             </div>
           ) : (
-            members.map((member) => (
-              <button
-                key={member.id}
-                onClick={() => setActiveRecipient(member)}
-                className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-[var(--border)]/30 text-left transition-colors"
-              >
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-brand-500)]/20 to-[var(--color-brand-600)]/20 border border-[var(--brand-500)]/30 flex items-center justify-center shrink-0">
-                  <span className="text-[9px] font-bold text-[var(--color-brand-500)]">{getInitials(member.name || member.email)}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold truncate text-[var(--foreground)]">{member.name || member.email}</p>
-                  <p className="text-[9px] text-[var(--muted)] truncate">{member.email}</p>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--card)] text-[var(--muted)] uppercase border border-[var(--border)] font-mono">{member.role}</span>
-              </button>
-            ))
+            members.map((member) => {
+              const dmRoomId = currentUser ? `dm_${[currentUser.id, member.id].sort().join('_')}` : '';
+              const hasUnread = unreadRooms?.includes(dmRoomId);
+
+              return (
+                <button
+                  key={member.id}
+                  onClick={() => setActiveRecipient(member)}
+                  className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-[var(--border)]/30 text-left transition-colors relative"
+                >
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-brand-500)]/20 to-[var(--color-brand-600)]/20 border border-[var(--brand-500)]/30 flex items-center justify-center shrink-0">
+                    <span className="text-[9px] font-bold text-[var(--color-brand-500)]">{getInitials(member.name || member.email)}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs truncate ${hasUnread ? 'font-bold text-[var(--foreground)]' : 'font-semibold text-[var(--foreground)]'}`}>
+                      {member.name || member.email}
+                    </p>
+                    <p className="text-[9px] text-[var(--muted)] truncate">{member.email}</p>
+                  </div>
+                  {hasUnread && (
+                    <span className="w-2 h-2 bg-red-500 rounded-full shrink-0"></span>
+                  )}
+                  {!hasUnread && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--card)] text-[var(--muted)] uppercase border border-[var(--border)] font-mono">{member.role}</span>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
       ) : (

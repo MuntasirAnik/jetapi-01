@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { io, Socket } from "socket.io-client";
 
 type AppContextType = {
   organizations: any[];
@@ -24,7 +25,10 @@ type AppContextType = {
   fetchSharedCollections: () => void;
   refreshInit: () => void;
   isAppReady: boolean;
-  globalVariables: any[];
+  hasUnreadMessages: boolean;
+  unreadRooms: string[];
+  markRoomAsRead: (room: string) => void;
+  clearUnreadMessages: () => void;
 };
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -62,6 +66,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [envRefreshTrigger, setEnvRefreshTrigger] = useState(0);
   const [isAppReady, setIsAppReady] = useState(false);
   const [globalVariables, setGlobalVariables] = useState<any[]>([]);
+  const [unreadRooms, setUnreadRooms] = useState<string[]>([]);
+  const hasUnreadMessages = unreadRooms.length > 0;
 
   // Track whether the initial boot has completed to avoid re-running org-switch logic
   const hasBootedRef = useRef(false);
@@ -70,6 +76,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const cachedInit = localStorage.getItem('jetapi_init_cache');
+      
+      const cachedUnread = localStorage.getItem('jetapi_unread_rooms');
+      if (cachedUnread) {
+        setUnreadRooms(JSON.parse(cachedUnread));
+      }
       if (cachedInit) {
         const data = JSON.parse(cachedInit);
         if (data.organizations) {
@@ -305,6 +316,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     else localStorage.removeItem("postclone_envId");
   }, [activeEnvId]);
 
+  // ──── Persist Unread Rooms ────
+  useEffect(() => {
+    try {
+      localStorage.setItem('jetapi_unread_rooms', JSON.stringify(unreadRooms));
+    } catch {}
+  }, [unreadRooms]);
+
+  // ──── Global Chat Notification Listener ────
+  useEffect(() => {
+    if (!activeOrganizationId) return;
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001", {
+      auth: { token },
+      transports: ["websocket"],
+    });
+
+    socket.on("connect", () => {
+      socket.emit("subscribe_notifications", {
+        organizationId: activeOrganizationId,
+        workspaceId: activeWorkspaceId || undefined,
+      });
+    });
+
+    socket.on("notification", (data: any) => {
+      const localUserStr = localStorage.getItem("user");
+      const localUser = localUserStr ? JSON.parse(localUserStr) : null;
+      if (localUser && data.sender === localUser.id) return;
+
+      if (data.room) {
+        setUnreadRooms(prev => {
+          if (!prev.includes(data.room)) return [...prev, data.room];
+          return prev;
+        });
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [activeOrganizationId, activeWorkspaceId]);
+
   const value = {
     organizations,
     activeOrganizationId,
@@ -327,6 +381,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshInit: initApp,
     isAppReady,
     globalVariables,
+    hasUnreadMessages,
+    unreadRooms,
+    markRoomAsRead: (room: string) => setUnreadRooms(prev => prev.filter(r => r !== room)),
+    clearUnreadMessages: () => setUnreadRooms([]),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

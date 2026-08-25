@@ -251,6 +251,38 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
 
     this.server.to(roomName).emit('new_message', savedMessage);
+
+    // Also emit a notification for the dot indicator
+    const notifyPayload = { room: roomName, sender: user.sub };
+    if (data.type === 'team' && data.organizationId) {
+      this.server.to(`notify_org_${data.organizationId}`).emit('notification', notifyPayload);
+    } else if (data.type === 'workspace' && data.workspaceId) {
+      this.server.to(`notify_workspace_${data.workspaceId}`).emit('notification', notifyPayload);
+    } else if (data.type === 'dm' && data.recipientId) {
+      this.server.to(`notify_user_${data.recipientId}`).emit('notification', notifyPayload);
+    }
+  }
+
+  @SubscribeMessage('subscribe_notifications')
+  async handleSubscribeNotifications(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { organizationId?: string; workspaceId?: string }
+  ) {
+    let user = client.data.user;
+    if (!user) {
+      try {
+        const authHeader = client.handshake.headers.authorization;
+        const token = authHeader?.split(' ')[1] || client.handshake.auth?.token;
+        if (token) {
+          user = await this.jwtService.verifyAsync(token, { secret: 'YOUR_SECRET_KEY' });
+          client.data.user = user;
+        }
+      } catch (err) {}
+    }
+    if (!user) return;
+    client.join(`notify_user_${user.sub}`);
+    if (data.organizationId) client.join(`notify_org_${data.organizationId}`);
+    if (data.workspaceId) client.join(`notify_workspace_${data.workspaceId}`);
   }
 
   @SubscribeMessage('edit_message')
