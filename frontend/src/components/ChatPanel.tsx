@@ -22,6 +22,7 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
   const { activeOrganizationId, unreadRooms, markRoomAsRead } = useAppContext();
   
   const [activeTab, setActiveTab] = useState<'team' | 'workspace' | 'dm'>('workspace');
+  const activeRoomRef = useRef<string>('');
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [newMsg, setNewMsg] = useState("");
@@ -123,14 +124,12 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
 
     socket.on("chat_history", (history: MessageItem[]) => {
       setMessages(history);
-      const roomName = getRoomName();
-      if (roomName) markRoomAsRead(roomName);
+      if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
     });
 
     socket.on("new_message", (msg: MessageItem) => {
       setMessages((prev) => [...prev, msg]);
-      const roomName = getRoomName();
-      if (roomName) markRoomAsRead(roomName);
+      if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
     });
 
     socket.on("message_edited", (data: { messageId: string; content: string; codeSnippet?: string }) => {
@@ -162,18 +161,26 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
     if (!socket || !connected) return;
 
     // Join new room
+    let roomName = '';
     if (activeTab === 'team') {
+      roomName = `team_${activeOrganizationId}`;
       socket.emit("join_room", { type: 'team', organizationId: activeOrganizationId });
     } else if (activeTab === 'workspace' && workspaceId) {
+      roomName = `workspace_${workspaceId}`;
       socket.emit("join_room", { type: 'workspace', workspaceId });
-    } else if (activeTab === 'dm' && activeRecipient) {
+    } else if (activeTab === 'dm' && activeRecipient && currentUser) {
+      roomName = `dm_${[currentUser.id, activeRecipient.id].sort().join('_')}`;
       socket.emit("join_room", { type: 'dm', recipientId: activeRecipient.id, organizationId: activeOrganizationId });
+    }
+    
+    activeRoomRef.current = roomName;
+    if (roomName) {
+      markRoomAsRead(roomName);
     }
 
     return () => {
-      const roomName = getRoomName();
-      if (roomName && socket) {
-        socket.emit("leave_room", { roomName });
+      if (activeRoomRef.current && socket) {
+        socket.emit("leave_room", { roomName: activeRoomRef.current });
       }
       setMessages([]);
       setOnlineUsers([]);
@@ -464,7 +471,10 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
                   onClick={() => setActiveRecipient(member)}
                   className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-[var(--border)]/30 text-left transition-colors relative"
                 >
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-brand-500)]/20 to-[var(--color-brand-600)]/20 border border-[var(--brand-500)]/30 flex items-center justify-center shrink-0">
+                  {member.avatarMimeType || member.avatar ? (
+                    <img src={member.avatar || `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/auth/users/${member.id}/avatar`} alt="Avatar" className="w-7 h-7 rounded-full object-cover shrink-0 border border-[var(--brand-500)]/30" onError={(e) => { e.currentTarget.style.display = 'none'; if(e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex'; }} />
+                  ) : null}
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-brand-500)]/20 to-[var(--color-brand-600)]/20 border border-[var(--brand-500)]/30 flex items-center justify-center shrink-0" style={{ display: (member.avatarMimeType || member.avatar) ? 'none' : 'flex' }}>
                     <span className="text-[9px] font-bold text-[var(--color-brand-500)]">{getInitials(member.name || member.email)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -509,9 +519,12 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
               return (
                 <div key={msg.id || index} className={`flex items-start gap-2 relative group ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                   {/* Avatar */}
+                  {msg.sender?.avatarMimeType || msg.sender?.avatar ? (
+                    <img src={msg.sender.avatar || `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/auth/users/${msg.sender.id}/avatar`} alt="Avatar" className="w-6 h-6 rounded-full object-cover shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; if(e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex'; }} />
+                  ) : null}
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-white text-[9px] font-bold ${
                     isMe ? 'bg-gradient-to-br from-[var(--color-brand-600)] to-[var(--color-brand-700)]' : 'bg-gradient-to-br from-neutral-600 to-neutral-700'
-                  }`}>
+                  }`} style={{ display: (msg.sender?.avatarMimeType || msg.sender?.avatar) ? 'none' : 'flex' }}>
                     {getInitials(msg.sender?.name || msg.sender?.email)}
                   </div>
                   
