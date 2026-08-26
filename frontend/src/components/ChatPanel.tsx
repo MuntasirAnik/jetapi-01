@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { MessageSquare, Send, X, Terminal, Users, Link, Loader2, Edit2, Trash2, FileJson, Smile } from "lucide-react";
+import { MessageSquare, Send, X, Terminal, Users, Link, Loader2, Edit2, Trash2, FileJson, Smile, Check, CheckCheck, Eye } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { toast } from "react-toastify";
 import { useAppContext } from "@/lib/AppContext";
@@ -19,6 +19,7 @@ interface MessageItem {
   };
   createdAt: string;
   reactions?: Record<string, string[]>;
+  seenBy?: Record<string, { seenAt: string; name?: string; email?: string } | string>;
 }
 
 export default function ChatPanel({ workspaceId, activeRequest, onClose }: { workspaceId: string; activeRequest: any; onClose: () => void }) {
@@ -162,14 +163,33 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
       setConnected(false);
     });
 
+    const markUnseenAsRead = (msgList: MessageItem[], room: string) => {
+      if (!socket || !room || !Array.isArray(msgList) || msgList.length === 0) return;
+      const localUserStr = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
+      const currentUserId = localUserStr ? JSON.parse(localUserStr)?.id : null;
+      if (!currentUserId) return;
+
+      const unseenIds = msgList
+        .filter((m) => m.sender?.id !== currentUserId && (!m.seenBy || !m.seenBy[currentUserId]))
+        .map((m) => m.id);
+
+      if (unseenIds.length > 0) {
+        socket.emit("mark_seen", { roomName: room, messageIds: unseenIds });
+      }
+    };
+
     socket.on("chat_history", (data: { roomName: string; history: MessageItem[] } | MessageItem[]) => {
       if (Array.isArray(data)) {
         setMessages(data);
-        if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
+        if (activeRoomRef.current) {
+          markRoomAsRead(activeRoomRef.current);
+          markUnseenAsRead(data, activeRoomRef.current);
+        }
       } else if (data && data.history) {
         if (data.roomName === activeRoomRef.current) {
           setMessages(data.history);
           markRoomAsRead(data.roomName);
+          markUnseenAsRead(data.history, data.roomName);
         }
       }
     });
@@ -180,10 +200,28 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
         if (msg.roomName === activeRoomRef.current) {
           setMessages((prev) => [...prev, msg]);
           markRoomAsRead(activeRoomRef.current);
+          markUnseenAsRead([msg], activeRoomRef.current);
         }
       } else {
         setMessages((prev) => [...prev, msg]);
-        if (activeRoomRef.current) markRoomAsRead(activeRoomRef.current);
+        if (activeRoomRef.current) {
+          markRoomAsRead(activeRoomRef.current);
+          markUnseenAsRead([msg], activeRoomRef.current);
+        }
+      }
+    });
+
+    socket.on("messages_seen", (data: { roomName: string; updatedMessages: { id: string; seenBy: Record<string, any> }[]; seenByUserId: string; seenByUserName?: string }) => {
+      if (!data.roomName || data.roomName === activeRoomRef.current) {
+        setMessages((prev) => {
+          const updatesMap = new Map(data.updatedMessages.map((u) => [u.id, u.seenBy]));
+          return prev.map((msg) => {
+            if (updatesMap.has(msg.id)) {
+              return { ...msg, seenBy: updatesMap.get(msg.id) };
+            }
+            return msg;
+          });
+        });
       }
     });
 
@@ -642,6 +680,143 @@ export default function ChatPanel({ workspaceId, activeRequest, onClose }: { wor
                       <span className="font-semibold text-[var(--foreground)]">{isMe ? 'You' : (msg.sender?.name || msg.sender?.email || "Unknown")}</span>
                       <span>•</span>
                       <span>{msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</span>
+
+                      {/* Seen / Delivery tick status for messages sent by current user */}
+                      {isMe && (
+                        activeTab === 'dm' ? (
+                          // Direct Message: Blue double tick if recipient saw it, else single tick
+                          activeRecipient && msg.seenBy && msg.seenBy[activeRecipient.id] ? (
+                            <span title={`Seen by ${activeRecipient.name || activeRecipient.email}`} className="flex items-center text-sky-400 font-semibold ml-0.5 animate-in fade-in duration-200">
+                              <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </span>
+                          ) : (
+                            <span title="Sent" className="flex items-center text-[var(--muted)] opacity-60 ml-0.5">
+                              <Check className="w-3 h-3 stroke-[2]" />
+                            </span>
+                          )
+                        ) : (
+                          // Group Chat (Team/Workspace): Colored double tick with count & interactive hover tooltip
+                          (() => {
+                            const seenEntries = msg.seenBy
+                              ? Object.entries(msg.seenBy).filter(([uId]) => uId !== (currentUser?.id || msg.sender?.id))
+                              : [];
+                            const seenCount = seenEntries.length;
+
+                            if (seenCount > 0) {
+                              return (
+                                <div className="relative group/seen flex items-center ml-0.5">
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-0.5 text-sky-400 hover:text-sky-300 font-semibold cursor-pointer transition-colors"
+                                    title={`Seen by ${seenCount} ${seenCount === 1 ? 'member' : 'members'}`}
+                                  >
+                                    <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                                    <span className="text-[8.5px] font-bold leading-none">{seenCount}</span>
+                                  </button>
+
+                                  {/* Seen by Popover / Tooltip */}
+                                  <div className="absolute bottom-full mb-1.5 hidden group-hover/seen:flex flex-col z-30 pointer-events-none right-0 items-end">
+                                    <div className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-[10px] rounded-lg p-2 shadow-2xl whitespace-nowrap flex flex-col gap-1 min-w-[150px] max-w-[240px] backdrop-blur-md">
+                                      <div className="font-semibold flex items-center gap-1.5 text-sky-400 pb-1 border-b border-[var(--border)]/60 text-[9px] uppercase tracking-wider">
+                                        <Eye className="w-3 h-3" />
+                                        <span>Seen by {seenCount} {seenCount === 1 ? 'person' : 'people'}</span>
+                                      </div>
+                                      <div className="flex flex-col gap-1 pt-0.5 max-h-36 overflow-y-auto custom-scrollbar">
+                                        {seenEntries.map(([uId, info]: [string, any]) => {
+                                          const memberInfo = allMembers.find((m) => m.id === uId);
+                                          const name =
+                                            typeof info === 'object' && info?.name && info.name !== 'Unknown'
+                                              ? info.name
+                                              : memberInfo?.name || memberInfo?.email || 'Member';
+                                          const timeStr =
+                                            typeof info === 'object' && info?.seenAt
+                                              ? new Date(info.seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                              : '';
+                                          return (
+                                            <div key={uId} className="flex items-center justify-between gap-2 text-[9px]">
+                                              <span className="truncate font-medium text-[var(--foreground)]">
+                                                {name}
+                                              </span>
+                                              {timeStr && (
+                                                <span className="text-[8px] text-[var(--muted)] shrink-0">
+                                                  {timeStr}
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return (
+                              <span title="Sent (not seen yet)" className="flex items-center text-[var(--muted)] opacity-60 ml-0.5">
+                                <Check className="w-3 h-3 stroke-[2]" />
+                              </span>
+                            );
+                          })()
+                        )
+                      )}
+
+                      {/* Seen badge for group messages sent by other members */}
+                      {!isMe && activeTab !== 'dm' && (() => {
+                        const seenEntries = msg.seenBy
+                          ? Object.entries(msg.seenBy).filter(([uId]) => uId !== msg.sender?.id)
+                          : [];
+                        const seenCount = seenEntries.length;
+                        if (seenCount > 0) {
+                          return (
+                            <div className="relative group/seen flex items-center ml-0.5">
+                              <button
+                                type="button"
+                                className="flex items-center gap-0.5 text-[var(--muted)] hover:text-sky-400 font-medium cursor-pointer transition-colors text-[8.5px]"
+                                title={`Seen by ${seenCount} ${seenCount === 1 ? 'member' : 'members'}`}
+                              >
+                                <Eye className="w-2.5 h-2.5" />
+                                <span className="font-bold leading-none">{seenCount}</span>
+                              </button>
+
+                              {/* Seen by Popover / Tooltip */}
+                              <div className="absolute bottom-full mb-1.5 hidden group-hover/seen:flex flex-col z-30 pointer-events-none left-0 items-start">
+                                <div className="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-[10px] rounded-lg p-2 shadow-2xl whitespace-nowrap flex flex-col gap-1 min-w-[150px] max-w-[240px] backdrop-blur-md">
+                                  <div className="font-semibold flex items-center gap-1.5 text-sky-400 pb-1 border-b border-[var(--border)]/60 text-[9px] uppercase tracking-wider">
+                                    <Eye className="w-3 h-3" />
+                                    <span>Seen by {seenCount} {seenCount === 1 ? 'person' : 'people'}</span>
+                                  </div>
+                                  <div className="flex flex-col gap-1 pt-0.5 max-h-36 overflow-y-auto custom-scrollbar">
+                                    {seenEntries.map(([uId, info]: [string, any]) => {
+                                      const memberInfo = allMembers.find((m) => m.id === uId);
+                                      const name =
+                                        typeof info === 'object' && info?.name && info.name !== 'Unknown'
+                                          ? info.name
+                                          : memberInfo?.name || memberInfo?.email || 'Member';
+                                      const timeStr =
+                                        typeof info === 'object' && info?.seenAt
+                                          ? new Date(info.seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                          : '';
+                                      return (
+                                        <div key={uId} className="flex items-center justify-between gap-2 text-[9px]">
+                                          <span className="truncate font-medium text-[var(--foreground)]">
+                                            {name}
+                                          </span>
+                                          {timeStr && (
+                                            <span className="text-[8px] text-[var(--muted)] shrink-0">
+                                              {timeStr}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       
                       {/* Header Action buttons */}
                       {!isEditing && (

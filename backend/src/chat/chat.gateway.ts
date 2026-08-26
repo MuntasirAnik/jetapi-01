@@ -472,4 +472,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: err.message });
     }
   }
+
+  @SubscribeMessage('mark_seen')
+  async handleMarkSeen(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      roomName: string;
+      messageIds?: string[];
+      roomType?: 'team' | 'workspace' | 'dm';
+      targetId?: string;
+    },
+  ) {
+    const user = await this.authenticateSocket(client);
+    if (!user || !data?.roomName) return;
+
+    client.join(data.roomName);
+
+    try {
+      let updated: { id: string; seenBy: Record<string, { seenAt: string; name?: string; email?: string }> }[] = [];
+
+      if (data.messageIds && data.messageIds.length > 0) {
+        updated = await this.chatService.markMessagesAsSeen(
+          data.messageIds,
+          user.sub,
+          user.name,
+          user.email,
+        );
+      } else if (data.roomType && data.targetId) {
+        updated = await this.chatService.markRoomAsSeen(
+          data.roomType,
+          data.targetId,
+          user.sub,
+          user.name,
+          user.email,
+        );
+      }
+
+      if (updated.length > 0) {
+        this.server.to(data.roomName).emit('messages_seen', {
+          roomName: data.roomName,
+          updatedMessages: updated,
+          seenByUserId: user.sub,
+          seenByUserName: user.name,
+        });
+      }
+    } catch (err: any) {
+      console.error('Error marking messages as seen:', err.message);
+    }
+  }
 }

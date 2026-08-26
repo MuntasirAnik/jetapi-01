@@ -36,6 +36,9 @@ export class Message {
   @Column({ type: 'jsonb', default: {} })
   reactions: Record<string, string[]>;
 
+  @Column({ type: 'jsonb', default: {} })
+  seenBy: Record<string, { seenAt: string; name?: string; email?: string }>;
+
   @CreateDateColumn()
   createdAt: Date;
 

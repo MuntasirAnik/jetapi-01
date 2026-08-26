@@ -130,4 +130,83 @@ export class ChatService {
     const result = await this.messageRepo.delete({ id: messageId, senderId });
     return (result.affected || 0) > 0;
   }
+
+  async markMessagesAsSeen(
+    messageIds: string[],
+    userId: string,
+    userName?: string,
+    userEmail?: string,
+  ): Promise<{ id: string; seenBy: Record<string, { seenAt: string; name?: string; email?: string }> }[]> {
+    if (!messageIds || messageIds.length === 0) return [];
+    const messages = await this.messageRepo.find({
+      where: messageIds.map((id) => ({ id })),
+    });
+
+    const updated: { id: string; seenBy: Record<string, { seenAt: string; name?: string; email?: string }> }[] = [];
+    const now = new Date().toISOString();
+
+    for (const msg of messages) {
+      if (msg.senderId === userId) continue;
+      const seenBy = msg.seenBy ? { ...msg.seenBy } : {};
+      if (!seenBy[userId]) {
+        seenBy[userId] = {
+          seenAt: now,
+          name: userName || 'Unknown',
+          email: userEmail,
+        };
+        msg.seenBy = seenBy;
+        await this.messageRepo.save(msg);
+        updated.push({ id: msg.id, seenBy: msg.seenBy });
+      }
+    }
+
+    return updated;
+  }
+
+  async markRoomAsSeen(
+    roomType: 'team' | 'workspace' | 'dm',
+    targetId: string,
+    userId: string,
+    userName?: string,
+    userEmail?: string,
+  ): Promise<{ id: string; seenBy: Record<string, { seenAt: string; name?: string; email?: string }> }[]> {
+    let whereCondition: any;
+    if (roomType === 'team') {
+      whereCondition = { organizationId: targetId, workspaceId: IsNull(), recipientId: IsNull() };
+    } else if (roomType === 'workspace') {
+      whereCondition = { workspaceId: targetId };
+    } else if (roomType === 'dm') {
+      whereCondition = [
+        { senderId: targetId, recipientId: userId },
+      ];
+    }
+
+    if (!whereCondition) return [];
+
+    const messages = await this.messageRepo.find({
+      where: whereCondition,
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+
+    const updated: { id: string; seenBy: Record<string, { seenAt: string; name?: string; email?: string }> }[] = [];
+    const now = new Date().toISOString();
+
+    for (const msg of messages) {
+      if (msg.senderId === userId) continue;
+      const seenBy = msg.seenBy ? { ...msg.seenBy } : {};
+      if (!seenBy[userId]) {
+        seenBy[userId] = {
+          seenAt: now,
+          name: userName || 'Unknown',
+          email: userEmail,
+        };
+        msg.seenBy = seenBy;
+        await this.messageRepo.save(msg);
+        updated.push({ id: msg.id, seenBy: msg.seenBy });
+      }
+    }
+
+    return updated;
+  }
 }
