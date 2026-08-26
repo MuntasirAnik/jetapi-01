@@ -17,7 +17,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { LimitsService } from '../subscriptions/limits.service';
 
 @UseGuards(AuthGuard)
-@Controller('collections')
+@Controller(['collections', 'api/collections'])
 export class CollectionsController {
   constructor(
     private readonly collectionsService: CollectionsService,

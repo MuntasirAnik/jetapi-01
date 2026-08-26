@@ -15,7 +15,7 @@ import { Environment } from './environment.entity';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
-@Controller('environments')
+@Controller(['environments', 'api/environments'])
 export class EnvironmentsController {
   constructor(private readonly environmentsService: EnvironmentsService) {}
 

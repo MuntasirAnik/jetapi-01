@@ -4,7 +4,7 @@ import { FeatureFlagGuard, RequireFeature } from '../admin/feature-flag.guard';
 import { RateLimitGuard } from '../admin/rate-limit.guard';
 import { AuthGuard } from '../auth/auth.guard';
 
-@Controller('proxy')
+@Controller(['proxy', 'api/proxy'])
 export class ProxyController {
   constructor(private readonly proxyService: ProxyService) {}
 

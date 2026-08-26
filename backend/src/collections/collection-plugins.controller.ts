@@ -17,7 +17,7 @@ import { UserPlugin } from './user-plugin.entity';
 import { Plugin } from '../admin/plugin.entity';
 import { Collection } from './collection.entity';
 
-@Controller('collections')
+@Controller(['collections', 'api/collections'])
 @UseGuards(AuthGuard)
 export class CollectionPluginsController {
   constructor(

@@ -15,7 +15,7 @@ import { RequestItem } from './request.entity';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
-@Controller('requests')
+@Controller(['requests', 'api/requests'])
 export class RequestsController {
   constructor(private readonly requestsService: RequestsService) {}
 

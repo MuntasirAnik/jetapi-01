@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminService } from './admin.service';
 
-@Controller('feedback')
+@Controller(['feedback', 'api/feedback'])
 @UseGuards(AuthGuard)
 export class FeedbackController {
   constructor(private adminService: AdminService) {}

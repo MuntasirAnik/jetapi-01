@@ -1,7 +1,7 @@
 if (!process.env.NEXT_PUBLIC_API_URL) {
   console.error('[api.ts] NEXT_PUBLIC_API_URL is not set. Please configure it in .env.local');
 }
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
 
 // Lazy async import to avoid blocking main thread and circular deps
 let pushLogFn: ((entry: any) => void) | null = null;
@@ -19,7 +19,12 @@ function getPushLog() {
 export async function apiFetch(url: string, options: RequestInit = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+  let path = url.startsWith('/') ? url : `/${url}`;
+  if (!url.startsWith('http') && !path.startsWith('/api/')) {
+    path = `/api${path}`;
+  }
+
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${path}`;
   const method = (options.method || 'GET').toUpperCase();
   // Short display path (strip base url)
   const displayUrl = fullUrl.replace(API_BASE_URL, '');

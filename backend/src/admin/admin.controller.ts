@@ -16,7 +16,7 @@ import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 import { RateLimitGuard } from './rate-limit.guard';
 
-@Controller('admin')
+@Controller(['admin', 'api/admin'])
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminController {
   constructor(

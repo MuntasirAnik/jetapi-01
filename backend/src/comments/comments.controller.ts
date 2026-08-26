@@ -12,7 +12,7 @@ import { CommentsService } from './comments.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
-@Controller('comments')
+@Controller(['comments', 'api/comments'])
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
 

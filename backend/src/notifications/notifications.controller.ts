@@ -11,7 +11,7 @@ import {
 import { NotificationsService } from './notifications.service';
 import { AuthGuard } from '../auth/auth.guard';
 
-@Controller('notifications')
+@Controller(['notifications', 'api/notifications'])
 @UseGuards(AuthGuard)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}

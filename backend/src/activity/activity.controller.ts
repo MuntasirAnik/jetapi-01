@@ -13,7 +13,7 @@ import { Repository } from 'typeorm';
 import { Collection } from '../collections/collection.entity';
 
 @UseGuards(AuthGuard)
-@Controller('activity')
+@Controller(['activity', 'api/activity'])
 export class ActivityController {
   constructor(
     private readonly activityService: ActivityService,

@@ -14,7 +14,7 @@ import { OrganizationsService } from './organizations.service';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
-@Controller('organizations')
+@Controller(['organizations', 'api/organizations'])
 export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 

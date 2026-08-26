@@ -16,7 +16,7 @@ import { LimitsService } from './limits.service';
 import { FeatureFlagGuard, RequireFeature } from '../admin/feature-flag.guard';
 import type { Request, Response } from 'express';
 
-@Controller('subscriptions')
+@Controller(['subscriptions', 'api/subscriptions'])
 export class SubscriptionsController {
   constructor(
     private subscriptionsService: SubscriptionsService,

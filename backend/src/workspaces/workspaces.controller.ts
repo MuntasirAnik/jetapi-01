@@ -16,7 +16,7 @@ import { Workspace } from './workspace.entity';
 import { AuthGuard } from '../auth/auth.guard';
 
 @UseGuards(AuthGuard)
-@Controller('workspaces')
+@Controller(['workspaces', 'api/workspaces'])
 export class WorkspacesController {
   constructor(private readonly workspacesService: WorkspacesService) {}
 
