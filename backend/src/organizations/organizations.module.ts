@@ -6,11 +6,13 @@ import { Organization } from './organization.entity';
 import { OrganizationUser } from './organization-user.entity';
 import { User } from '../users/user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Organization, OrganizationUser, User]),
     NotificationsModule,
+    SubscriptionsModule,
   ],
   controllers: [OrganizationsController],
   providers: [OrganizationsService],

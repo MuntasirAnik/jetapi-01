@@ -12,6 +12,7 @@ import { Organization } from './organization.entity';
 import { OrganizationUser } from './organization-user.entity';
 import { User } from '../users/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { LimitsService } from '../subscriptions/limits.service';
 
 @Injectable()
 export class OrganizationsService {
@@ -23,6 +24,7 @@ export class OrganizationsService {
     @InjectRepository(User)
     private userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   async create(
@@ -129,16 +131,8 @@ export class OrganizationsService {
       throw new ForbiddenException('Only admins or owners can invite users.');
     }
 
-    // Billing check (respect per-org maxMembers setting)
-    const activeUsersCount = await this.orgUserRepo.count({
-      where: { organizationId: orgId },
-    });
-    if (activeUsersCount >= org.maxMembers) {
-      throw new HttpException(
-        `This team is limited to ${org.maxMembers} members. Update the limit in Team Settings to add more.`,
-        402,
-      );
-    }
+    // Billing check (respect plan member limit for the organization owner)
+    await this.limitsService.checkMemberLimit(orgId, org.ownerId);
 
     let targetUser = await this.userRepo.findOne({ where: { email } });
     if (!targetUser) {
@@ -205,16 +199,11 @@ export class OrganizationsService {
       throw new NotFoundException('Invitation not found.');
     }
 
-    // Billing check (respect per-org maxMembers setting)
-    const activeUsersCount = await this.orgUserRepo.count({
-      where: { organizationId: orgUser.organizationId, status: 'ACCEPTED' },
-    });
-    if (activeUsersCount >= orgUser.organization.maxMembers) {
-      throw new HttpException(
-        `This team is limited to ${orgUser.organization.maxMembers} members. Upgrades are required to accept.`,
-        402,
-      );
-    }
+    // Billing check (respect plan member limit for the organization owner)
+    await this.limitsService.checkAcceptMemberLimit(
+      orgUser.organizationId,
+      orgUser.organization.ownerId,
+    );
 
     orgUser.status = 'ACCEPTED';
     const saved = await this.orgUserRepo.save(orgUser);

@@ -108,6 +108,25 @@ export class LimitsService {
     }
   }
 
+  async checkAcceptMemberLimit(
+    organizationId: string,
+    userId: string,
+  ): Promise<void> {
+    const plan = await this.getUserPlan(userId);
+    const limits = await this.getMergedLimits(plan);
+    if (limits.maxMembers === -1) return;
+
+    const count = await this.orgUserRepo.count({
+      where: { organizationId, status: 'ACCEPTED' },
+    });
+
+    if (count >= limits.maxMembers) {
+      throw new ForbiddenException(
+        `This team is limited to ${limits.maxMembers} members on the ${plan} plan. Upgrade to add more.`,
+      );
+    }
+  }
+
   async checkEnvironmentLimit(
     userId: string,
     workspaceId: string,
