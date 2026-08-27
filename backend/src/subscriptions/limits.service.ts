@@ -98,7 +98,10 @@ export class LimitsService {
     if (limits.maxMembers === -1) return;
 
     const count = await this.orgUserRepo.count({
-      where: { organizationId },
+      where: [
+        { organizationId, status: 'ACCEPTED' },
+        { organizationId, status: 'PENDING' },
+      ],
     });
 
     if (count >= limits.maxMembers) {
@@ -162,7 +165,10 @@ export class LimitsService {
       });
       if (orgUserEntry) {
         members = await this.orgUserRepo.count({
-          where: { organizationId: orgUserEntry.organizationId },
+          where: [
+            { organizationId: orgUserEntry.organizationId, status: 'ACCEPTED' },
+            { organizationId: orgUserEntry.organizationId, status: 'PENDING' },
+          ],
         });
       }
     } catch (e) {

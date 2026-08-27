@@ -104,11 +104,12 @@ export class OrganizationsService {
 
     return memberships.map((m) => ({
       id: m.userId,
-      email: m.user.email,
-      name: m.user.name,
+      email: m.user?.email,
+      name: m.user?.name,
       role: m.role,
+      status: m.status || 'ACCEPTED',
       joinedAt: m.joinedAt,
-      avatarMimeType: m.user.avatarMimeType,
+      avatarMimeType: m.user?.avatarMimeType,
     }));
   }
 
@@ -148,6 +149,27 @@ export class OrganizationsService {
       where: { organizationId: orgId, userId: targetUser.id },
     });
     if (existingMembership) {
+      if (
+        existingMembership.status === 'PENDING' ||
+        existingMembership.status === 'REJECTED'
+      ) {
+        existingMembership.status = 'PENDING';
+        existingMembership.invitedById = currentUserId;
+        const saved = await this.orgUserRepo.save(existingMembership);
+
+        // Resend notification
+        try {
+          const sender = await this.userRepo.findOne({ where: { id: currentUserId } });
+          const senderName = sender?.name || sender?.email || 'Someone';
+          await this.notificationsService.create(
+            targetUser.id,
+            `You have been invited to join the team "${org.name}" by ${senderName}.`,
+          );
+        } catch (err) {
+          console.error('Failed to create invitation notification:', err);
+        }
+        return saved;
+      }
       throw new BadRequestException(
         'User is already a member of this organization.',
       );
@@ -235,7 +257,8 @@ export class OrganizationsService {
     const invitedById = orgUser.invitedById;
     const orgName = orgUser.organization?.name;
 
-    await this.orgUserRepo.remove(orgUser);
+    orgUser.status = 'REJECTED';
+    await this.orgUserRepo.save(orgUser);
 
     if (invitedById) {
       try {

@@ -30,12 +30,12 @@ export class ChatService {
     const message = this.messageRepo.create({
       senderId,
       content,
-      codeSnippet,
-      workspaceId,
-      organizationId,
-      recipientId,
-    });
-    const saved = await this.messageRepo.save(message);
+      codeSnippet: codeSnippet || undefined,
+      workspaceId: workspaceId || undefined,
+      organizationId: organizationId || undefined,
+      recipientId: recipientId || undefined,
+    } as any);
+    const saved = (await this.messageRepo.save(message as any)) as unknown as Message;
     
     const result = await this.messageRepo.findOne({
       where: { id: saved.id },
@@ -61,7 +61,6 @@ export class ChatService {
     const messages = await this.messageRepo.find({
       where: {
         organizationId,
-        workspaceId: IsNull(),
         recipientId: IsNull(),
       },
       relations: ['sender'],

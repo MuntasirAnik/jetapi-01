@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useRouter, usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { io, Socket } from "socket.io-client";
+import { playNotificationSound } from "@/lib/sound";
 
 type AppContextType = {
   organizations: any[];
@@ -380,6 +381,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const localUserStr = localStorage.getItem("user");
       const localUser = localUserStr ? JSON.parse(localUserStr) : null;
       if (localUser && data.sender === localUser.id) return;
+
+      // Play sound chime for incoming messages if not muted globally or for this team
+      const targetOrgId = data.organizationId || data.message?.organizationId;
+      playNotificationSound(data.message?.id || data.room, targetOrgId);
 
       if (data.room) {
         setUnreadRooms(prev => {

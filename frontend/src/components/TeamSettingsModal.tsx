@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
-import { X, UserPlus, Trash2, ShieldCheck, Mail, Users, AlertCircle, Loader2 } from "lucide-react";
+import { X, UserPlus, Trash2, ShieldCheck, Mail, Users, AlertCircle, Loader2, Clock, CheckCircle2, XCircle, RotateCw, Volume2, VolumeX } from "lucide-react";
 import { toast } from "react-toastify";
 import { useDialog } from "./DialogProvider";
+import { soundManager } from "@/lib/sound";
 
 export default function TeamSettingsModal({ organizationId, onClose }: { organizationId: string, onClose: () => void }) {
   const { confirmDialog } = useDialog();
@@ -12,13 +13,32 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
   const [org, setOrg] = useState<any>(null);
   const [planData, setPlanData] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
+  const [isTeamMuted, setIsTeamMuted] = useState(false);
 
-  const memberEmails = useMemo(() => new Set((users || []).map((u: any) => u.email)), [users]);
+  useEffect(() => {
+    if (organizationId) {
+      setIsTeamMuted(soundManager.isTeamMuted(organizationId));
+    }
+  }, [organizationId]);
+
+  const handleToggleTeamSound = () => {
+    const nextState = soundManager.toggleTeamMuted(organizationId);
+    setIsTeamMuted(nextState);
+    toast.info(
+      nextState
+        ? `Muted notification sound for ${org?.name || 'this team'}`
+        : `Unmuted notification sound for ${org?.name || 'this team'}`,
+      { autoClose: 1500 }
+    );
+  };
+
+  const memberEmails = useMemo(() => new Set((users || []).filter((u: any) => u.status === 'ACCEPTED').map((u: any) => u.email)), [users]);
 
   const filteredUsers = useMemo(() => {
     if (!inviteEmail || !Array.isArray(allUsers)) return [];
@@ -92,14 +112,40 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
     }
   };
 
-  const handleRemove = async (userId: string, email: string) => {
-    if (!(await confirmDialog(`Are you sure you want to remove ${email} from the team?`))) return;
+  const handleResend = async (email: string) => {
+    setResendingEmail(email);
+    try {
+      const res = await apiFetch(`/organizations/${organizationId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to send invite');
+      }
+      toast.success(`Invitation sent to ${email}!`);
+      loadData(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setResendingEmail(null);
+    }
+  };
+
+  const handleRemove = async (userId: string, email: string, status: string) => {
+    const promptMsg = status === 'PENDING' 
+      ? `Are you sure you want to cancel the invitation for ${email}?`
+      : status === 'REJECTED'
+      ? `Are you sure you want to remove ${email} from the list?`
+      : `Are you sure you want to remove ${email} from the team?`;
+    if (!(await confirmDialog(promptMsg))) return;
     try {
       const res = await apiFetch(`/organizations/${organizationId}/users/${userId}`, {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Failed to remove user");
-      toast.success(`Removed ${email}`);
+      toast.success(status === 'PENDING' ? `Invitation cancelled for ${email}` : `Removed ${email}`);
       loadData(false);
     } catch (err: any) {
       toast.error(err.message);
@@ -127,18 +173,14 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
     }
   };
 
-
-
   const currentUserMembership = users.find(u => u.email === currentUserEmail);
   const isOwnerOrAdmin = currentUserMembership && ['OWNER', 'ADMIN'].includes(currentUserMembership.role);
   const isOwner = currentUserMembership && currentUserMembership.role === 'OWNER';
 
   const currentPlan = planData?.plan || 'FREE';
   const maxUsers = planData?.limits?.maxMembers || 1;
-  const seatsUsed = users.length;
+  const seatsUsed = users.filter(u => u.status !== 'REJECTED').length;
   const isAtLimit = maxUsers !== -1 && seatsUsed >= maxUsers;
-
-
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4 modal-backdrop">
@@ -180,7 +222,7 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
           </button>
         </div>
 
-        <div className="p-6 flex flex-col gap-6 flex-1 overflow-y-auto">
+        <div className="p-6 flex flex-col gap-5 flex-1 overflow-y-auto">
 
           {/* Billing Context */}
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 flex flex-col gap-3">
@@ -203,7 +245,6 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                 />
               </div>
 
-
               {isAtLimit && (
                 <div className="mt-3 flex items-start gap-2 text-xs text-red-400 bg-red-400/10 p-2 rounded">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -211,6 +252,37 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Notifications & Sound Setting */}
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${isTeamMuted ? 'bg-rose-500/10 text-rose-500' : 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]'}`}>
+                {isTeamMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-[var(--foreground)]">Team Notification Sound</h4>
+                <p className="text-[11px] text-[var(--muted)]">
+                  {isTeamMuted 
+                    ? "Notification sounds are muted for this team"
+                    : "Play chime sound when messages arrive in this team"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleTeamSound}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                !isTeamMuted ? 'bg-[var(--color-brand-500)]' : 'bg-[var(--sidebar)] border border-[var(--border)]'
+              }`}
+              title={isTeamMuted ? "Unmute sound for this team" : "Mute sound for this team"}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  !isTeamMuted ? 'translate-x-4' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
 
           <div className="border-t border-[var(--border)]"></div>
@@ -272,28 +344,73 @@ export default function TeamSettingsModal({ organizationId, onClose }: { organiz
                 {users.map(u => (
                   <div key={u.id} className="p-3 flex items-center justify-between hover:bg-[var(--sidebar)] transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[var(--color-brand-500)]/20 flex items-center justify-center text-[var(--color-brand-500)] font-bold text-xs uppercase border border-[var(--color-brand-500)]/30">
-                        {u.email.substring(0, 2)}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase border ${
+                        u.status === 'PENDING'
+                          ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
+                          : u.status === 'REJECTED'
+                          ? 'bg-rose-500/15 text-rose-500 border-rose-500/30'
+                          : 'bg-[var(--color-brand-500)]/20 text-[var(--color-brand-500)] border-[var(--color-brand-500)]/30'
+                      }`}>
+                        {u.email?.substring(0, 2)}
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium">{u.email} {u.email === currentUserEmail && <span className="text-[10px] bg-[var(--foreground)] text-[var(--background)] px-1 rounded ml-1">You</span>}</span>
-                        <div className="flex items-center gap-1 text-[10px] text-[var(--muted)] mt-0.5">
-                          {u.role === 'OWNER' && <ShieldCheck className="w-3 h-3 text-[var(--color-brand-500)]" />}
-                          {u.role}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${u.status === 'REJECTED' ? 'line-through opacity-60' : ''}`}>{u.email}</span>
+                          {u.email === currentUserEmail && (
+                            <span className="text-[10px] bg-[var(--foreground)] text-[var(--background)] px-1 rounded ml-0.5">You</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-[var(--muted)] mt-0.5">
+                          <span className="flex items-center gap-1">
+                            {u.role === 'OWNER' && <ShieldCheck className="w-3 h-3 text-[var(--color-brand-500)]" />}
+                            {u.role}
+                          </span>
+                          <span>•</span>
+                          {u.status === 'PENDING' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 font-medium">
+                              <Clock className="w-2.5 h-2.5" /> Pending Invite
+                            </span>
+                          ) : u.status === 'REJECTED' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20 font-medium">
+                              <XCircle className="w-2.5 h-2.5" /> Rejected
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-medium">
+                              <CheckCircle2 className="w-2.5 h-2.5" /> Accepted
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Can only remove if not self-owner or if admin removing members */}
-                    {isOwnerOrAdmin && (u.role !== 'OWNER' || users.length === 1) && u.email !== currentUserEmail && (
-                      <button
-                        onClick={() => handleRemove(u.id, u.email)}
-                        className="p-1.5 text-[var(--muted)] hover:bg-red-500/10 hover:text-red-500 rounded transition-colors"
-                        title="Remove User"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {/* Resend / Re-invite button for pending or rejected users */}
+                      {isOwnerOrAdmin && (u.status === 'PENDING' || u.status === 'REJECTED') && (
+                        <button
+                          onClick={() => handleResend(u.email)}
+                          disabled={resendingEmail === u.email}
+                          className="p-1.5 text-[var(--muted)] hover:bg-[var(--sidebar)] hover:text-[var(--color-brand-500)] rounded transition-colors disabled:opacity-50"
+                          title={u.status === 'REJECTED' ? "Re-invite Member" : "Resend Invitation"}
+                        >
+                          {resendingEmail === u.email ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-[var(--color-brand-500)]" />
+                          ) : (
+                            <RotateCw className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
+
+                      {/* Can only remove if not self-owner or if admin removing members */}
+                      {isOwnerOrAdmin && (u.role !== 'OWNER' || users.length === 1) && u.email !== currentUserEmail && (
+                        <button
+                          onClick={() => handleRemove(u.id, u.email, u.status)}
+                          className="p-1.5 text-[var(--muted)] hover:bg-red-500/10 hover:text-red-500 rounded transition-colors"
+                          title={u.status === 'PENDING' ? "Cancel Invitation" : u.status === 'REJECTED' ? "Remove Record" : "Remove User"}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

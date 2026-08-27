@@ -3,7 +3,7 @@ import { apiFetch } from '@/lib/api';
 import StyledSelect from './StyledSelect';
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from 'next/navigation';
-import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink } from "lucide-react";
+import { Settings, ShieldCheck, User as UserIcon, Server, ChevronDown, Check, Plus, Search, Trash2, Users, Folder, Bell, LogOut, CreditCard, BarChart3, Palette, ExternalLink, VolumeX } from "lucide-react";
 import dynamic from 'next/dynamic';
 const EnvironmentManager = dynamic(() => import('./EnvironmentManager'), { ssr: false });
 const TeamSettingsModal = dynamic(() => import('./TeamSettingsModal'), { ssr: false });
@@ -12,6 +12,7 @@ import { useDialog } from "./DialogProvider";
 import JetLogo from "./JetLogo";
 import ThemeToggle from "./ThemeToggle";
 import { useAppContext } from "@/lib/AppContext";
+import { soundManager } from "@/lib/sound";
 
 export default function TopBar({ organizations = [], activeOrganizationId, onOrganizationChange, workspaceId, workspaces = [], onWorkspaceChange, activeEnvId, onEnvChange, onEnvRefresh, sharedCollections = [] }: any) {
   const router = useRouter();
@@ -208,35 +209,43 @@ export default function TopBar({ organizations = [], activeOrganizationId, onOrg
                 <div className="absolute top-full left-0 mt-1 w-64 bg-[var(--card)] border border-[var(--border)] rounded shadow-2xl z-[9999] overflow-hidden flex flex-col">
                   <div className="max-h-64 overflow-y-auto p-1 flex flex-col gap-0.5">
                      <div key="teams-header" className="text-[10px] font-semibold text-[var(--muted)] uppercase px-2 py-1.5 tracking-wider">Your Teams</div>
-                     {organizations.map((org: any, idx: number) => (
-                       <div 
-                         key={org.id || `org-${idx}`}
-                         className={`flex items-center justify-between w-full px-2 py-2 rounded text-xs group transition-colors ${activeOrganizationId === org.id ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
-                       >
-                         <button
-                           onClick={() => {
-                             onOrganizationChange(org.id);
-                             setIsOrgDropdownOpen(false);
-                           }}
-                           className="flex items-center gap-2 flex-1 text-left"
+                     {organizations.map((org: any, idx: number) => {
+                       const isMuted = soundManager.isTeamMuted(org.id);
+                       return (
+                         <div 
+                           key={org.id || `org-${idx}`}
+                           className={`flex items-center justify-between w-full px-2 py-2 rounded text-xs group transition-colors ${activeOrganizationId === org.id ? 'bg-[var(--color-brand-500)]/10 text-[var(--color-brand-500)]' : 'text-[var(--foreground)] hover:bg-[var(--sidebar)]'}`}
                          >
-                           {activeOrganizationId === org.id ? <Check className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5" />}
-                           <span className={activeOrganizationId === org.id ? "font-semibold" : "font-medium"}>{org.name}</span>
-                         </button>
-                         <button
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             onOrganizationChange(org.id);
-                             setIsOrgDropdownOpen(false);
-                             setIsTeamSettingsOpen(true);
-                           }}
-                           className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-all"
-                           title={`Edit ${org.name}`}
-                         >
-                           <Settings className="w-3 h-3" />
-                         </button>
-                       </div>
-                     ))}
+                           <button
+                             onClick={() => {
+                               onOrganizationChange(org.id);
+                               setIsOrgDropdownOpen(false);
+                             }}
+                             className="flex items-center gap-2 flex-1 text-left"
+                           >
+                             {activeOrganizationId === org.id ? <Check className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5" />}
+                             <span className={activeOrganizationId === org.id ? "font-semibold" : "font-medium"}>{org.name}</span>
+                             {isMuted && (
+                               <span title="Notifications muted for this team" className="text-rose-400 opacity-80 flex items-center ml-1">
+                                 <VolumeX className="w-3 h-3" />
+                               </span>
+                             )}
+                           </button>
+                           <button
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               onOrganizationChange(org.id);
+                               setIsOrgDropdownOpen(false);
+                               setIsTeamSettingsOpen(true);
+                             }}
+                             className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-[var(--border)] text-[var(--muted)] hover:text-[var(--color-brand-500)] transition-all"
+                             title={`Edit ${org.name}`}
+                           >
+                             <Settings className="w-3 h-3" />
+                           </button>
+                         </div>
+                       );
+                     })}
                   </div>
                   <div className="border-t border-[var(--border)] p-1 bg-[var(--background)]">
                     <button 

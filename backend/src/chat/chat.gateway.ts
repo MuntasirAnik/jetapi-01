@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Workspace } from '../workspaces/workspace.entity';
 import { OrganizationUser } from '../organizations/organization-user.entity';
+import { Organization } from '../organizations/organization.entity';
 import { SystemSetting } from '../admin/system-setting.entity';
 import { ChatService } from './chat.service';
 
@@ -46,6 +47,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(OrganizationUser)
     private readonly orgUserRepo: Repository<OrganizationUser>,
+    @InjectRepository(Organization)
+    private readonly orgRepo: Repository<Organization>,
     @InjectRepository(SystemSetting)
     private readonly settingRepo: Repository<SystemSetting>,
   ) {}
@@ -172,16 +175,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('subscribe_notifications')
   async handleSubscribeNotifications(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { organizationId?: string; workspaceId?: string }
+    @MessageBody() data: { organizationId?: string; workspaceId?: string },
   ) {
     const user = await this.authenticateSocket(client);
     if (!user) return;
 
-    this.registerUserSocket(client.id, user.sub, data.organizationId);
-
+    // Join user-specific notification room
     client.join(`notify_user_${user.sub}`);
+
+    // Join org-wide and workspace-wide notification rooms
     if (data.organizationId) {
       client.join(`notify_org_${data.organizationId}`);
+      this.registerUserSocket(client.id, user.sub, data.organizationId);
       this.broadcastOrgPresence(data.organizationId);
     }
     if (data.workspaceId) {
@@ -209,8 +214,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const user = await this.authenticateSocket(client);
     if (!user || !data?.type) return;
 
-    this.registerUserSocket(client.id, user.sub, data.organizationId);
-
     let roomName = '';
     let history: any[] = [];
     let effectiveOrgId = data.organizationId;
@@ -222,7 +225,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           { organizationId: data.organizationId, user: { id: user.sub } },
         ],
       });
-      if (!membership) return;
+      const isOwner = !membership ? await this.orgRepo.findOne({ where: { id: data.organizationId, ownerId: user.sub } }) : true;
+      if (!membership && !isOwner) {
+        console.warn(`[Socket] Unauthorized join team: user=${user.sub} org=${data.organizationId}`);
+        return;
+      }
 
       roomName = `team_${data.organizationId}`;
       history = await this.chatService.getTeamMessages(data.organizationId);
@@ -239,25 +246,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           { organizationId: workspace.organizationId, user: { id: user.sub } },
         ],
       });
-      if (!membership) return;
+      const isOwner = !membership ? await this.orgRepo.findOne({ where: { id: workspace.organizationId, ownerId: user.sub } }) : true;
+      if (!membership && !isOwner) return;
 
       roomName = `workspace_${data.workspaceId}`;
       history = await this.chatService.getWorkspaceMessages(data.workspaceId);
-    } else if (data.type === 'dm' && data.recipientId && data.organizationId) {
-      const senderMembership = await this.orgUserRepo.findOne({
-        where: [
-          { organizationId: data.organizationId, userId: user.sub },
-          { organizationId: data.organizationId, user: { id: user.sub } },
-        ],
-      });
-      const recipientMembership = await this.orgUserRepo.findOne({
-        where: [
-          { organizationId: data.organizationId, userId: data.recipientId },
-          { organizationId: data.organizationId, user: { id: data.recipientId } },
-        ],
-      });
-      if (!senderMembership || !recipientMembership) return;
-
+    } else if (data.type === 'dm' && data.recipientId) {
       const ids = [user.sub, data.recipientId].sort();
       roomName = `dm_${ids[0]}_${ids[1]}`;
       history = await this.chatService.getDmMessages(user.sub, data.recipientId);
@@ -371,7 +365,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(roomName).emit('new_message', messagePayload);
 
     // Also emit a notification for the dot indicator
-    const notifyPayload = { room: roomName, sender: user.sub, message: messagePayload };
+    const notifyPayload = {
+      room: roomName,
+      sender: user.sub,
+      message: messagePayload,
+      organizationId: data.organizationId || savedMessage.organizationId,
+    };
     if (data.type === 'team' && data.organizationId) {
       this.server.to(`notify_org_${data.organizationId}`).emit('notification', notifyPayload);
     } else if (data.type === 'workspace' && data.workspaceId) {
